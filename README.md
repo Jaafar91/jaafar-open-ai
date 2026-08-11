@@ -83,3 +83,13 @@ git commit -m "Updated README with today's date"
 
 git push origin main
 ```
+
+
+## OpenAI Bot Update
+**Prompt:** Create html file with hello world
+
+```
+New file: hello_world.html
++++
+Hello, World!
+```
