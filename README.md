@@ -103,3 +103,12 @@ diff --git a/newfile.txt b/newfile.txt
 new file mode 100644
 index 0000000..e69de29
 ```
+
+
+## OpenAI Bot Update
+**Prompt:** Create a new file index.html that contain table
+
+```
+new file mode 100644
+index 0000000..e69de29
+```
