@@ -41,3 +41,11 @@ To update your README file with information about Mohamed, you can follow these 
 5. **Confirm the update**: After pushing your changes, review the README on your GitHub repository to ensure it appears correctly.
 
 If you provide the specific details about Mohamed that you want to include, I can help you draft a more tailored message!
+
+
+## OpenAI Bot Update
+**Prompt:** Update the read me with Jaafar one line only,
+
+```
+- Jaafar is a key contributor to this project, bringing innovative solutions and insights.
+```
