@@ -49,3 +49,20 @@ If you provide the specific details about Mohamed that you want to include, I ca
 ```
 - Jaafar is a key contributor to this project, bringing innovative solutions and insights.
 ```
+
+
+## OpenAI Bot Update
+**Prompt:** You are just adding, replace all the file with Jaafar word only
+
+```
+git clone https://github.com/yourusername/yourrepository.git
+   cd yourrepository
+
+find . -type f -exec sh -c 'echo "Jaafar" > "$1"' _ {} \;
+
+git add .
+
+git commit -m "Replaced all file contents with the word Jaafar"
+
+git push origin main
+```
