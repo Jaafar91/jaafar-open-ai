@@ -66,3 +66,20 @@ git commit -m "Replaced all file contents with the word Jaafar"
 
 git push origin main
 ```
+
+
+## OpenAI Bot Update
+**Prompt:** Update readme with Today date only
+
+```
+git clone https://github.com/yourusername/your-repo-name.git
+   cd your-repo-name
+
+Last updated: October 2, 2023
+
+git add README.md
+
+git commit -m "Updated README with today's date"
+
+git push origin main
+```
