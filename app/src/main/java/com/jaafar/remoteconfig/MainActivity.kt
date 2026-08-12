@@ -92,6 +92,7 @@ private fun Calculator() {
     val titleMedium = MaterialTheme.typography.titleMedium
     val colorScheme = MaterialTheme.colorScheme
     var display by remember { mutableStateOf("0") }
+    var expression by remember { mutableStateOf("") }
     var storedValue by remember { mutableStateOf<Double?>(null) }
     var pendingOperation by remember { mutableStateOf<String?>(null) }
     var enteringNewNumber by remember { mutableStateOf(true) }
@@ -144,7 +145,7 @@ private fun Calculator() {
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = pendingOperation ?: "Ready",
+                    text = expression.ifEmpty { "Ready" },
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -177,6 +178,7 @@ private fun Calculator() {
                         when {
                             label == "C" -> {
                                 display = "0"
+                                expression = ""
                                 storedValue = null
                                 pendingOperation = null
                                 enteringNewNumber = true
@@ -191,12 +193,19 @@ private fun Calculator() {
                             label == "." -> {
                                 if (enteringNewNumber || display == "Error") {
                                     display = "0."
+                                    expression = if (pendingOperation == null) "0." else expression + "0."
                                     enteringNewNumber = false
                                 } else if (!display.contains(".")) {
                                     display += "."
+                                    expression += "."
                                 }
                             }
                             else -> {
+                                expression = if (enteringNewNumber && pendingOperation == null) {
+                                    label
+                                } else {
+                                    expression + label
+                                }
                                 display = if (enteringNewNumber || display == "0" || display == "Error") {
                                     label
                                 } else {
@@ -214,6 +223,7 @@ private fun Calculator() {
                                 if (operation != null) {
                                     calculate(operation)
                                     pendingOperation = null
+                                    expression = "$expression = $display"
                                 }
                             },
                             modifier = Modifier
@@ -223,7 +233,16 @@ private fun Calculator() {
                             Text(label, style = titleMedium)
                         }
                         isOperation -> Button(
-                            onClick = onClick,
+                            onClick = {
+                                expression = expression.ifEmpty { display }
+                                    .trimEnd()
+                                    .removeSuffix("÷")
+                                    .removeSuffix("×")
+                                    .removeSuffix("−")
+                                    .removeSuffix("+")
+                                    .trimEnd() + " $label "
+                                onClick()
+                            },
                             modifier = Modifier
                                 .width(72.dp)
                                 .height(56.dp),
