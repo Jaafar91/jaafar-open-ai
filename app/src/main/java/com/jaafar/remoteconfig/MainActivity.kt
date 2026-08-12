@@ -18,7 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-private const val BACKEND_URL = "https://YOUR-RENDER-SERVICE.onrender.com"
+private const val BACKEND_URL = "https://jaafar-agents.onrender.com"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
