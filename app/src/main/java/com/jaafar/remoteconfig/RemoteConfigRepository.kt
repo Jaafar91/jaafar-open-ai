@@ -20,11 +20,13 @@ class RemoteConfigRepository(private val baseUrl: String) {
                     if (!it.isSuccessful) return callback(Result.failure(IOException("HTTP ${it.code}")))
                     val body = it.body
                         ?: return callback(Result.failure(IOException("Empty response body")))
-                    val json = JSONObject(body.string())
-                    callback(Result.success(RemoteConfig(
-                        json.optString("message", "Welcome"),
-                        json.optBoolean("enabled", true)
-                    )))
+                    callback(runCatching {
+                        val json = JSONObject(body.string())
+                        RemoteConfig(
+                            json.optString("message", "Welcome"),
+                            json.optBoolean("enabled", true),
+                        )
+                    })
                 }
             }
         })
