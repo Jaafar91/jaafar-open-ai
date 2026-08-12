@@ -2,6 +2,8 @@ name: Android APK and Firebase distribution
 on:
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
   workflow_dispatch:
 
 jobs:
@@ -29,7 +31,7 @@ jobs:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
       - name: Upload to Firebase App Distribution
-        if: ${{ env.FIREBASE_APP_ID != '' && env.FIREBASE_SERVICE_ACCOUNT_BASE64 != '' }}
+        if: ${{ github.event_name == 'push' && env.FIREBASE_APP_ID != '' && env.FIREBASE_SERVICE_ACCOUNT_BASE64 != '' }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT_BASE64" | base64 --decode > "$RUNNER_TEMP/firebase-service-account.json"
           npm install -g firebase-tools
