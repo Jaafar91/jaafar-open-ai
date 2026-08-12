@@ -9,11 +9,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -142,7 +142,7 @@ private fun Calculator() {
                 row.forEach { label ->
                     val isOperation = label in setOf("÷", "×", "−", "+")
                     val isPrimary = label == "="
-                    val modifier = Modifier.weight(if (label == "0") 2f else 1f)
+                    val modifier = Modifier.padding(vertical = 2.dp)
 
                     if (isPrimary) {
                         Button(
@@ -197,9 +197,6 @@ private fun Calculator() {
                             Text(label)
                         }
                     }
-                }
-                repeat(4 - row.size - if (row.contains("0")) 1 else 0) {
-                    Row(modifier = Modifier.weight(1f)) {}
                 }
             }
         }
