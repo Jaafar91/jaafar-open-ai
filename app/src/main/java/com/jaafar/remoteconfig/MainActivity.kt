@@ -8,8 +8,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -20,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
@@ -53,13 +59,18 @@ class MainActivity : ComponentActivity() {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(24.dp),
+                        .padding(horizontal = 24.dp, vertical = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
+                        text = "Jaafar",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
                         text = if (enabled) message else "This feature is currently disabled.",
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.bodyLarge,
                         textAlign = TextAlign.Center,
                     )
 
@@ -78,6 +89,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun Calculator() {
+    val titleMedium = MaterialTheme.typography.titleMedium
+    val colorScheme = MaterialTheme.colorScheme
     var display by remember { mutableStateOf("0") }
     var storedValue by remember { mutableStateOf<Double?>(null) }
     var pendingOperation by remember { mutableStateOf<String?>(null) }
@@ -86,7 +99,7 @@ private fun Calculator() {
     fun format(value: Double): String =
         if (value % 1.0 == 0.0) value.toLong().toString() else value.toString()
 
-    fun applyOperation(operation: String) {
+    fun calculate(operation: String) {
         val currentValue = display.toDoubleOrNull() ?: return
         val previousValue = storedValue
         if (previousValue != null && pendingOperation != null) {
@@ -115,18 +128,36 @@ private fun Calculator() {
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
             text = "Calculator",
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
         )
-        Text(
-            text = display,
-            modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.displaySmall,
-            textAlign = TextAlign.End,
-        )
+        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = pendingOperation ?: "Ready",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = display,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.displayMedium,
+                    fontWeight = FontWeight.Light,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                )
+            }
+        }
 
         listOf(
             listOf("C", "±", "%", "÷"),
@@ -137,64 +168,87 @@ private fun Calculator() {
         ).forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
             ) {
                 row.forEach { label ->
                     val isOperation = label in setOf("÷", "×", "−", "+")
                     val isPrimary = label == "="
-                    val modifier = Modifier.padding(vertical = 2.dp)
+                    val onClick: () -> Unit = {
+                        when {
+                            label == "C" -> {
+                                display = "0"
+                                storedValue = null
+                                pendingOperation = null
+                                enteringNewNumber = true
+                            }
+                            label == "±" -> {
+                                display.toDoubleOrNull()?.let { display = format(-it) }
+                            }
+                            label == "%" -> {
+                                display.toDoubleOrNull()?.let { display = format(it / 100) }
+                            }
+                            isOperation -> calculate(label)
+                            label == "." -> {
+                                if (enteringNewNumber || display == "Error") {
+                                    display = "0."
+                                    enteringNewNumber = false
+                                } else if (!display.contains(".")) {
+                                    display += "."
+                                }
+                            }
+                            else -> {
+                                display = if (enteringNewNumber || display == "0" || display == "Error") {
+                                    label
+                                } else {
+                                    display + label
+                                }
+                                enteringNewNumber = false
+                            }
+                        }
+                    }
 
-                    if (isPrimary) {
-                        Button(
+                    when {
+                        isPrimary -> Button(
                             onClick = {
                                 val operation = pendingOperation
                                 if (operation != null) {
-                                    applyOperation(operation)
+                                    calculate(operation)
                                     pendingOperation = null
                                 }
                             },
-                            modifier = modifier,
+                            modifier = Modifier
+                                .width(72.dp)
+                                .height(56.dp),
                         ) {
-                            Text(label)
+                            Text(label, style = titleMedium)
                         }
-                    } else {
-                        OutlinedButton(
-                            onClick = {
-                                when {
-                                    label == "C" -> {
-                                        display = "0"
-                                        storedValue = null
-                                        pendingOperation = null
-                                        enteringNewNumber = true
-                                    }
-                                    label == "±" -> {
-                                        display.toDoubleOrNull()?.let { display = format(-it) }
-                                    }
-                                    label == "%" -> {
-                                        display.toDoubleOrNull()?.let { display = format(it / 100) }
-                                    }
-                                    isOperation -> applyOperation(label)
-                                    label == "." -> {
-                                        if (enteringNewNumber || display == "Error") {
-                                            display = "0."
-                                            enteringNewNumber = false
-                                        } else if (!display.contains(".")) {
-                                            display += "."
-                                        }
-                                    }
-                                    else -> {
-                                        display = if (enteringNewNumber || display == "0" || display == "Error") {
-                                            label
-                                        } else {
-                                            display + label
-                                        }
-                                        enteringNewNumber = false
-                                    }
-                                }
-                            },
-                            modifier = modifier,
+                        isOperation -> Button(
+                            onClick = onClick,
+                            modifier = Modifier
+                                .width(72.dp)
+                                .height(56.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colorScheme.secondary,
+                                contentColor = colorScheme.onSecondary,
+                            ),
                         ) {
-                            Text(label)
+                            Text(label, style = titleMedium)
+                        }
+                        label in setOf("C", "±", "%") -> FilledTonalButton(
+                            onClick = onClick,
+                            modifier = Modifier
+                                .width(72.dp)
+                                .height(56.dp),
+                        ) {
+                            Text(label, style = titleMedium)
+                        }
+                        else -> OutlinedButton(
+                            onClick = onClick,
+                            modifier = Modifier
+                                .width(72.dp)
+                                .height(56.dp),
+                        ) {
+                            Text(label, style = titleMedium)
                         }
                     }
                 }
