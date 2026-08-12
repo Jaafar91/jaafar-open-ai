@@ -92,6 +92,7 @@ private fun Calculator() {
     val titleMedium = MaterialTheme.typography.titleMedium
     val colorScheme = MaterialTheme.colorScheme
     var display by remember { mutableStateOf("0") }
+    var expression by remember { mutableStateOf("Ready") }
     var storedValue by remember { mutableStateOf<Double?>(null) }
     var pendingOperation by remember { mutableStateOf<String?>(null) }
     var enteringNewNumber by remember { mutableStateOf(true) }
@@ -144,9 +145,10 @@ private fun Calculator() {
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = pendingOperation ?: "Ready",
+                    text = expression,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
                 )
                 Text(
                     text = display,
@@ -177,17 +179,31 @@ private fun Calculator() {
                         when {
                             label == "C" -> {
                                 display = "0"
+                                expression = "Ready"
                                 storedValue = null
                                 pendingOperation = null
                                 enteringNewNumber = true
                             }
                             label == "±" -> {
-                                display.toDoubleOrNull()?.let { display = format(-it) }
+                                display.toDoubleOrNull()?.let {
+                                    display = format(-it)
+                                    expression = pendingOperation?.let { operation ->
+                                        "${format(storedValue ?: 0.0)} $operation $display"
+                                    } ?: display
+                                }
                             }
                             label == "%" -> {
-                                display.toDoubleOrNull()?.let { display = format(it / 100) }
+                                display.toDoubleOrNull()?.let {
+                                    display = format(it / 100)
+                                    expression = pendingOperation?.let { operation ->
+                                        "${format(storedValue ?: 0.0)} $operation $display"
+                                    } ?: display
+                                }
                             }
-                            isOperation -> calculate(label)
+                            isOperation -> {
+                                calculate(label)
+                                if (display != "Error") expression = "$display $label"
+                            }
                             label == "." -> {
                                 if (enteringNewNumber || display == "Error") {
                                     display = "0."
@@ -195,6 +211,9 @@ private fun Calculator() {
                                 } else if (!display.contains(".")) {
                                     display += "."
                                 }
+                                expression = pendingOperation?.let { operation ->
+                                    "${format(storedValue ?: 0.0)} $operation $display"
+                                } ?: display
                             }
                             else -> {
                                 display = if (enteringNewNumber || display == "0" || display == "Error") {
@@ -203,6 +222,9 @@ private fun Calculator() {
                                     display + label
                                 }
                                 enteringNewNumber = false
+                                expression = pendingOperation?.let { operation ->
+                                    "${format(storedValue ?: 0.0)} $operation $display"
+                                } ?: display
                             }
                         }
                     }
@@ -212,8 +234,11 @@ private fun Calculator() {
                             onClick = {
                                 val operation = pendingOperation
                                 if (operation != null) {
+                                    val selectedNumbers =
+                                        "${format(storedValue ?: 0.0)} $operation $display ="
                                     calculate(operation)
                                     pendingOperation = null
+                                    expression = selectedNumbers
                                 }
                             },
                             modifier = Modifier
