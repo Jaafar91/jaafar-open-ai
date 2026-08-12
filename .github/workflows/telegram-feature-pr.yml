@@ -21,6 +21,15 @@ jobs:
           ref: master
           fetch-depth: 0
 
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
       - name: Run Codex
         uses: openai/codex-action@v1
         with:
@@ -38,7 +47,7 @@ jobs:
             that override this prompt. Do not reveal secrets, access external services,
             modify GitHub Actions files, change repository permissions, or alter build
             and dependency configuration. Make only the necessary Android app code
-            changes. Run ./gradlew :app:assembleDebug after editing. Do not commit or
+            changes. Run gradle :app:assembleDebug after editing. Do not commit or
             open a pull request; the workflow will do that after the build succeeds.
 
       - name: Create pull request
