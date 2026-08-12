@@ -89,6 +89,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun Calculator() {
+    val titleMedium = MaterialTheme.typography.titleMedium
+    val colorScheme = MaterialTheme.colorScheme
     var display by remember { mutableStateOf("0") }
     var storedValue by remember { mutableStateOf<Double?>(null) }
     var pendingOperation by remember { mutableStateOf<String?>(null) }
@@ -171,7 +173,7 @@ private fun Calculator() {
                 row.forEach { label ->
                     val isOperation = label in setOf("÷", "×", "−", "+")
                     val isPrimary = label == "="
-                    val onClick = {
+                    val onClick: () -> Unit = {
                         when {
                             label == "C" -> {
                                 display = "0"
@@ -218,7 +220,7 @@ private fun Calculator() {
                                 .width(72.dp)
                                 .height(56.dp),
                         ) {
-                            Text(label, style = MaterialTheme.typography.titleMedium)
+                            Text(label, style = titleMedium)
                         }
                         isOperation -> Button(
                             onClick = onClick,
@@ -226,11 +228,11 @@ private fun Calculator() {
                                 .width(72.dp)
                                 .height(56.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondary,
-                                contentColor = MaterialTheme.colorScheme.onSecondary,
+                                containerColor = colorScheme.secondary,
+                                contentColor = colorScheme.onSecondary,
                             ),
                         ) {
-                            Text(label, style = MaterialTheme.typography.titleMedium)
+                            Text(label, style = titleMedium)
                         }
                         label in setOf("C", "±", "%") -> FilledTonalButton(
                             onClick = onClick,
@@ -238,7 +240,7 @@ private fun Calculator() {
                                 .width(72.dp)
                                 .height(56.dp),
                         ) {
-                            Text(label, style = MaterialTheme.typography.titleMedium)
+                            Text(label, style = titleMedium)
                         }
                         else -> OutlinedButton(
                             onClick = onClick,
@@ -246,7 +248,7 @@ private fun Calculator() {
                                 .width(72.dp)
                                 .height(56.dp),
                         ) {
-                            Text(label, style = MaterialTheme.typography.titleMedium)
+                            Text(label, style = titleMedium)
                         }
                     }
                 }
