@@ -6,7 +6,7 @@ import kotlin.math.roundToInt
 
 /** Small, dependency-free TrueType writer for the editor's Basic Latin outlines. */
 class TrueTypeGenerator {
-    fun generate(drawings: Collection<GlyphDrawing>, spaceWidthMm: Float = 3f): ByteArray {
+    fun generate(drawings: Collection<GlyphDrawing>, spaceWidthMm: Float = 3f, letterSpacingMm: Float = 0f, fontName: String = "My Hand Font"): ByteArray {
         val space = GlyphDrawing(32, emptyList(), 1f, 1f)
         val ordered = (drawings.filter { it.codePoint in 33..126 } + space).sortedBy { it.codePoint }
         val glyphs = listOf(notdefGlyph()) + ordered.map(::drawingGlyph)
@@ -24,10 +24,10 @@ class TrueTypeGenerator {
         tables["glyf"] = glyf.toByteArray()
         tables["head"] = head()
         tables["hhea"] = hhea(glyphs.size)
-        tables["hmtx"] = hmtx(ordered, spaceWidthMm)
+        tables["hmtx"] = hmtx(ordered, spaceWidthMm, letterSpacingMm)
         tables["loca"] = Bytes().apply { offsets.forEach(::u32) }.toByteArray()
         tables["maxp"] = maxp(glyphs.size, glyphs.maxOfOrNull(::contourCount) ?: 0)
-        tables["name"] = name()
+        tables["name"] = name(fontName)
         tables["post"] = post()
         return sfnt(tables)
     }
@@ -117,11 +117,12 @@ class TrueTypeGenerator {
         u16(0); u16(0); u16(0); u16(0)
     }.toByteArray()
 
-    private fun hmtx(drawings: List<GlyphDrawing>, spaceWidthMm: Float) = Bytes().apply {
+    private fun hmtx(drawings: List<GlyphDrawing>, spaceWidthMm: Float, letterSpacingMm: Float) = Bytes().apply {
         u16(2048); s16(0) // .notdef
         drawings.forEach {
             // At the font's nominal 12 pt size, 1 mm is approximately 484 font units.
-            val advance = if (it.codePoint == 32) (spaceWidthMm * 484f).roundToInt().coerceIn(100, 4096) else 2048
+            val advance = if (it.codePoint == 32) (spaceWidthMm * 484f).roundToInt().coerceIn(100, 4096)
+                else (2048 + letterSpacingMm * 484f).roundToInt().coerceIn(500, 4096)
             u16(advance); s16(0)
         }
     }.toByteArray()
@@ -149,8 +150,10 @@ class TrueTypeGenerator {
         s16(1550); s16(-450); s16(0); u16(1550); u16(450)
     }.toByteArray()
 
-    private fun name(): ByteArray {
-        val values = listOf(1 to "My Hand Font", 2 to "Regular", 4 to "My Hand Font Regular", 6 to "MyHandFont-Regular")
+    private fun name(fontName: String): ByteArray {
+        val safeName = fontName.filter { it.isLetterOrDigit() }.ifBlank { "MyHandFont" }.take(31)
+        val displayName = fontName.trim().ifBlank { "My Hand Font" }.take(63)
+        val values = listOf(1 to displayName, 2 to "Regular", 4 to "$displayName Regular", 6 to "$safeName-Regular")
         val strings = Bytes()
         val records = Bytes()
         values.forEach { (id, value) ->

@@ -6,6 +6,13 @@ import org.json.JSONObject
 const val UNITS_PER_EM = 2048
 const val MAX_EDITABLE_GLYPHS = 95
 
+data class FontProject(
+    val name: String,
+    val drawings: List<GlyphDrawing> = emptyList(),
+    val letterSpacingMm: Float = 0f,
+    val wordSpacingMm: Float = 3f,
+)
+
 data class GlyphPoint(val x: Float, val y: Float, val onCurve: Boolean = true)
 
 data class GlyphStroke(val points: List<GlyphPoint>)
