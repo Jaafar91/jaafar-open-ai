@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -216,6 +217,25 @@ private fun GlyphEditorScreen(
     Scaffold(topBar = { TopAppBar(title = { Text("Draw ${if (codePoint == 32) "space" else codePoint.toChar()}") }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Red: baseline  •  Gray: ascender and descender", style = MaterialTheme.typography.bodySmall)
+            Row(
+                Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (pagingMode) {
+                    GlyphReference(
+                        label = "Character to draw",
+                        character = if (codePoint == 32) "Space" else codePoint.toChar().toString(),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                GlyphPreview(
+                    strokes = strokes,
+                    active = active,
+                    sourceWidth = canvasSize.first,
+                    sourceHeight = canvasSize.second,
+                    modifier = if (pagingMode) Modifier.weight(1f) else Modifier.fillMaxWidth(),
+                )
+            }
             Canvas(
                 Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp)
                     .background(Color.White).border(1.dp, Color.Gray)
@@ -257,6 +277,53 @@ private fun GlyphEditorScreen(
                             else -> "Save & finish"
                         },
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlyphReference(label: String, character: String, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, style = MaterialTheme.typography.labelMedium)
+        Box(
+            Modifier.fillMaxWidth().height(72.dp)
+                .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.small),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(character, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun GlyphPreview(
+    strokes: List<GlyphStroke>,
+    active: List<GlyphPoint>,
+    sourceWidth: Float,
+    sourceHeight: Float,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Preview", style = MaterialTheme.typography.labelMedium)
+        Canvas(
+            Modifier.width(96.dp).height(72.dp)
+                .background(Color.White).border(1.dp, MaterialTheme.colorScheme.outline),
+        ) {
+            if (sourceWidth <= 0f || sourceHeight <= 0f) return@Canvas
+            val previewScale = minOf(size.width / sourceWidth, size.height / sourceHeight) * .85f
+            val left = (size.width - sourceWidth * previewScale) / 2f
+            val top = (size.height - sourceHeight * previewScale) / 2f
+            (strokes.map { it.points } + listOf(active)).forEach { points ->
+                if (points.size > 1) {
+                    val path = Path().apply {
+                        moveTo(left + points[0].x * previewScale, top + points[0].y * previewScale)
+                        points.drop(1).forEach {
+                            lineTo(left + it.x * previewScale, top + it.y * previewScale)
+                        }
+                    }
+                    drawPath(path, Color.Black, style = Stroke(width = maxOf(2f, 8f * previewScale)))
                 }
             }
         }
