@@ -23,13 +23,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 
 private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
@@ -44,7 +47,10 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
     var previewText by remember { mutableStateOf(preferences.getString("preview_text", DEFAULT_PREVIEW_TEXT) ?: DEFAULT_PREVIEW_TEXT) }
     var screen by remember { mutableStateOf(Screen.Dashboard) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
-    MaterialTheme(colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme()) {
+    MaterialTheme(
+        colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme(),
+        typography = appTypography(viewModel.previewTypeface?.let(::FontFamily)),
+    ) {
         when {
             imageUri != null && viewModel.previewTypeface != null -> ImageTextEditorScreen(imageUri!!, viewModel.previewTypeface!!) { imageUri = null }
             viewModel.selectedCodePoint != null -> GlyphEditorScreen(viewModel.selectedCodePoint!!, viewModel.drawings[viewModel.selectedCodePoint], viewModel.isPagingMode, viewModel::closeEditor, viewModel::saveDrawing)
@@ -67,9 +73,39 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun Page(title: String, back: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
-    Scaffold(topBar = { TopAppBar(title = { Text(title) }, navigationIcon = { if (back != null) TextButton(onClick = back) { Text("Back") } }, actions = actions) }) { padding ->
+    Scaffold(topBar = { AppTopBar(title, back, actions) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable internal fun AppTopBar(title: String, back: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
+    CenterAlignedTopAppBar(
+        title = { Text(title) },
+        navigationIcon = { if (back != null) IconButton(onClick = back) { BackIcon() } },
+        actions = actions,
+    )
+}
+
+@Composable private fun BackIcon() {
+    val color = LocalContentColor.current
+    Canvas(Modifier.size(24.dp).semantics { contentDescription = "Back" }) {
+        val stroke = 2.dp.toPx()
+        drawLine(color, Offset(size.width * .72f, size.height * .18f), Offset(size.width * .28f, size.height * .5f), stroke)
+        drawLine(color, Offset(size.width * .28f, size.height * .5f), Offset(size.width * .72f, size.height * .82f), stroke)
+    }
+}
+
+private fun appTypography(fontFamily: FontFamily?): Typography {
+    val base = Typography()
+    fun TextStyle.withSelectedFont() = if (fontFamily == null) this else copy(fontFamily = fontFamily)
+    return Typography(
+        displayLarge = base.displayLarge.withSelectedFont(), displayMedium = base.displayMedium.withSelectedFont(), displaySmall = base.displaySmall.withSelectedFont(),
+        headlineLarge = base.headlineLarge.withSelectedFont(), headlineMedium = base.headlineMedium.withSelectedFont(), headlineSmall = base.headlineSmall.withSelectedFont(),
+        titleLarge = base.titleLarge.withSelectedFont(), titleMedium = base.titleMedium.withSelectedFont(), titleSmall = base.titleSmall.withSelectedFont(),
+        bodyLarge = base.bodyLarge.withSelectedFont(), bodyMedium = base.bodyMedium.withSelectedFont(), bodySmall = base.bodySmall.withSelectedFont(),
+        labelLarge = base.labelLarge.withSelectedFont(), labelMedium = base.labelMedium.withSelectedFont(), labelSmall = base.labelSmall.withSelectedFont(),
+    )
 }
 
 @Composable private fun Dashboard(vm: FontCreatorViewModel, go: (Screen) -> Unit) = Page("Font Creator") {
@@ -184,6 +220,21 @@ private enum class ActionIconType { Add, Edit, Share }
 
 @Composable private fun LettersScreen(vm: FontCreatorViewModel, back: () -> Unit, spacing: () -> Unit) = Page("Letters · ${vm.activeProject?.name.orEmpty()}", back) {
     var text by remember { mutableStateOf("") }
+    var showFonts by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton({ showFonts = true }, Modifier.fillMaxWidth()) {
+            Text("Font: ${vm.activeProject?.name.orEmpty()}")
+        }
+        DropdownMenu(showFonts, { showFonts = false }) {
+            vm.projects.forEachIndexed { index, project ->
+                DropdownMenuItem(
+                    text = { Text(project.name) },
+                    onClick = { vm.openProject(index); showFonts = false },
+                    trailingIcon = { if (index == vm.activeProjectIndex) Text("✓") },
+                )
+            }
+        }
+    }
     OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text("Text to support") }, supportingText = { Text("Basic Latin characters only") })
     Button({ vm.drawMissingCharacters(text) }, Modifier.fillMaxWidth(), enabled = text.isNotEmpty()) { Text("Draw missing letters") }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -252,7 +303,7 @@ private enum class ActionIconType { Add, Edit, Share }
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember(codePoint) { mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)) }
-    Scaffold(topBar = { TopAppBar(title = { Text("Draw ${codePoint.toChar()}") }) }) { padding ->
+    Scaffold(topBar = { AppTopBar("Draw ${codePoint.toChar()}", onCancel) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Gray: ascender/descender · Red: baseline", style = MaterialTheme.typography.bodySmall)
             Row(Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -262,6 +313,7 @@ private enum class ActionIconType { Add, Edit, Share }
                 ) { Text(codePoint.toChar().toString(), style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Bold) }
                 Canvas(Modifier.weight(.7f).fillMaxHeight().background(Color.White).border(1.dp, Color.Gray).pointerInput(codePoint, strokes) { detectDragGestures(onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) }, onDrag = { change, _ -> change.consume(); val next = GlyphPoint(change.position.x, change.position.y); if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) active = active + next }, onDragEnd = { if (active.size > 1) strokes = strokes + GlyphStroke(active); active = emptyList() }, onDragCancel = { active = emptyList() }) }) {
                     canvasSize = size.width to size.height
+                    drawCoordinateRulers()
                     drawLine(Color.LightGray, Offset(0f, size.height * .1f), Offset(size.width, size.height * .1f), 2f); drawLine(Color.Red, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f), 3f); drawLine(Color.LightGray, Offset(0f, size.height * .94f), Offset(size.width, size.height * .94f), 2f)
                     (strokes.map { it.points } + listOf(active)).forEach { points -> if (points.size > 1) drawPath(Path().apply { moveTo(points[0].x, points[0].y); points.drop(1).forEach { lineTo(it.x, it.y) } }, Color.Black, style = Stroke(8f)) }
                 }
@@ -269,6 +321,31 @@ private enum class ActionIconType { Add, Edit, Share }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onCancel) { Text("Cancel") }; OutlinedButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }; Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) { Text(if (pagingMode) "Save & next" else "Save letter") } }
         }
     }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCoordinateRulers() {
+    val rulerColor = android.graphics.Color.rgb(110, 110, 110)
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = rulerColor
+        textSize = 10.sp.toPx()
+    }
+    listOf(0, 25, 50, 75, 100).forEach { value ->
+        val x = size.width * value / 100f
+        val y = size.height * value / 100f
+        drawLine(Color.LightGray, Offset(x, 0f), Offset(x, 7.dp.toPx()), 1.dp.toPx())
+        drawLine(Color.LightGray, Offset(0f, y), Offset(7.dp.toPx(), y), 1.dp.toPx())
+        paint.textAlign = when (value) {
+            0 -> android.graphics.Paint.Align.LEFT
+            100 -> android.graphics.Paint.Align.RIGHT
+            else -> android.graphics.Paint.Align.CENTER
+        }
+        drawContext.canvas.nativeCanvas.drawText(value.toString(), x, 12.dp.toPx(), paint)
+        paint.textAlign = android.graphics.Paint.Align.LEFT
+        drawContext.canvas.nativeCanvas.drawText(value.toString(), 3.dp.toPx(), (y + 11.dp.toPx()).coerceAtMost(size.height - 2.dp.toPx()), paint)
+    }
+    paint.textAlign = android.graphics.Paint.Align.RIGHT
+    drawContext.canvas.nativeCanvas.drawText("X", size.width - 3.dp.toPx(), 25.dp.toPx(), paint)
+    drawContext.canvas.nativeCanvas.drawText("Y", 20.dp.toPx(), size.height - 3.dp.toPx(), paint)
 }
 
 private fun hypotSquared(a: GlyphPoint, b: GlyphPoint): Float { val dx = a.x - b.x; val dy = a.y - b.y; return dx * dx + dy * dy }

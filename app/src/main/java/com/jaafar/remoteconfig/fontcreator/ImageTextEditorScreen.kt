@@ -24,12 +24,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -73,9 +71,7 @@ fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, onBack: () -> Unit)
     var sizePercent by remember { mutableFloatStateOf(10f) }
     var textColor by remember { mutableStateOf(TEXT_COLORS.first()) }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Write on image") }, navigationIcon = {
-        OutlinedButton(onClick = onBack, modifier = Modifier.padding(start = 8.dp)) { Text("Back") }
-    }) }) { padding ->
+    Scaffold(topBar = { AppTopBar("Write on image", onBack) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (bitmap == null) {
                 Text("This image could not be opened.", color = MaterialTheme.colorScheme.error)
