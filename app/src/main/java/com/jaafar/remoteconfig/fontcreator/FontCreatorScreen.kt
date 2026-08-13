@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 
 private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
+private const val USE_SELECTED_FONT_KEY = "use_selected_font_for_app"
 
 private enum class Screen { Dashboard, Fonts, Letters, Spacing, Image, Settings }
 
@@ -44,12 +45,13 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("appearance", 0) }
     var darkTheme by remember { mutableStateOf(preferences.getBoolean("dark_theme", false)) }
+    var useSelectedFont by remember { mutableStateOf(preferences.getBoolean(USE_SELECTED_FONT_KEY, false)) }
     var previewText by remember { mutableStateOf(preferences.getString("preview_text", DEFAULT_PREVIEW_TEXT) ?: DEFAULT_PREVIEW_TEXT) }
     var screen by remember { mutableStateOf(Screen.Dashboard) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     MaterialTheme(
         colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme(),
-        typography = appTypography(viewModel.previewTypeface?.let(::FontFamily)),
+        typography = appTypography(viewModel.previewTypeface?.takeIf { useSelectedFont }?.let(::FontFamily)),
     ) {
         when {
             imageUri != null && viewModel.previewTypeface != null -> ImageTextEditorScreen(imageUri!!, viewModel.previewTypeface!!) { imageUri = null }
@@ -63,6 +65,8 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
                 Screen.Settings -> SettingsScreen(
                     darkTheme,
                     { value -> darkTheme = value; preferences.edit().putBoolean("dark_theme", value).apply() },
+                    useSelectedFont,
+                    { value -> useSelectedFont = value; preferences.edit().putBoolean(USE_SELECTED_FONT_KEY, value).apply() },
                     previewText,
                     { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }
                 ) { screen = Screen.Dashboard }
@@ -281,10 +285,32 @@ private enum class ActionIconType { Add, Edit, Share }
     Page("Write on image", back) { Text("Choose one image, then add text using ${vm.activeProject?.name.orEmpty()}."); Button({ picker.launch("image/*") }, Modifier.fillMaxWidth(), enabled = vm.previewTypeface != null) { Text("Choose image") } }
 }
 
-@Composable private fun SettingsScreen(dark: Boolean, change: (Boolean) -> Unit, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit) = Page("Settings", back) {
+@Composable private fun SettingsScreen(
+    dark: Boolean,
+    change: (Boolean) -> Unit,
+    useSelectedFont: Boolean,
+    changeUseSelectedFont: (Boolean) -> Unit,
+    previewText: String,
+    changePreviewText: (String) -> Unit,
+    back: () -> Unit,
+) = Page("Settings", back) {
     Text("Appearance", style = MaterialTheme.typography.titleMedium)
     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(!dark, { change(false) }); Text("Light") }
     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(dark, { change(true) }); Text("Dark") }
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Use selected font on all screens")
+            Text(
+                "Applies the open generated font to app controls and labels.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(checked = useSelectedFont, onCheckedChange = changeUseSelectedFont)
+    }
     HorizontalDivider()
     Text("Font preview", style = MaterialTheme.typography.titleMedium)
     OutlinedTextField(
