@@ -127,5 +127,7 @@ private fun shareImage(context: android.content.Context, bitmap: Bitmap) {
         type = "image/jpeg"
         putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }, "Share image"))
+    }, "Share image").apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    })
 }
