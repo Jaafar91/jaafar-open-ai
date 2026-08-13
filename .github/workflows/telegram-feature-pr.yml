@@ -31,6 +31,8 @@ jobs:
           gradle-version: '8.10.2'
 
       - name: Run Codex
+        id: codex
+        continue-on-error: true
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -50,7 +52,14 @@ jobs:
             changes. Run gradle :app:assembleDebug after editing. Do not commit or
             open a pull request; the workflow will do that after the build succeeds.
 
+      - name: Report Codex failure
+        if: steps.codex.outcome != 'success'
+        run: |
+          echo "::error::Codex step failed. Check that the OPENAI_API_KEY secret is set and has sufficient credits."
+          exit 1
+
       - name: Create pull request
+        if: steps.codex.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
