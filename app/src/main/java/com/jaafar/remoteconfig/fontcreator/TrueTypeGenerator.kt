@@ -6,8 +6,9 @@ import kotlin.math.roundToInt
 
 /** Small, dependency-free TrueType writer for the editor's Basic Latin outlines. */
 class TrueTypeGenerator {
-    fun generate(drawings: Collection<GlyphDrawing>): ByteArray {
-        val ordered = drawings.filter { it.codePoint in 32..126 }.sortedBy { it.codePoint }
+    fun generate(drawings: Collection<GlyphDrawing>, spaceWidthMm: Float = 3f): ByteArray {
+        val space = GlyphDrawing(32, emptyList(), 1f, 1f)
+        val ordered = (drawings.filter { it.codePoint in 33..126 } + space).sortedBy { it.codePoint }
         val glyphs = listOf(notdefGlyph()) + ordered.map(::drawingGlyph)
         val glyf = Bytes()
         val offsets = mutableListOf(0)
@@ -23,7 +24,7 @@ class TrueTypeGenerator {
         tables["glyf"] = glyf.toByteArray()
         tables["head"] = head()
         tables["hhea"] = hhea(glyphs.size)
-        tables["hmtx"] = hmtx(glyphs.size)
+        tables["hmtx"] = hmtx(ordered, spaceWidthMm)
         tables["loca"] = Bytes().apply { offsets.forEach(::u32) }.toByteArray()
         tables["maxp"] = maxp(glyphs.size, glyphs.maxOfOrNull(::contourCount) ?: 0)
         tables["name"] = name()
@@ -116,7 +117,14 @@ class TrueTypeGenerator {
         u16(0); u16(0); u16(0); u16(0)
     }.toByteArray()
 
-    private fun hmtx(count: Int) = Bytes().apply { repeat(count) { u16(2048); s16(0) } }.toByteArray()
+    private fun hmtx(drawings: List<GlyphDrawing>, spaceWidthMm: Float) = Bytes().apply {
+        u16(2048); s16(0) // .notdef
+        drawings.forEach {
+            // At the font's nominal 12 pt size, 1 mm is approximately 484 font units.
+            val advance = if (it.codePoint == 32) (spaceWidthMm * 484f).roundToInt().coerceIn(100, 4096) else 2048
+            u16(advance); s16(0)
+        }
+    }.toByteArray()
 
     private fun cmap(drawings: List<GlyphDrawing>): ByteArray {
         val mappings = drawings.mapIndexed { index, glyph -> glyph.codePoint to index + 1 }

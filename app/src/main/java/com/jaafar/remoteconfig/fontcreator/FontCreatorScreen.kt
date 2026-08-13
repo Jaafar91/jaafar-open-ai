@@ -110,6 +110,8 @@ private fun FontGridScreen(
         uri?.let(onImageSelected)
     }
     var preview by remember { mutableStateOf("The quick brown fox jumps over the lazy dog 123") }
+    var charactersText by remember { mutableStateOf("") }
+    var spaceWidth by remember(viewModel.spaceWidthMm) { mutableStateOf(viewModel.spaceWidthMm.toString()) }
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -136,7 +138,30 @@ private fun FontGridScreen(
     ) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             Text("Basic Latin", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text("Choose how you want to draw the characters and numbers.", style = MaterialTheme.typography.bodySmall)
+            Text("Draw characters in text-friendly order, or enter text to draw only what is missing.", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(
+                value = charactersText,
+                onValueChange = { charactersText = it },
+                label = { Text("Text to support") },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                supportingText = { Text("Basic Latin characters only") },
+            )
+            Button(
+                onClick = { viewModel.drawMissingCharacters(charactersText) },
+                enabled = charactersText.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Draw missing characters") }
+            OutlinedTextField(
+                value = spaceWidth,
+                onValueChange = { value ->
+                    spaceWidth = value
+                    viewModel.setSpaceWidthMm(value)
+                },
+                label = { Text("Space width (mm)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                supportingText = { Text("Space creates distance and is not drawn") },
+            )
             Row(
                 Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -160,14 +185,14 @@ private fun FontGridScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                items((32..126).toList(), key = { it }) { code ->
+                items(FontCreatorViewModel.CHARACTER_ORDER.filter { it != 32 }, key = { it }) { code ->
                     val complete = viewModel.drawings.containsKey(code)
                     Box(
                         Modifier.aspectRatio(1f).background(if (complete) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                             .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.small)
                             .clickable { viewModel.edit(code) },
                         contentAlignment = Alignment.Center,
-                    ) { Text(if (code == 32) "SP" else code.toChar().toString()) }
+                    ) { Text(code.toChar().toString()) }
                 }
             }
             OutlinedTextField(
@@ -214,7 +239,7 @@ private fun GlyphEditorScreen(
     var canvasSize by remember(codePoint) {
         mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f))
     }
-    Scaffold(topBar = { TopAppBar(title = { Text("Draw ${if (codePoint == 32) "space" else codePoint.toChar()}") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text("Draw ${codePoint.toChar()}") }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Red: baseline  •  Gray: ascender and descender", style = MaterialTheme.typography.bodySmall)
             Row(
@@ -224,7 +249,7 @@ private fun GlyphEditorScreen(
                 if (pagingMode) {
                     GlyphReference(
                         label = "Character to draw",
-                        character = if (codePoint == 32) "Space" else codePoint.toChar().toString(),
+                        character = codePoint.toChar().toString(),
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -268,13 +293,12 @@ private fun GlyphEditorScreen(
                 OutlinedButton(onClick = { strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }
                 Button(
                     onClick = { onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) },
-                    enabled = strokes.isNotEmpty() || codePoint == 32, modifier = Modifier.weight(1f),
+                    enabled = strokes.isNotEmpty(), modifier = Modifier.weight(1f),
                 ) {
                     Text(
                         when {
                             !pagingMode -> "Save glyph"
-                            codePoint < FontCreatorViewModel.LAST_CODE_POINT -> "Save & next"
-                            else -> "Save & finish"
+                            else -> "Save & next"
                         },
                     )
                 }
