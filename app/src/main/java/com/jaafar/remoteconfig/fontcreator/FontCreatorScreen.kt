@@ -32,13 +32,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 
-private enum class Screen { Dashboard, Fonts, Letters, Spacing, Preview, Image, Appearance }
+private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
+
+private enum class Screen { Dashboard, Fonts, Letters, Spacing, Image, Settings }
 
 @Composable
 fun FontCreatorApp(viewModel: FontCreatorViewModel) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("appearance", 0) }
     var darkTheme by remember { mutableStateOf(preferences.getBoolean("dark_theme", false)) }
+    var previewText by remember { mutableStateOf(preferences.getString("preview_text", DEFAULT_PREVIEW_TEXT) ?: DEFAULT_PREVIEW_TEXT) }
     var screen by remember { mutableStateOf(Screen.Dashboard) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     MaterialTheme(colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme()) {
@@ -47,12 +50,16 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
             viewModel.selectedCodePoint != null -> GlyphEditorScreen(viewModel.selectedCodePoint!!, viewModel.drawings[viewModel.selectedCodePoint], viewModel.isPagingMode, viewModel::closeEditor, viewModel::saveDrawing)
             else -> when (screen) {
                 Screen.Dashboard -> Dashboard(viewModel, { screen = it })
-                Screen.Fonts -> FontsScreen(viewModel, { screen = Screen.Dashboard }, { screen = Screen.Letters })
+                Screen.Fonts -> FontsScreen(viewModel, previewText, { screen = Screen.Dashboard }, { screen = Screen.Letters })
                 Screen.Letters -> LettersScreen(viewModel, { screen = Screen.Dashboard }, { screen = Screen.Spacing })
                 Screen.Spacing -> SpacingScreen(viewModel) { screen = Screen.Letters }
-                Screen.Preview -> PreviewScreen(viewModel, { screen = Screen.Dashboard }) { screen = Screen.Fonts }
                 Screen.Image -> ImageScreen(viewModel, { screen = Screen.Dashboard }) { imageUri = it }
-                Screen.Appearance -> AppearanceScreen(darkTheme, { value -> darkTheme = value; preferences.edit().putBoolean("dark_theme", value).apply() }) { screen = Screen.Dashboard }
+                Screen.Settings -> SettingsScreen(
+                    darkTheme,
+                    { value -> darkTheme = value; preferences.edit().putBoolean("dark_theme", value).apply() },
+                    previewText,
+                    { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }
+                ) { screen = Screen.Dashboard }
             }
         }
     }
@@ -70,9 +77,8 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
     Text("${vm.projects.size} saved font${if (vm.projects.size == 1) "" else "s"}")
     DashboardButton("My fonts", "Create, open, generate, and share named fonts") { go(Screen.Fonts) }
     DashboardButton("Letters", "Draw and manage characters for the open font", vm.activeProject != null) { go(Screen.Letters) }
-    DashboardButton("Preview", "Test the generated font", vm.activeProject != null) { go(Screen.Preview) }
     DashboardButton("Write on image", "Use the generated font on a photo", vm.previewTypeface != null) { go(Screen.Image) }
-    DashboardButton("Appearance", "Choose light or dark theme") { go(Screen.Appearance) }
+    DashboardButton("Settings", "Change appearance and preview text") { go(Screen.Settings) }
     vm.activeProject?.let { Text("Open font: ${it.name}", style = MaterialTheme.typography.titleMedium) }
 }
 
@@ -80,7 +86,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
     OutlinedButton(onClick = click, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth()) { Text(title, fontWeight = FontWeight.Bold); Text(detail, style = MaterialTheme.typography.bodySmall) } }
 }
 
-@Composable private fun FontsScreen(vm: FontCreatorViewModel, back: () -> Unit, edit: () -> Unit) {
+@Composable private fun FontsScreen(vm: FontCreatorViewModel, previewText: String, back: () -> Unit, edit: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
     Page("My fonts", back, actions = {
@@ -110,6 +116,20 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
             }
         }
         vm.activeProject?.let { project ->
+            Text("Preview", style = MaterialTheme.typography.titleMedium)
+            if (vm.previewTypeface == null) {
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Text("Generate ${project.name} to see it here.", Modifier.fillMaxWidth().padding(16.dp))
+                }
+            } else {
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Text(
+                        previewText.ifEmpty { " " },
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(vm.previewTypeface!!))
+                    )
+                }
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(vm::generate, Modifier.weight(1f)) { Text("Generate font") }
                 vm.generatedFont?.let { file -> ShareButton(file, project.name) }
@@ -192,22 +212,26 @@ private enum class ActionIconType { Add, Edit, Share }
     if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
 }
 
-@Composable private fun PreviewScreen(vm: FontCreatorViewModel, back: () -> Unit, fonts: () -> Unit) = Page("Preview", back) {
-    var text by remember { mutableStateOf("The quick brown fox jumps over the lazy dog 123") }
-    if (vm.previewTypeface == null) { Text("Generate ${vm.activeProject?.name.orEmpty()} before previewing it."); Button(fonts) { Text("Go to My fonts") } }
-    else { OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text("Preview text") }, textStyle = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(vm.previewTypeface!!)), minLines = 5); Button(vm::generate, Modifier.fillMaxWidth()) { Text("Generate again") } }
-    if (vm.status.isNotBlank()) Text(vm.status)
-}
-
 @Composable private fun ImageScreen(vm: FontCreatorViewModel, back: () -> Unit, selected: (Uri) -> Unit) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { it?.let(selected) }
     Page("Write on image", back) { Text("Choose one image, then add text using ${vm.activeProject?.name.orEmpty()}."); Button({ picker.launch("image/*") }, Modifier.fillMaxWidth(), enabled = vm.previewTypeface != null) { Text("Choose image") } }
 }
 
-@Composable private fun AppearanceScreen(dark: Boolean, change: (Boolean) -> Unit, back: () -> Unit) = Page("Appearance", back) {
-    Text("Theme", style = MaterialTheme.typography.titleMedium)
+@Composable private fun SettingsScreen(dark: Boolean, change: (Boolean) -> Unit, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit) = Page("Settings", back) {
+    Text("Appearance", style = MaterialTheme.typography.titleMedium)
     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(!dark, { change(false) }); Text("Light") }
     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(dark, { change(true) }); Text("Dark") }
+    HorizontalDivider()
+    Text("Font preview", style = MaterialTheme.typography.titleMedium)
+    OutlinedTextField(
+        previewText,
+        changePreviewText,
+        Modifier.fillMaxWidth(),
+        label = { Text("Preview characters") },
+        supportingText = { Text("Shown in the preview box on My fonts") },
+        minLines = 3
+    )
+    TextButton(onClick = { changePreviewText(DEFAULT_PREVIEW_TEXT) }, enabled = previewText != DEFAULT_PREVIEW_TEXT) { Text("Restore default") }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -218,11 +242,16 @@ private enum class ActionIconType { Add, Edit, Share }
     Scaffold(topBar = { TopAppBar(title = { Text("Draw ${codePoint.toChar()}") }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Gray: ascender/descender · Red: baseline", style = MaterialTheme.typography.bodySmall)
-            if (pagingMode) Text("Reference: ${codePoint.toChar()}", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-            Canvas(Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp).background(Color.White).border(1.dp, Color.Gray).pointerInput(codePoint, strokes) { detectDragGestures(onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) }, onDrag = { change, _ -> change.consume(); val next = GlyphPoint(change.position.x, change.position.y); if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) active = active + next }, onDragEnd = { if (active.size > 1) strokes = strokes + GlyphStroke(active); active = emptyList() }, onDragCancel = { active = emptyList() }) }) {
-                canvasSize = size.width to size.height
-                drawLine(Color.LightGray, Offset(0f, size.height * .1f), Offset(size.width, size.height * .1f), 2f); drawLine(Color.Red, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f), 3f); drawLine(Color.LightGray, Offset(0f, size.height * .94f), Offset(size.width, size.height * .94f), 2f)
-                (strokes.map { it.points } + listOf(active)).forEach { points -> if (points.size > 1) drawPath(Path().apply { moveTo(points[0].x, points[0].y); points.drop(1).forEach { lineTo(it.x, it.y) } }, Color.Black, style = Stroke(8f)) }
+            Row(Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(
+                    Modifier.weight(.3f).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline),
+                    contentAlignment = Alignment.Center
+                ) { Text(codePoint.toChar().toString(), style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Bold) }
+                Canvas(Modifier.weight(.7f).fillMaxHeight().background(Color.White).border(1.dp, Color.Gray).pointerInput(codePoint, strokes) { detectDragGestures(onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) }, onDrag = { change, _ -> change.consume(); val next = GlyphPoint(change.position.x, change.position.y); if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) active = active + next }, onDragEnd = { if (active.size > 1) strokes = strokes + GlyphStroke(active); active = emptyList() }, onDragCancel = { active = emptyList() }) }) {
+                    canvasSize = size.width to size.height
+                    drawLine(Color.LightGray, Offset(0f, size.height * .1f), Offset(size.width, size.height * .1f), 2f); drawLine(Color.Red, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f), 3f); drawLine(Color.LightGray, Offset(0f, size.height * .94f), Offset(size.width, size.height * .94f), 2f)
+                    (strokes.map { it.points } + listOf(active)).forEach { points -> if (points.size > 1) drawPath(Path().apply { moveTo(points[0].x, points[0].y); points.drop(1).forEach { lineTo(it.x, it.y) } }, Color.Black, style = Stroke(8f)) }
+                }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onCancel) { Text("Cancel") }; OutlinedButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }; Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) { Text(if (pagingMode) "Save & next" else "Save letter") } }
         }
