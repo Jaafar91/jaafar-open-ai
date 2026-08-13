@@ -1,6 +1,9 @@
 package com.jaafar.remoteconfig.fontcreator
 
 import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,17 +23,28 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,26 +58,80 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.launch
 
 @Composable
 fun FontCreatorApp(viewModel: FontCreatorViewModel) {
-    MaterialTheme {
+    val context = LocalContext.current
+    val preferences = remember { context.getSharedPreferences("appearance", 0) }
+    var darkTheme by remember { mutableStateOf(preferences.getBoolean("dark_theme", false)) }
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    MaterialTheme(colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme()) {
         val selected = viewModel.selectedCodePoint
-        if (selected == null) FontGridScreen(viewModel) else GlyphEditorScreen(
+        when {
+            imageUri != null && viewModel.previewTypeface != null -> ImageTextEditorScreen(
+                imageUri = imageUri!!,
+                typeface = viewModel.previewTypeface!!,
+                onBack = { imageUri = null },
+            )
+            selected == null -> FontGridScreen(
+                viewModel = viewModel,
+                darkTheme = darkTheme,
+                onDarkThemeChange = {
+                    darkTheme = it
+                    preferences.edit().putBoolean("dark_theme", it).apply()
+                },
+                onImageSelected = { imageUri = it },
+            )
+            else -> GlyphEditorScreen(
             codePoint = selected,
             initial = viewModel.drawings[selected],
             onCancel = viewModel::closeEditor,
             onSave = viewModel::saveDrawing,
         )
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FontGridScreen(viewModel: FontCreatorViewModel) {
+private fun FontGridScreen(
+    viewModel: FontCreatorViewModel,
+    darkTheme: Boolean,
+    onDarkThemeChange: (Boolean) -> Unit,
+    onImageSelected: (Uri) -> Unit,
+) {
     val context = LocalContext.current
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let(onImageSelected)
+    }
     var preview by remember { mutableStateOf("The quick brown fox jumps over the lazy dog 123") }
-    Scaffold(topBar = { TopAppBar(title = { Text("Font Creator") }) }) { padding ->
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Text("Settings", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(24.dp))
+                HorizontalDivider()
+                Text("Theme", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(24.dp, 20.dp, 24.dp, 4.dp))
+                NavigationDrawerItem(
+                    label = { Text("Light") }, selected = !darkTheme,
+                    icon = { RadioButton(selected = !darkTheme, onClick = null) },
+                    onClick = { onDarkThemeChange(false) }, modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                NavigationDrawerItem(
+                    label = { Text("Dark") }, selected = darkTheme,
+                    icon = { RadioButton(selected = darkTheme, onClick = null) },
+                    onClick = { onDarkThemeChange(true) }, modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
+        },
+    ) {
+    Scaffold(topBar = { TopAppBar(
+        title = { Text("Font Creator") },
+        navigationIcon = { TextButton(onClick = { scope.launch { drawerState.open() } }) { Text("Menu") } },
+    ) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             Text("Basic Latin", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("Choose a character, then draw it between the metric guides.", style = MaterialTheme.typography.bodySmall)
@@ -104,7 +172,13 @@ private fun FontGridScreen(viewModel: FontCreatorViewModel) {
                     }) { Text("Share") }
                 }
             }
+            OutlinedButton(
+                onClick = { imagePicker.launch("image/*") },
+                enabled = viewModel.previewTypeface != null,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            ) { Text(if (viewModel.previewTypeface == null) "Generate font to write on an image" else "Write on an image") }
         }
+    }
     }
 }
 
