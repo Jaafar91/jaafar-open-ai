@@ -25,6 +25,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,8 +59,8 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun Page(title: String, back: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
-    Scaffold(topBar = { TopAppBar(title = { Text(title) }, navigationIcon = { if (back != null) TextButton(onClick = back) { Text("Back") } }) }) { padding ->
+@Composable private fun Page(title: String, back: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
+    Scaffold(topBar = { TopAppBar(title = { Text(title) }, navigationIcon = { if (back != null) TextButton(onClick = back) { Text("Back") } }, actions = actions) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
     }
 }
@@ -78,32 +80,85 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
     OutlinedButton(onClick = click, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth()) { Text(title, fontWeight = FontWeight.Bold); Text(detail, style = MaterialTheme.typography.bodySmall) } }
 }
 
-@Composable private fun FontsScreen(vm: FontCreatorViewModel, back: () -> Unit, edit: () -> Unit) = Page("My fonts", back) {
+@Composable private fun FontsScreen(vm: FontCreatorViewModel, back: () -> Unit, edit: () -> Unit) {
     var name by remember { mutableStateOf("") }
-    Text("Each font is saved separately on this device.")
-    OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("New font name") }, singleLine = true)
-    Button({ if (vm.createProject(name)) { name = ""; edit() } }, Modifier.fillMaxWidth(), enabled = name.isNotBlank()) { Text("Create font") }
-    HorizontalDivider()
-    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        itemsIndexed(vm.projects) { index, project ->
-            OutlinedCard(Modifier.fillMaxWidth().clickable { vm.openProject(index) }) {
-                Column(Modifier.padding(16.dp)) { Text(project.name, style = MaterialTheme.typography.titleMedium); Text("${project.drawings.size} drawn characters"); if (vm.activeProjectIndex == index) Text("Open", color = MaterialTheme.colorScheme.primary) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+    Page("My fonts", back, actions = {
+        IconButton(onClick = { showCreateDialog = true }) {
+            ActionIcon(ActionIconType.Add, "Add font")
+        }
+    }) {
+        Text("Each font is saved separately on this device.")
+        HorizontalDivider()
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            itemsIndexed(vm.projects) { index, project ->
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { vm.openProject(index) }.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(project.name, style = MaterialTheme.typography.titleMedium)
+                            Text("${project.drawings.size} drawn characters")
+                            if (vm.activeProjectIndex == index) Text("Open", color = MaterialTheme.colorScheme.primary)
+                        }
+                        IconButton(onClick = { vm.openProject(index); edit() }) {
+                            ActionIcon(ActionIconType.Edit, "Edit ${project.name} letters")
+                        }
+                    }
+                }
             }
         }
-    }
-    vm.activeProject?.let { project ->
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(edit, Modifier.weight(1f)) { Text("Edit letters") }
-            Button(vm::generate, Modifier.weight(1f)) { Text("Generate") }
-            vm.generatedFont?.let { file -> ShareButton(file, project.name) }
+        vm.activeProject?.let { project ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(vm::generate, Modifier.weight(1f)) { Text("Generate font") }
+                vm.generatedFont?.let { file -> ShareButton(file, project.name) }
+            }
         }
+        if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
     }
-    if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
+    if (showCreateDialog) AlertDialog(
+        onDismissRequest = { showCreateDialog = false; name = "" },
+        title = { Text("Add font") },
+        text = { OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Font name") }, singleLine = true) },
+        confirmButton = { TextButton(onClick = { if (vm.createProject(name)) { showCreateDialog = false; name = ""; edit() } }, enabled = name.isNotBlank()) { Text("Create") } },
+        dismissButton = { TextButton(onClick = { showCreateDialog = false; name = "" }) { Text("Cancel") } }
+    )
 }
 
 @Composable private fun ShareButton(file: java.io.File, name: String) {
     val context = LocalContext.current
-    OutlinedButton(onClick = { val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file); context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "font/ttf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Share $name")) }) { Text("Share") }
+    IconButton(onClick = { val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file); context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "font/ttf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Share $name")) }) { ActionIcon(ActionIconType.Share, "Share $name") }
+}
+
+private enum class ActionIconType { Add, Edit, Share }
+
+@Composable private fun ActionIcon(type: ActionIconType, description: String) {
+    val color = LocalContentColor.current
+    Canvas(Modifier.size(24.dp).semantics { contentDescription = description }) {
+        val stroke = 2.dp.toPx()
+        when (type) {
+            ActionIconType.Add -> {
+                drawLine(color, Offset(size.width / 2, size.height * .2f), Offset(size.width / 2, size.height * .8f), stroke)
+                drawLine(color, Offset(size.width * .2f, size.height / 2), Offset(size.width * .8f, size.height / 2), stroke)
+            }
+            ActionIconType.Edit -> {
+                drawLine(color, Offset(size.width * .25f, size.height * .75f), Offset(size.width * .75f, size.height * .25f), stroke * 2)
+                drawLine(color, Offset(size.width * .2f, size.height * .8f), Offset(size.width * .35f, size.height * .77f), stroke)
+            }
+            ActionIconType.Share -> {
+                val radius = size.minDimension * .11f
+                val left = Offset(size.width * .25f, size.height * .5f)
+                val top = Offset(size.width * .72f, size.height * .25f)
+                val bottom = Offset(size.width * .72f, size.height * .75f)
+                drawLine(color, left, top, stroke)
+                drawLine(color, left, bottom, stroke)
+                drawCircle(color, radius, left)
+                drawCircle(color, radius, top)
+                drawCircle(color, radius, bottom)
+            }
+        }
+    }
 }
 
 @Composable private fun LettersScreen(vm: FontCreatorViewModel, back: () -> Unit, spacing: () -> Unit) = Page("Letters · ${vm.activeProject?.name.orEmpty()}", back) {
