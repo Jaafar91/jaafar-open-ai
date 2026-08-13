@@ -50,9 +50,9 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
             viewModel.selectedCodePoint != null -> GlyphEditorScreen(viewModel.selectedCodePoint!!, viewModel.drawings[viewModel.selectedCodePoint], viewModel.isPagingMode, viewModel::closeEditor, viewModel::saveDrawing)
             else -> when (screen) {
                 Screen.Dashboard -> Dashboard(viewModel, { screen = it })
-                Screen.Fonts -> FontsScreen(viewModel, previewText, { screen = Screen.Dashboard }, { screen = Screen.Letters })
+                Screen.Fonts -> FontsScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }, { screen = Screen.Dashboard }, { screen = Screen.Letters })
                 Screen.Letters -> LettersScreen(viewModel, { screen = Screen.Dashboard }, { screen = Screen.Spacing })
-                Screen.Spacing -> SpacingScreen(viewModel) { screen = Screen.Letters }
+                Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Letters }
                 Screen.Image -> ImageScreen(viewModel, { screen = Screen.Dashboard }) { imageUri = it }
                 Screen.Settings -> SettingsScreen(
                     darkTheme,
@@ -86,7 +86,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
     OutlinedButton(onClick = click, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth()) { Text(title, fontWeight = FontWeight.Bold); Text(detail, style = MaterialTheme.typography.bodySmall) } }
 }
 
-@Composable private fun FontsScreen(vm: FontCreatorViewModel, previewText: String, back: () -> Unit, edit: () -> Unit) {
+@Composable private fun FontsScreen(vm: FontCreatorViewModel, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit, edit: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
     Page("My fonts", back, actions = {
@@ -122,13 +122,14 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
                     Text("Generate ${project.name} to see it here.", Modifier.fillMaxWidth().padding(16.dp))
                 }
             } else {
-                OutlinedCard(Modifier.fillMaxWidth()) {
-                    Text(
-                        previewText.ifEmpty { " " },
-                        Modifier.fillMaxWidth().padding(16.dp),
-                        style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(vm.previewTypeface!!))
-                    )
-                }
+                OutlinedTextField(
+                    previewText,
+                    changePreviewText,
+                    Modifier.fillMaxWidth(),
+                    label = { Text("Preview text") },
+                    minLines = 2,
+                    textStyle = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(vm.previewTypeface!!))
+                )
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button(vm::generate, Modifier.weight(1f)) { Text("Generate font") }
@@ -199,7 +200,7 @@ private enum class ActionIconType { Add, Edit, Share }
     if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
 }
 
-@Composable private fun SpacingScreen(vm: FontCreatorViewModel, back: () -> Unit) = Page("Letter spacing", back) {
+@Composable private fun SpacingScreen(vm: FontCreatorViewModel, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit) = Page("Letter spacing", back) {
     var letter by remember(vm.activeProject) { mutableStateOf(vm.activeProject?.letterSpacingMm?.toString().orEmpty()) }
     var word by remember(vm.activeProject) { mutableStateOf(vm.activeProject?.wordSpacingMm?.toString().orEmpty()) }
     Text("Character spacing", style = MaterialTheme.typography.titleMedium)
@@ -208,7 +209,19 @@ private enum class ActionIconType { Add, Edit, Share }
     Text("Word spacing", style = MaterialTheme.typography.titleMedium)
     Text("Width of the blank space character between words.")
     OutlinedTextField(word, { word = it }, Modifier.fillMaxWidth(), label = { Text("Word space width (mm)") }, singleLine = true)
-    Button({ vm.setSpacing(letter, word) }, Modifier.fillMaxWidth()) { Text("Save spacing") }
+    Text("Preview", style = MaterialTheme.typography.titleMedium)
+    OutlinedTextField(
+        previewText,
+        changePreviewText,
+        Modifier.fillMaxWidth(),
+        label = { Text("Preview text") },
+        supportingText = { Text(if (vm.previewTypeface == null) "Save spacing to generate its preview" else "Save spacing to refresh this preview") },
+        minLines = 2,
+        textStyle = MaterialTheme.typography.headlineMedium.copy(
+            fontFamily = vm.previewTypeface?.let { FontFamily(it) } ?: FontFamily.Default
+        )
+    )
+    Button({ if (vm.setSpacing(letter, word)) vm.generate() }, Modifier.fillMaxWidth()) { Text("Save spacing") }
     if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
 }
 
