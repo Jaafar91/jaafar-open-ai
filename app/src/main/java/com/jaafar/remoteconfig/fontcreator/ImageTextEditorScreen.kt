@@ -14,6 +14,7 @@ import androidx.compose.foundation.Canvas as ComposeCanvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,10 +38,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
@@ -70,6 +74,8 @@ fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, onBack: () -> Unit)
     var text by remember { mutableStateOf("") }
     var sizePercent by remember { mutableFloatStateOf(10f) }
     var textColor by remember { mutableStateOf(TEXT_COLORS.first()) }
+    var textPosition by remember { mutableStateOf(Offset(.5f, .85f)) }
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
 
     Scaffold(topBar = { AppTopBar("Write on image", onBack) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -77,7 +83,20 @@ fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, onBack: () -> Unit)
                 Text("This image could not be opened.", color = MaterialTheme.colorScheme.error)
             } else {
                 ComposeCanvas(
-                    Modifier.fillMaxWidth().weight(1f).background(Color.Black),
+                    Modifier.fillMaxWidth().weight(1f).background(Color.Black)
+                        .onSizeChanged { canvasSize = it }
+                        .pointerInput(bitmap, canvasSize) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                val imageSize = displayedImageSize(canvasSize, bitmap.width, bitmap.height)
+                                if (imageSize.width > 0 && imageSize.height > 0) {
+                                    textPosition = Offset(
+                                        (textPosition.x + dragAmount.x / imageSize.width).coerceIn(0f, 1f),
+                                        (textPosition.y + dragAmount.y / imageSize.height).coerceIn(0f, 1f),
+                                    )
+                                }
+                            }
+                        },
                 ) {
                     val scale = minOf(size.width / bitmap.width, size.height / bitmap.height)
                     val width = (bitmap.width * scale).roundToInt()
@@ -87,9 +106,14 @@ fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, onBack: () -> Unit)
                     drawImage(bitmap.asImageBitmap(), dstOffset = IntOffset(left, top), dstSize = IntSize(width, height))
                     drawIntoCanvas { canvas ->
                         val paint = overlayPaint(typeface, height * sizePercent / 100f, textColor.value)
-                        drawOverlayText(canvas.nativeCanvas, text, size.width / 2f, top + height * .85f, width * .9f, paint)
+                        drawOverlayText(
+                            canvas.nativeCanvas, text,
+                            left + width * textPosition.x, top + height * textPosition.y,
+                            width * .9f, paint,
+                        )
                     }
                 }
+                Text("Drag on the image to move the text")
                 OutlinedTextField(
                     value = text, onValueChange = { text = it }, label = { Text("Text") },
                     modifier = Modifier.fillMaxWidth(), textStyle = MaterialTheme.typography.titleLarge.copy(
@@ -113,7 +137,7 @@ fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, onBack: () -> Unit)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         enabled = text.isNotBlank(), modifier = Modifier.fillMaxWidth(),
-                        onClick = { shareImage(context, renderImage(bitmap, text, typeface, sizePercent, textColor.value)) },
+                        onClick = { shareImage(context, renderImage(bitmap, text, typeface, sizePercent, textColor.value, textPosition)) },
                     ) { Text("Share image") }
                 }
             }
@@ -136,11 +160,17 @@ private fun overlayPaint(typeface: Typeface, textSize: Float, textColor: Int) = 
     setShadowLayer(textSize / 18f, 0f, textSize / 30f, shadow)
 }
 
-private fun renderImage(source: Bitmap, text: String, typeface: Typeface, sizePercent: Float, textColor: Int): Bitmap {
+private fun renderImage(source: Bitmap, text: String, typeface: Typeface, sizePercent: Float, textColor: Int, textPosition: Offset): Bitmap {
     val output = source.copy(Bitmap.Config.ARGB_8888, true)
     val paint = overlayPaint(typeface, output.height * sizePercent / 100f, textColor)
-    drawOverlayText(Canvas(output), text, output.width / 2f, output.height * .85f, output.width * .9f, paint)
+    drawOverlayText(Canvas(output), text, output.width * textPosition.x, output.height * textPosition.y, output.width * .9f, paint)
     return output
+}
+
+private fun displayedImageSize(canvasSize: IntSize, imageWidth: Int, imageHeight: Int): IntSize {
+    if (canvasSize.width == 0 || canvasSize.height == 0) return IntSize.Zero
+    val scale = minOf(canvasSize.width.toFloat() / imageWidth, canvasSize.height.toFloat() / imageHeight)
+    return IntSize((imageWidth * scale).roundToInt(), (imageHeight * scale).roundToInt())
 }
 
 private fun drawOverlayText(canvas: Canvas, text: String, centerX: Float, bottomBaseline: Float, maxWidth: Float, paint: Paint) {
