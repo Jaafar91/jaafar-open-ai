@@ -19,6 +19,8 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     private val main = Handler(Looper.getMainLooper())
     val drawings = mutableStateMapOf<Int, GlyphDrawing>().apply { putAll(repository.load()) }
     var selectedCodePoint by mutableStateOf<Int?>(null)
+    var isPagingMode by mutableStateOf(false)
+        private set
     var status by mutableStateOf("")
         private set
     var generatedFont by mutableStateOf<File?>(null)
@@ -26,12 +28,39 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     var previewTypeface by mutableStateOf<Typeface?>(null)
         private set
 
-    fun edit(codePoint: Int) { selectedCodePoint = codePoint }
-    fun closeEditor() { selectedCodePoint = null }
+    fun edit(codePoint: Int) {
+        isPagingMode = false
+        selectedCodePoint = codePoint
+    }
+
+    fun startPaging() {
+        isPagingMode = true
+        selectedCodePoint = EDITABLE_CODE_POINTS.firstOrNull { it !in drawings } ?: EDITABLE_CODE_POINTS.first
+    }
+
+    fun closeEditor() {
+        selectedCodePoint = null
+        isPagingMode = false
+    }
+
+    fun previousGlyph() {
+        val current = selectedCodePoint ?: return
+        if (current > EDITABLE_CODE_POINTS.first) selectedCodePoint = current - 1
+    }
+
     fun saveDrawing(drawing: GlyphDrawing) {
         drawings[drawing.codePoint] = drawing
-        selectedCodePoint = null
-        status = "Glyph saved. Generate the font to update the preview."
+        selectedCodePoint = if (isPagingMode && drawing.codePoint < EDITABLE_CODE_POINTS.last) {
+            drawing.codePoint + 1
+        } else {
+            isPagingMode = false
+            null
+        }
+        status = if (selectedCodePoint == null) {
+            "Glyph saved. Generate the font to update the preview."
+        } else {
+            "Glyph saved. Continue with the next character."
+        }
         val snapshot = drawings.values.toList()
         executor.execute { repository.save(snapshot) }
     }
@@ -56,3 +85,5 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     override fun onCleared() { executor.shutdown(); super.onCleared() }
 }
+
+val EDITABLE_CODE_POINTS: IntRange = 32..126

@@ -52,7 +52,9 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
         if (selected == null) FontGridScreen(viewModel) else GlyphEditorScreen(
             codePoint = selected,
             initial = viewModel.drawings[selected],
+            pagingMode = viewModel.isPagingMode,
             onCancel = viewModel::closeEditor,
+            onPrevious = viewModel::previousGlyph,
             onSave = viewModel::saveDrawing,
         )
     }
@@ -66,7 +68,18 @@ private fun FontGridScreen(viewModel: FontCreatorViewModel) {
     Scaffold(topBar = { TopAppBar(title = { Text("Font Creator") }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             Text("Basic Latin", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text("Choose a character, then draw it between the metric guides.", style = MaterialTheme.typography.bodySmall)
+            Text("Choose the existing grid or draw each glyph in sequence.", style = MaterialTheme.typography.bodySmall)
+            Row(
+                Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) {
+                    Text("Character grid")
+                }
+                Button(onClick = viewModel::startPaging, modifier = Modifier.weight(1f)) {
+                    Text("Paging mode")
+                }
+            }
             Spacer(Modifier.height(12.dp))
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(52.dp),
@@ -74,7 +87,7 @@ private fun FontGridScreen(viewModel: FontCreatorViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                items((32..126).toList(), key = { it }) { code ->
+                items(EDITABLE_CODE_POINTS.toList(), key = { it }) { code ->
                     val complete = viewModel.drawings.containsKey(code)
                     Box(
                         Modifier.aspectRatio(1f).background(if (complete) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
@@ -113,7 +126,9 @@ private fun FontGridScreen(viewModel: FontCreatorViewModel) {
 private fun GlyphEditorScreen(
     codePoint: Int,
     initial: GlyphDrawing?,
+    pagingMode: Boolean,
     onCancel: () -> Unit,
+    onPrevious: () -> Unit,
     onSave: (GlyphDrawing) -> Unit,
 ) {
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
@@ -121,6 +136,12 @@ private fun GlyphEditorScreen(
     var canvasSize by remember { mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)) }
     Scaffold(topBar = { TopAppBar(title = { Text("Draw ${if (codePoint == 32) "space" else codePoint.toChar()}") }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (pagingMode) {
+                Text(
+                    "Glyph ${codePoint - EDITABLE_CODE_POINTS.first + 1} of ${EDITABLE_CODE_POINTS.count()}",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
             Text("Red: baseline  •  Gray: ascender and descender", style = MaterialTheme.typography.bodySmall)
             Canvas(
                 Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp)
@@ -149,13 +170,24 @@ private fun GlyphEditorScreen(
                     }
                 }
             }
+            if (pagingMode) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Exit paging") }
+                    OutlinedButton(
+                        onClick = onPrevious,
+                        enabled = codePoint > EDITABLE_CODE_POINTS.first,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Previous glyph") }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onCancel) { Text("Cancel") }
+                if (!pagingMode) OutlinedButton(onClick = onCancel) { Text("Cancel") }
                 OutlinedButton(onClick = { strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }
                 Button(
                     onClick = { onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) },
                     enabled = strokes.isNotEmpty() || codePoint == 32, modifier = Modifier.weight(1f),
-                ) { Text("Save glyph") }
+                ) { Text(if (pagingMode && codePoint < EDITABLE_CODE_POINTS.last) "Save & next" else "Save glyph") }
             }
         }
     }
