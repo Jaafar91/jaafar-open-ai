@@ -9,6 +9,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
+import android.widget.Toast
 import androidx.compose.foundation.Canvas as ComposeCanvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -120,14 +121,18 @@ private fun renderImage(source: Bitmap, text: String, typeface: Typeface, sizePe
 }
 
 private fun shareImage(context: android.content.Context, bitmap: Bitmap) {
-    val file = File(context.cacheDir, "font-image-${System.currentTimeMillis()}.jpg")
-    FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
-    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-        type = "image/jpeg"
-        putExtra(Intent.EXTRA_STREAM, uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }, "Share image").apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    })
+    runCatching {
+        val file = File(context.cacheDir, "font-image-${System.currentTimeMillis()}.jpg")
+        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+            type = "image/jpeg"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }, "Share image").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
+    }.onFailure {
+        Toast.makeText(context, "Unable to share image.", Toast.LENGTH_SHORT).show()
+    }
 }
