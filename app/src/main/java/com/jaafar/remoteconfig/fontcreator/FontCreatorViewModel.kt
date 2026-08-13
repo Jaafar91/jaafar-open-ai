@@ -14,11 +14,18 @@ import java.io.File
 import java.util.concurrent.Executors
 
 class FontCreatorViewModel(application: Application) : AndroidViewModel(application) {
+    companion object {
+        const val FIRST_CODE_POINT = 32
+        const val LAST_CODE_POINT = 126
+    }
+
     private val repository = GlyphRepository(application)
     private val executor = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     val drawings = mutableStateMapOf<Int, GlyphDrawing>().apply { putAll(repository.load()) }
     var selectedCodePoint by mutableStateOf<Int?>(null)
+    var isPagingMode by mutableStateOf(false)
+        private set
     var status by mutableStateOf("")
         private set
     var generatedFont by mutableStateOf<File?>(null)
@@ -26,11 +33,30 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     var previewTypeface by mutableStateOf<Typeface?>(null)
         private set
 
-    fun edit(codePoint: Int) { selectedCodePoint = codePoint }
-    fun closeEditor() { selectedCodePoint = null }
+    fun edit(codePoint: Int) {
+        isPagingMode = false
+        selectedCodePoint = codePoint
+    }
+
+    fun startPaging() {
+        isPagingMode = true
+        selectedCodePoint = (FIRST_CODE_POINT..LAST_CODE_POINT).firstOrNull { it !in drawings }
+            ?: FIRST_CODE_POINT
+    }
+
+    fun closeEditor() {
+        selectedCodePoint = null
+        isPagingMode = false
+    }
+
     fun saveDrawing(drawing: GlyphDrawing) {
         drawings[drawing.codePoint] = drawing
-        selectedCodePoint = null
+        selectedCodePoint = if (isPagingMode && drawing.codePoint < LAST_CODE_POINT) {
+            drawing.codePoint + 1
+        } else {
+            isPagingMode = false
+            null
+        }
         status = "Glyph saved. Generate the font to update the preview."
         val snapshot = drawings.values.toList()
         executor.execute { repository.save(snapshot) }
