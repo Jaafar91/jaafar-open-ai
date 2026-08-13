@@ -60,13 +60,14 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         pagingQueue = queue; isPagingMode = true; selectedCodePoint = queue.first()
     }
 
-    fun setSpacing(letter: String, word: String) {
+    fun setSpacing(letter: String, word: String): Boolean {
         val letterValue = letter.toFloatOrNull(); val wordValue = word.toFloatOrNull()
         if (letterValue == null || letterValue !in -3f..10f || wordValue == null || wordValue !in 0.2f..50f) {
-            status = "Use -3 to 10 mm for letter spacing and 0.2 to 50 mm for word spacing."; return
+            status = "Use -3 to 10 mm for letter spacing and 0.2 to 50 mm for word spacing."; return false
         }
         updateActive { it.copy(letterSpacingMm = letterValue, wordSpacingMm = wordValue) }
         status = "Spacing saved. Generate again to apply it."
+        return true
     }
 
     fun closeEditor() { selectedCodePoint = null; isPagingMode = false; pagingQueue = emptyList() }
