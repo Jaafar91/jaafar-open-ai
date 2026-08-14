@@ -40,6 +40,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.google.android.gms.tasks.Task
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -106,7 +113,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                "Select an image or rasterized PDF, recognize its text with the closest matching font, then rebuild a fresh PDF using that font.",
+                "Select an image or rasterized PDF, recognize its text on-device, then rebuild a fresh PDF using your chosen output font.",
                 style = MaterialTheme.typography.bodyMedium
             )
 
@@ -118,7 +125,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                 Text(if (sourceName.isNotEmpty()) "📄 $sourceName" else "Choose image or PDF")
             }
 
-            SectionLabel("Step 2 – Select the source font")
+            SectionLabel("Step 2 – Select the output font")
             Box(Modifier.fillMaxWidth()) {
                 OutlinedButton(
                     onClick = { expanded = true },
@@ -153,7 +160,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                     extractionNotice = DEFAULT_NOTICE
                     outputFile = null
                     scope.launch {
-                        val document = recognizeDocument(context, uri, selectedTypeface)
+                        val document = recognizeDocument(context, uri)
                         isProcessing = false
                         if (document != null && document.extractedText.isNotBlank()) {
                             recognizedDocument = document
@@ -271,10 +278,8 @@ private fun SectionLabel(text: String) {
 private suspend fun recognizeDocument(
     context: android.content.Context,
     sourceUri: Uri,
-    typeface: Typeface
 ): RecognizedDocument? = withContext(Dispatchers.IO) {
     runCatching {
-        val recognizer = RasterTextRecognizer(typeface)
         val mimeType = context.contentResolver.getType(sourceUri)
         val looksLikePdf = displayNameForUri(context, sourceUri)?.endsWith(".pdf", true) == true
         when {
@@ -287,7 +292,7 @@ private suspend fun recognizeDocument(
                                 val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
                                 bitmap.eraseColor(Color.WHITE)
                                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                                add(recognizer.recognize(bitmap))
+                                add(recognizeBitmap(bitmap))
                                 page.close()
                                 bitmap.recycle()
                             }
@@ -298,7 +303,7 @@ private suspend fun recognizeDocument(
             }
             else -> {
                 val bitmap = loadBitmap(context.contentResolver, sourceUri) ?: return@runCatching null
-                val page = recognizer.recognize(bitmap)
+                val page = recognizeBitmap(bitmap)
                 bitmap.recycle()
                 RecognizedDocument(listOf(page))
             }
@@ -315,6 +320,38 @@ private fun loadBitmap(resolver: android.content.ContentResolver, uri: Uri): Bit
         resolver.openInputStream(uri).use { input -> BitmapFactory.decodeStream(input) }
     }
 }.getOrNull()
+
+private suspend fun recognizeBitmap(bitmap: Bitmap): RecognizedPage {
+    val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    return try {
+        val result = recognizer.process(InputImage.fromBitmap(bitmap, 0)).awaitResult()
+        val lines = result.textBlocks.flatMap { block ->
+            block.lines.mapNotNull { line ->
+                line.boundingBox?.let { bounds ->
+                    RecognizedLine(
+                        text = line.text,
+                        left = bounds.left,
+                        top = bounds.top,
+                        right = bounds.right,
+                        bottom = bounds.bottom,
+                    )
+                }
+            }
+        }
+        RecognizedPage(bitmap.width, bitmap.height, lines)
+    } finally {
+        recognizer.close()
+    }
+}
+
+private suspend fun <T> Task<T>.awaitResult(): T = suspendCancellableCoroutine { continuation ->
+    addOnSuccessListener { result ->
+        if (continuation.isActive) continuation.resume(result)
+    }
+    addOnFailureListener { error ->
+        if (continuation.isActive) continuation.resumeWithException(error)
+    }
+}
 
 private suspend fun rebuildPdf(
     context: android.content.Context,
@@ -362,10 +399,10 @@ private fun displayNameForUri(context: android.content.Context, uri: Uri): Strin
 }
 
 private const val DEFAULT_NOTICE =
-    "Tip: pick the font that most closely matches the source. Recognition works best on clean, high-contrast Latin text."
+    "Recognition runs privately on this device. Review the extracted text before generating the new PDF."
 
 private const val OCR_NOTICE =
-    "This OCR flow recognizes text from images or rasterized PDF pages, then rebuilds a fresh PDF using the selected font."
+    "ML Kit OCR recognizes Latin-script text and returns line positions. The app then rebuilds a fresh PDF using the selected output font."
 
 private const val BASE_TEXT_SIZE_RATIO = 0.82f
 private const val TEXT_WIDTH_PADDING_RATIO = 1.04f
