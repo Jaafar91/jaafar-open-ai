@@ -49,7 +49,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.awaitDispose
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -73,6 +72,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -652,7 +652,11 @@ private fun rememberImageBitmap(file: File?): Bitmap? {
         value = null
         val decoded = if (path == null) null else withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) }
         value = decoded
-        awaitDispose { decoded?.recycle() }
+        try {
+            awaitCancellation()
+        } finally {
+            decoded?.recycle()
+        }
     }
     return bitmapState.value
 }
