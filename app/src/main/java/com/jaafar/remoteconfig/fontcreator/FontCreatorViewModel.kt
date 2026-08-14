@@ -91,6 +91,12 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun closeEditor() { selectedCodePoint = null; isPagingMode = false; pagingQueue = emptyList() }
+    fun skipLetter() {
+        if (!isPagingMode) return
+        pagingQueue = pagingQueue.filterNot { it == selectedCodePoint }
+        selectedCodePoint = if (pagingQueue.isNotEmpty()) pagingQueue.first() else null
+        if (selectedCodePoint == null) isPagingMode = false
+    }
     fun saveDrawing(drawing: GlyphDrawing) {
         drawings[drawing.codePoint] = drawing
         if (isPagingMode) pagingQueue = pagingQueue.filterNot { it == drawing.codePoint }
