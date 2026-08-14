@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   create-pr:
-    if: startsWith(github.event.issue.title, 'Telegram feature:')
+    if: startsWith(github.event.issue.title, 'Telegram OpenAI feature:')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
