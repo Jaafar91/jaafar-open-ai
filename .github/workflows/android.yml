@@ -2,18 +2,14 @@ name: Build Android APK
 
 on:
   pull_request:
-  push:
-    branches:
-      - master
-      - 'copilot/**'
-      - 'codex/**'
-  workflow_dispatch:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
