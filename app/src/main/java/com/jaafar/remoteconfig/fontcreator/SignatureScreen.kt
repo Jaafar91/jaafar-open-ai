@@ -47,11 +47,13 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -67,16 +69,19 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.max
 
-private enum class SignaturePage { Library, Editor, Apply }
+private enum class SignaturePage { Library, Editor, ImportStamp, Apply }
 
 @Composable
 internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
@@ -89,10 +94,19 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
             selectedSignatureName = selectedSignatureName,
             onSelect = { name -> selectedSignatureName = name },
             onCreateNew = { page = SignaturePage.Editor },
+            onImportStamp = { page = SignaturePage.ImportStamp },
             onUseSelected = { page = SignaturePage.Apply },
             back = back,
         )
         SignaturePage.Editor -> SignatureEditorScreen(
+            vm = vm,
+            onSaved = { name ->
+                selectedSignatureName = name
+                page = SignaturePage.Library
+            },
+            back = { page = SignaturePage.Library },
+        )
+        SignaturePage.ImportStamp -> ImportStampFromImageScreen(
             vm = vm,
             onSaved = { name ->
                 selectedSignatureName = name
@@ -122,6 +136,7 @@ private fun SignatureLibraryScreen(
     selectedSignatureName: String?,
     onSelect: (String) -> Unit,
     onCreateNew: () -> Unit,
+    onImportStamp: () -> Unit,
     onUseSelected: () -> Unit,
     back: () -> Unit,
 ) {
@@ -131,6 +146,7 @@ private fun SignatureLibraryScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text("No saved signatures yet.", style = MaterialTheme.typography.bodyLarge)
                     Button(onClick = onCreateNew) { Text("Create your first signature") }
+                    OutlinedButton(onClick = onImportStamp) { Text("Add stamp from image") }
                 }
             }
         } else {
@@ -167,6 +183,7 @@ private fun SignatureLibraryScreen(
             }
             HorizontalDivider()
             OutlinedButton(onClick = onCreateNew, modifier = Modifier.fillMaxWidth()) { Text("Create new signature") }
+            OutlinedButton(onClick = onImportStamp, modifier = Modifier.fillMaxWidth()) { Text("Add stamp from image") }
             Button(
                 onClick = onUseSelected,
                 modifier = Modifier.fillMaxWidth(),
@@ -175,6 +192,90 @@ private fun SignatureLibraryScreen(
                 Text("Use selected signature")
             }
         }
+
+    }
+}
+
+@Composable
+private fun ImportStampFromImageScreen(
+    vm: FontCreatorViewModel,
+    onSaved: (String) -> Unit,
+    back: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("My stamp") }
+    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var status by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
+    DisposableEffect(previewBitmap) {
+        val bitmapToRecycle = previewBitmap
+        onDispose { bitmapToRecycle?.recycle() }
+    }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        selectedUri = uri
+        status = ""
+        scope.launch {
+            val bitmap = withContext(Dispatchers.IO) { loadBitmap(context.contentResolver, uri) }
+            previewBitmap = bitmap
+            if (bitmap == null) status = "Could not load image."
+        }
+    }
+
+    Page("Add Stamp from Image", back) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Stamp name") },
+            singleLine = true,
+        )
+        OutlinedButton(
+            onClick = { picker.launch(arrayOf("image/*")) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !saving,
+        ) { Text(if (selectedUri == null) "Choose image" else "Choose a different image") }
+        if (previewBitmap != null) {
+            val bitmap = previewBitmap!!
+            Box(
+                Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat()).border(1.dp, ComposeColor.Gray)
+            ) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        } else {
+            Text("Select an image to import it as a reusable stamp.", style = MaterialTheme.typography.bodySmall)
+        }
+        Button(
+            onClick = {
+                val uri = selectedUri ?: return@Button
+                scope.launch {
+                    saving = true
+                    status = "Saving stamp…"
+                    val savedName = withContext(Dispatchers.IO) {
+                        runCatching { vm.saveSignatureFromImage(context.contentResolver, uri, name) }.getOrNull()
+                    }
+                    saving = false
+                    if (savedName != null) {
+                        status = "Stamp saved."
+                        onSaved(savedName)
+                    } else {
+                        status = "Could not save this stamp image."
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !saving && selectedUri != null,
+        ) { Text("Save stamp") }
+        if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -259,6 +360,7 @@ private fun ApplySignatureScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val signatureImageBitmap = rememberImageBitmap(vm.signatureImageFile(signature))
     var signatureScale by remember { mutableFloatStateOf(22f) }
     var sigOffsetX by remember { mutableFloatStateOf(0.5f) }
     var sigOffsetY by remember { mutableFloatStateOf(0.82f) }
@@ -271,6 +373,10 @@ private fun ApplySignatureScreen(
     var currentPage by remember { mutableIntStateOf(0) }
     var pageCount by remember { mutableIntStateOf(0) }
     var applyToAll by remember { mutableStateOf(false) }
+    DisposableEffect(previewBitmap) {
+        val bitmapToRecycle = previewBitmap
+        onDispose { bitmapToRecycle?.recycle() }
+    }
 
     // Reload PDF preview when the page changes
     LaunchedEffect(selectedFileUri, currentPage) {
@@ -278,7 +384,6 @@ private fun ApplySignatureScreen(
         if (!isPdf) return@LaunchedEffect
         val bitmap = withContext(Dispatchers.IO) { renderPdfPage(context, uri, currentPage) }
         if (bitmap != null) {
-            previewBitmap?.recycle()
             previewBitmap = bitmap
         }
     }
@@ -299,13 +404,11 @@ private fun ApplySignatureScreen(
                     val count = withContext(Dispatchers.IO) { getPdfPageCount(context, uri) }
                     pageCount = count
                     val bitmap = withContext(Dispatchers.IO) { renderPdfPage(context, uri, 0) }
-                    previewBitmap?.recycle()
                     previewBitmap = bitmap
                 } else {
                     isPdf = false
                     pageCount = 0
                     val bitmap = withContext(Dispatchers.IO) { loadBitmap(context.contentResolver, uri) }
-                    previewBitmap?.recycle()
                     previewBitmap = bitmap
                 }
             }
@@ -411,30 +514,38 @@ private fun ApplySignatureScreen(
                                     )
                                 },
                         ) {
-                            val sigPoints = signature.strokes.flatMap { it.points }
-                            if (sigPoints.isNotEmpty()) {
-                                val minX = sigPoints.minOf { it.x }
-                                val minY = sigPoints.minOf { it.y }
-                                val maxX = sigPoints.maxOf { it.x }
-                                val maxY = sigPoints.maxOf { it.y }
-                                val sigNatWidth = (maxX - minX).coerceAtLeast(1f)
-                                val sigNatHeight = (maxY - minY).coerceAtLeast(1f)
+                            val sigPoints = if (signatureImageBitmap == null) signature.strokes.flatMap { it.points } else emptyList()
+                            if (signatureImageBitmap != null || sigPoints.isNotEmpty()) {
+                                val sigNatWidth = signatureImageBitmap?.width?.toFloat()?.coerceAtLeast(1f)
+                                    ?: (sigPoints.maxOf { it.x } - sigPoints.minOf { it.x }).coerceAtLeast(1f)
+                                val sigNatHeight = signatureImageBitmap?.height?.toFloat()?.coerceAtLeast(1f)
+                                    ?: (sigPoints.maxOf { it.y } - sigPoints.minOf { it.y }).coerceAtLeast(1f)
                                 val targetSigWidth = size.width * (signatureScale / 100f).coerceIn(0.12f, 0.35f)
                                 val scale = targetSigWidth / sigNatWidth
                                 val left = (sigOffsetX * size.width).coerceIn(0f, (size.width - sigNatWidth * scale).coerceAtLeast(0f))
                                 val top = (sigOffsetY * size.height).coerceIn(0f, (size.height - sigNatHeight * scale).coerceAtLeast(0f))
-                                signature.strokes.forEach { stroke ->
-                                    if (stroke.points.size > 1) {
-                                        drawPath(
-                                            ComposePath().apply {
-                                                moveTo(left + (stroke.points.first().x - minX) * scale, top + (stroke.points.first().y - minY) * scale)
-                                                stroke.points.drop(1).forEach { pt ->
-                                                    lineTo(left + (pt.x - minX) * scale, top + (pt.y - minY) * scale)
-                                                }
-                                            },
-                                            ComposeColor.Black,
-                                            style = Stroke(width = 3f, cap = StrokeCap.Round, join = StrokeJoin.Round),
-                                        )
+                                if (signatureImageBitmap != null) {
+                                    drawImage(
+                                        image = signatureImageBitmap.asImageBitmap(),
+                                        dstOffset = IntOffset(left.toInt(), top.toInt()),
+                                        dstSize = IntSize((sigNatWidth * scale).toInt(), (sigNatHeight * scale).toInt()),
+                                    )
+                                } else {
+                                    val minX = sigPoints.minOf { it.x }
+                                    val minY = sigPoints.minOf { it.y }
+                                    signature.strokes.forEach { stroke ->
+                                        if (stroke.points.size > 1) {
+                                            drawPath(
+                                                ComposePath().apply {
+                                                    moveTo(left + (stroke.points.first().x - minX) * scale, top + (stroke.points.first().y - minY) * scale)
+                                                    stroke.points.drop(1).forEach { pt ->
+                                                        lineTo(left + (pt.x - minX) * scale, top + (pt.y - minY) * scale)
+                                                    }
+                                                },
+                                                ComposeColor.Black,
+                                                style = Stroke(width = 3f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                                            )
+                                        }
                                     }
                                 }
                                 drawRect(
@@ -489,32 +600,63 @@ private fun ApplySignatureScreen(
 
 @Composable
 private fun SignaturePreview(modifier: Modifier, signature: SavedSignature) {
-    Canvas(modifier.background(ComposeColor.White).border(1.dp, ComposeColor.LightGray)) {
-        val points = signature.strokes.flatMap { it.points }
-        val minX = points.minOfOrNull { it.x } ?: 0f
-        val minY = points.minOfOrNull { it.y } ?: 0f
-        val maxX = points.maxOfOrNull { it.x } ?: 1f
-        val maxY = points.maxOfOrNull { it.y } ?: 1f
-        val width = (maxX - minX).coerceAtLeast(1f)
-        val height = (maxY - minY).coerceAtLeast(1f)
-        val scale = minOf(size.width * .82f / width, size.height * .62f / height)
-        val left = (size.width - width * scale) / 2f
-        val top = (size.height - height * scale) / 2f
-        signature.strokes.forEach { stroke ->
-            if (stroke.points.size > 1) {
-                drawPath(
-                    ComposePath().apply {
-                        moveTo(left + (stroke.points.first().x - minX) * scale, top + (stroke.points.first().y - minY) * scale)
-                        stroke.points.drop(1).forEach { point ->
-                            lineTo(left + (point.x - minX) * scale, top + (point.y - minY) * scale)
-                        }
-                    },
-                    ComposeColor.Black,
-                    style = Stroke(width = 4f, cap = StrokeCap.Round, join = StrokeJoin.Round),
-                )
+    val context = LocalContext.current
+    val imageBitmap = rememberImageBitmap(
+        signature.imageFileName?.let { fileName -> File(context.filesDir, fileName).takeIf { it.exists() } }
+    )
+    if (imageBitmap != null) {
+        Box(modifier.background(ComposeColor.White).border(1.dp, ComposeColor.LightGray)) {
+            Image(
+                bitmap = imageBitmap.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        }
+    } else {
+        Canvas(modifier.background(ComposeColor.White).border(1.dp, ComposeColor.LightGray)) {
+            val points = signature.strokes.flatMap { it.points }
+            val minX = points.minOfOrNull { it.x } ?: 0f
+            val minY = points.minOfOrNull { it.y } ?: 0f
+            val maxX = points.maxOfOrNull { it.x } ?: 1f
+            val maxY = points.maxOfOrNull { it.y } ?: 1f
+            val width = (maxX - minX).coerceAtLeast(1f)
+            val height = (maxY - minY).coerceAtLeast(1f)
+            val scale = minOf(size.width * .82f / width, size.height * .62f / height)
+            val left = (size.width - width * scale) / 2f
+            val top = (size.height - height * scale) / 2f
+            signature.strokes.forEach { stroke ->
+                if (stroke.points.size > 1) {
+                    drawPath(
+                        ComposePath().apply {
+                            moveTo(left + (stroke.points.first().x - minX) * scale, top + (stroke.points.first().y - minY) * scale)
+                            stroke.points.drop(1).forEach { point ->
+                                lineTo(left + (point.x - minX) * scale, top + (point.y - minY) * scale)
+                            }
+                        },
+                        ComposeColor.Black,
+                        style = Stroke(width = 4f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                    )
+                }
             }
         }
     }
+}
+
+@Composable
+private fun rememberImageBitmap(file: File?): Bitmap? {
+    val path = file?.absolutePath
+    val bitmapState = produceState<Bitmap?>(initialValue = null, path) {
+        value = null
+        val decoded = if (path == null) null else withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) }
+        value = decoded
+        try {
+            awaitCancellation()
+        } finally {
+            decoded?.recycle()
+        }
+    }
+    return bitmapState.value
 }
 
 private data class SignedDocument(val file: File, val mimeType: String)
@@ -549,10 +691,11 @@ private fun signImage(
     offsetYFraction: Float,
 ): File? {
     val source = loadBitmap(context.contentResolver, sourceUri) ?: return null
+    val signatureBitmap = loadSignatureBitmap(context, signature)
     try {
         val output = source.copy(Bitmap.Config.ARGB_8888, true) ?: return null
         return try {
-            drawSignature(Canvas(output), signature, output.width, output.height, widthFraction, offsetXFraction, offsetYFraction)
+            drawSignature(Canvas(output), signature, output.width, output.height, widthFraction, offsetXFraction, offsetYFraction, signatureBitmap)
             deleteOldSignedFiles(context.cacheDir, "signed-image-", ".png")
             File(context.cacheDir, "signed-image-${System.currentTimeMillis()}.png").also { file ->
                 FileOutputStream(file).use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -561,6 +704,7 @@ private fun signImage(
             output.recycle()
         }
     } finally {
+        signatureBitmap?.recycle()
         source.recycle()
     }
 }
@@ -576,6 +720,7 @@ private fun signPdf(
     applyToAll: Boolean,
 ): File? {
     val descriptor = context.contentResolver.openFileDescriptor(sourceUri, "r") ?: return null
+    val signatureBitmap = loadSignatureBitmap(context, signature)
     descriptor.use { pfd ->
         PdfRenderer(pfd).use { renderer ->
             val outputDocument = PdfDocument()
@@ -588,7 +733,7 @@ private fun signPdf(
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
                         val shouldSign = applyToAll || index == targetPage
                         if (shouldSign) {
-                            drawSignature(Canvas(bitmap), signature, bitmap.width, bitmap.height, widthFraction, offsetXFraction, offsetYFraction)
+                            drawSignature(Canvas(bitmap), signature, bitmap.width, bitmap.height, widthFraction, offsetXFraction, offsetYFraction, signatureBitmap)
                         }
                         val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, index + 1).create()
                         val outputPage = outputDocument.startPage(pageInfo)
@@ -606,6 +751,7 @@ private fun signPdf(
                 }
             } finally {
                 outputDocument.close()
+                signatureBitmap?.recycle()
             }
         }
     }
@@ -646,7 +792,19 @@ private fun drawSignature(
     widthFraction: Float,
     offsetXFraction: Float,
     offsetYFraction: Float,
+    signatureBitmap: Bitmap? = null,
 ) {
+    if (signatureBitmap != null) {
+        val signatureWidth = signatureBitmap.width.coerceAtLeast(1).toFloat()
+        val signatureHeight = signatureBitmap.height.coerceAtLeast(1).toFloat()
+        val targetWidth = pageWidth * widthFraction.coerceIn(.12f, .35f)
+        val scale = targetWidth / signatureWidth
+        val left = (offsetXFraction * pageWidth).coerceIn(0f, (pageWidth - signatureWidth * scale).coerceAtLeast(0f))
+        val top = (offsetYFraction * pageHeight).coerceIn(0f, (pageHeight - signatureHeight * scale).coerceAtLeast(0f))
+        val destination = android.graphics.RectF(left, top, left + signatureWidth * scale, top + signatureHeight * scale)
+        canvas.drawBitmap(signatureBitmap, null, destination, Paint(Paint.ANTI_ALIAS_FLAG))
+        return
+    }
     val points = signature.strokes.flatMap { it.points }
     if (points.isEmpty()) return
     val minX = points.minOf { it.x }
@@ -676,6 +834,13 @@ private fun drawSignature(
         }
         canvas.drawPath(path, paint)
     }
+}
+
+private fun loadSignatureBitmap(context: android.content.Context, signature: SavedSignature): Bitmap? {
+    val fileName = signature.imageFileName ?: return null
+    val file = File(context.filesDir, fileName)
+    if (!file.exists()) return null
+    return BitmapFactory.decodeFile(file.absolutePath)
 }
 
 private fun shareSignedDocument(context: android.content.Context, document: SignedDocument) {

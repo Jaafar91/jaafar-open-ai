@@ -111,6 +111,7 @@ data class SavedSignature(
     val canvasWidth: Float,
     val canvasHeight: Float,
     val savedAt: Long = System.currentTimeMillis(),
+    val imageFileName: String? = null,
 )
 
 data class ImportedFont(

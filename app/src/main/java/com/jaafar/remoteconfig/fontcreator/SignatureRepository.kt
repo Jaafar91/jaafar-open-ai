@@ -41,6 +41,7 @@ class SignatureRepository(context: Context) {
                         canvasWidth = item.optDouble("canvasWidth", 1.0).toFloat(),
                         canvasHeight = item.optDouble("canvasHeight", 1.0).toFloat(),
                         savedAt = item.optLong("savedAt", System.currentTimeMillis()),
+                        imageFileName = item.optString("imageFileName").ifBlank { null },
                     )
                 )
             }
@@ -56,6 +57,7 @@ class SignatureRepository(context: Context) {
                         put("canvasWidth", signature.canvasWidth.toDouble())
                         put("canvasHeight", signature.canvasHeight.toDouble())
                         put("savedAt", signature.savedAt)
+                        put("imageFileName", signature.imageFileName)
                         put(
                             "strokes",
                             JSONArray().apply {

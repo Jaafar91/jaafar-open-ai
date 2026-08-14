@@ -217,20 +217,65 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             canvasWidth = canvasWidth.coerceAtLeast(1f),
             canvasHeight = canvasHeight.coerceAtLeast(1f),
             savedAt = System.currentTimeMillis(),
+            imageFileName = null,
         )
-        val existingIndex = signatures.indexOfFirst { it.name.equals(cleanName, ignoreCase = true) }
-        if (existingIndex >= 0) signatures.removeAt(existingIndex)
-        signatures.add(0, signature)
-        persistSignatures()
+        upsertSignature(signature)
+        return cleanName
+    }
+
+    fun saveSignatureFromImage(contentResolver: ContentResolver, uri: Uri, name: String): String {
+        val cleanName = name.trim().ifEmpty { "My stamp" }
+        val extension = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx)?.substringAfterLast('.', "png") else "png"
+        } ?: "png"
+        val safeExt = extension.lowercase().takeIf { it in setOf("png", "jpg", "jpeg", "webp") } ?: "png"
+        val fileName = "stamp-${System.currentTimeMillis()}.$safeExt"
+        val outputFile = File(getApplication<Application>().filesDir, fileName)
+        try {
+            contentResolver.openInputStream(uri)?.use { input -> outputFile.outputStream().use { output -> input.copyTo(output) } }
+                ?: error("Cannot read source image")
+        } catch (error: Exception) {
+            outputFile.delete()
+            throw error
+        }
+        upsertSignature(
+            SavedSignature(
+                name = cleanName,
+                strokes = emptyList(),
+                canvasWidth = 1f,
+                canvasHeight = 1f,
+                savedAt = System.currentTimeMillis(),
+                imageFileName = fileName,
+            )
+        )
         return cleanName
     }
 
     fun deleteSignature(name: String) {
         val index = signatures.indexOfFirst { it.name == name }
         if (index >= 0) {
-            signatures.removeAt(index)
+            val removed = signatures.removeAt(index)
+            removed.imageFileName?.let { fileName ->
+                executor.execute { File(getApplication<Application>().filesDir, fileName).delete() }
+            }
             persistSignatures()
         }
+    }
+
+    fun signatureImageFile(signature: SavedSignature): File? =
+        signature.imageFileName?.let { File(getApplication<Application>().filesDir, it).takeIf(File::exists) }
+
+    private fun upsertSignature(signature: SavedSignature) {
+        val existingIndex = signatures.indexOfFirst { it.name.equals(signature.name, ignoreCase = true) }
+        if (existingIndex >= 0) {
+            val replaced = signatures.removeAt(existingIndex)
+            if (replaced.imageFileName != null && replaced.imageFileName != signature.imageFileName) {
+                executor.execute { File(getApplication<Application>().filesDir, replaced.imageFileName).delete() }
+            }
+        }
+        signatures.add(0, signature)
+        persistSignatures()
     }
 
     private fun loadTypeface(file: File) = if (Build.VERSION.SDK_INT >= 26) Typeface.Builder(file).build() else Typeface.createFromFile(file)
