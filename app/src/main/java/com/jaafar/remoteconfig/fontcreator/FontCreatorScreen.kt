@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -42,7 +43,8 @@ import androidx.core.content.FileProvider
 private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
 private const val USE_SELECTED_FONT_KEY = "use_selected_font_for_app"
 
-private enum class Screen { Dashboard, Fonts, Letters, Spacing, Image, PdfFont, Signature, Settings }
+private enum class Screen { Home, Library, Fonts, Letters, Spacing, Image, PdfFont, Signature, Settings }
+private enum class LibraryTab { Fonts, Signatures }
 
 @Composable
 fun FontCreatorApp(viewModel: FontCreatorViewModel) {
@@ -51,7 +53,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
     var darkTheme by remember { mutableStateOf(preferences.getBoolean("dark_theme", false)) }
     var useSelectedFont by remember { mutableStateOf(preferences.getBoolean(USE_SELECTED_FONT_KEY, false)) }
     var previewText by remember { mutableStateOf(preferences.getString("preview_text", DEFAULT_PREVIEW_TEXT) ?: DEFAULT_PREVIEW_TEXT) }
-    var screen by remember { mutableStateOf(Screen.Dashboard) }
+    var screen by remember { mutableStateOf(Screen.Home) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var imageTypeface by remember { mutableStateOf<Typeface?>(null) }
     MaterialTheme(
@@ -73,13 +75,20 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
                 onSave = viewModel::saveDrawing,
             )
             else -> when (screen) {
-                Screen.Dashboard -> Dashboard(viewModel, { screen = it })
-                Screen.Fonts -> FontsScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }, { screen = Screen.Dashboard }, { screen = Screen.Letters }, { screen = Screen.Spacing })
-                Screen.Letters -> LettersScreen(viewModel, { screen = Screen.Dashboard })
+                Screen.Home -> HomeScreen(viewModel, { screen = it })
+                Screen.Library -> LibraryScreen(
+                    vm = viewModel,
+                    back = { screen = Screen.Home },
+                    openFontManager = { screen = Screen.Fonts },
+                    openSignatureManager = { screen = Screen.Signature },
+                    openLetterEditor = { screen = Screen.Letters },
+                )
+                Screen.Fonts -> FontsScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }, { screen = Screen.Home }, { screen = Screen.Letters }, { screen = Screen.Spacing })
+                Screen.Letters -> LettersScreen(viewModel, { screen = Screen.Home })
                 Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Fonts }
-                Screen.Image -> ImageScreen(viewModel, { screen = Screen.Dashboard }) { tf, uri -> imageTypeface = tf; imageUri = uri }
-                Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Dashboard }
-                Screen.Signature -> SignatureScreen(viewModel) { screen = Screen.Dashboard }
+                Screen.Image -> ImageScreen(viewModel, { screen = Screen.Home }) { tf, uri -> imageTypeface = tf; imageUri = uri }
+                Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Home }
+                Screen.Signature -> SignatureScreen(viewModel) { screen = Screen.Home }
                 Screen.Settings -> SettingsScreen(
                     vm = viewModel,
                     dark = darkTheme,
@@ -88,7 +97,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
                     changeUseSelectedFont = { value -> useSelectedFont = value; preferences.edit().putBoolean(USE_SELECTED_FONT_KEY, value).apply() },
                     previewText = previewText,
                     changePreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
-                ) { screen = Screen.Dashboard }
+                ) { screen = Screen.Home }
             }
         }
     }
@@ -131,20 +140,98 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     )
 }
 
-@Composable private fun Dashboard(vm: FontCreatorViewModel, go: (Screen) -> Unit) = Page("Font Creator") {
-    Text("Dashboard", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-    Text("${vm.projects.size} saved font${if (vm.projects.size == 1) "" else "s"}")
-    DashboardButton("My fonts", "Create, open, generate, and share named fonts") { go(Screen.Fonts) }
-    DashboardButton("Letters", "Draw and manage characters for the open font", vm.activeProject != null) { go(Screen.Letters) }
-    DashboardButton("Write on image", "Use the generated font on a photo") { go(Screen.Image) }
-    DashboardButton("PDF font converter", "Recognize text from an image or rasterized PDF and rebuild it with your selected font") { go(Screen.PdfFont) }
-    DashboardButton("Signature", "Draw, save, and apply a signature to images or PDFs") { go(Screen.Signature) }
-    DashboardButton("Settings", "Change appearance and preview text") { go(Screen.Settings) }
+@Composable private fun HomeScreen(vm: FontCreatorViewModel, go: (Screen) -> Unit) = Page("Home", actions = {
+    TextButton(onClick = { go(Screen.Settings) }) { Text("Settings") }
+}) {
+    Text("Choose an action", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+    HomeButton("Create a Font", "Start or continue your generated font workflow") { go(Screen.Fonts) }
+    HomeButton("Add Text to an Image", "Use the existing write-on-image workflow") { go(Screen.Image) }
+    HomeButton("Change Text in a Document", "Use PDF Font Converter (includes OCR inside this flow)") { go(Screen.PdfFont) }
+    HomeButton("Sign a Document", "Open your signature workflow for images and PDFs") { go(Screen.Signature) }
+    HomeButton("My Library", "Browse and manage your fonts and signatures") { go(Screen.Library) }
     vm.activeProject?.let { Text("Open font: ${it.name}", style = MaterialTheme.typography.titleMedium) }
 }
 
-@Composable private fun DashboardButton(title: String, detail: String, enabled: Boolean = true, click: () -> Unit) {
+@Composable private fun HomeButton(title: String, detail: String, enabled: Boolean = true, click: () -> Unit) {
     OutlinedButton(onClick = click, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth()) { Text(title, fontWeight = FontWeight.Bold); Text(detail, style = MaterialTheme.typography.bodySmall) } }
+}
+
+@Composable
+private fun LibraryScreen(
+    vm: FontCreatorViewModel,
+    back: () -> Unit,
+    openFontManager: () -> Unit,
+    openSignatureManager: () -> Unit,
+    openLetterEditor: () -> Unit,
+) = Page("My Library", back) {
+    var tab by remember { mutableStateOf(LibraryTab.Fonts) }
+    TabRow(selectedTabIndex = tab.ordinal) {
+        LibraryTab.entries.forEach { section ->
+            Tab(
+                selected = tab == section,
+                onClick = { tab = section },
+                text = { Text(if (section == LibraryTab.Fonts) "Fonts" else "Signatures") }
+            )
+        }
+    }
+    when (tab) {
+        LibraryTab.Fonts -> {
+            Text("${vm.projects.size} generated · ${vm.importedFonts.size} imported")
+            if (vm.projects.isEmpty() && vm.importedFonts.isEmpty()) {
+                Text("No fonts in your library yet.")
+            } else {
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (vm.projects.isNotEmpty()) {
+                        item { Text("Generated fonts", style = MaterialTheme.typography.titleSmall) }
+                        itemsIndexed(vm.projects) { index, project ->
+                            OutlinedCard(Modifier.fillMaxWidth()) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(project.name, style = MaterialTheme.typography.titleMedium)
+                                        Text("${project.drawings.size} drawn characters")
+                                    }
+                                    OutlinedButton(onClick = { vm.openProject(index); openLetterEditor() }) { Text("Edit letters") }
+                                }
+                            }
+                        }
+                    }
+                    if (vm.importedFonts.isNotEmpty()) {
+                        item { Text("Imported fonts", style = MaterialTheme.typography.titleSmall) }
+                        itemsIndexed(vm.importedFonts) { _, font ->
+                            OutlinedCard(Modifier.fillMaxWidth()) {
+                                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                                    Text(font.displayName, style = MaterialTheme.typography.titleMedium)
+                                    Text("Imported · read-only", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            OutlinedButton(openFontManager, Modifier.fillMaxWidth()) { Text("Open font manager") }
+        }
+        LibraryTab.Signatures -> {
+            Text("${vm.signatures.size} saved signature${if (vm.signatures.size == 1) "" else "s"}")
+            if (vm.signatures.isEmpty()) {
+                Text("No signatures in your library yet.")
+            } else {
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(vm.signatures) { signature ->
+                        OutlinedCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                                Text(signature.name, style = MaterialTheme.typography.titleMedium)
+                                Text("Use the signature library to preview, edit, and apply.", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+            OutlinedButton(openSignatureManager, Modifier.fillMaxWidth()) { Text("Open signature library") }
+        }
+    }
 }
 
 @Composable private fun FontsScreen(vm: FontCreatorViewModel, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit, edit: () -> Unit, spacing: () -> Unit) {
@@ -497,7 +584,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
         }
     }
     HorizontalDivider()
-    Text("Font preview", style = MaterialTheme.typography.titleMedium)
+    Text("Default preview text", style = MaterialTheme.typography.titleMedium)
     OutlinedTextField(
         previewText,
         changePreviewText,
@@ -507,6 +594,17 @@ private enum class ActionIconType { Add, Edit, Share, Import }
         minLines = 3
     )
     TextButton(onClick = { changePreviewText(DEFAULT_PREVIEW_TEXT) }, enabled = previewText != DEFAULT_PREVIEW_TEXT) { Text("Restore default") }
+    HorizontalDivider()
+    Text("Privacy & storage", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "All fonts, signatures, and generated files are stored locally on this device.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Text("You can remove imported fonts and signatures from their library screens at any time.", style = MaterialTheme.typography.bodySmall)
+    HorizontalDivider()
+    Text("Help & about", style = MaterialTheme.typography.titleMedium)
+    Text("Use Home to start common tasks and My Library to manage saved assets.", style = MaterialTheme.typography.bodySmall)
+    Text("App data stays on-device unless you explicitly share exported files.", style = MaterialTheme.typography.bodySmall)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
