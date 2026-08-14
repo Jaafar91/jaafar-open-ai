@@ -38,7 +38,7 @@ import androidx.core.content.FileProvider
 private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
 private const val USE_SELECTED_FONT_KEY = "use_selected_font_for_app"
 
-private enum class Screen { Dashboard, Fonts, Letters, Spacing, Image, Settings }
+private enum class Screen { Dashboard, Fonts, Letters, Spacing, Image, PdfFont, Settings }
 
 @Composable
 fun FontCreatorApp(viewModel: FontCreatorViewModel) {
@@ -62,6 +62,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
                 Screen.Letters -> LettersScreen(viewModel, { screen = Screen.Dashboard }, { screen = Screen.Spacing })
                 Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Letters }
                 Screen.Image -> ImageScreen(viewModel, { screen = Screen.Dashboard }) { imageUri = it }
+                Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Dashboard }
                 Screen.Settings -> SettingsScreen(
                     darkTheme,
                     { value -> darkTheme = value; preferences.edit().putBoolean("dark_theme", value).apply() },
@@ -76,7 +77,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun Page(title: String, back: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
+@Composable internal fun Page(title: String, back: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
     Scaffold(topBar = { AppTopBar(title, back, actions) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
     }
@@ -118,6 +119,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     DashboardButton("My fonts", "Create, open, generate, and share named fonts") { go(Screen.Fonts) }
     DashboardButton("Letters", "Draw and manage characters for the open font", vm.activeProject != null) { go(Screen.Letters) }
     DashboardButton("Write on image", "Use the generated font on a photo", vm.previewTypeface != null) { go(Screen.Image) }
+    DashboardButton("PDF font converter", "Upload a PDF and rewrite it with your selected font") { go(Screen.PdfFont) }
     DashboardButton("Settings", "Change appearance and preview text") { go(Screen.Settings) }
     vm.activeProject?.let { Text("Open font: ${it.name}", style = MaterialTheme.typography.titleMedium) }
 }
