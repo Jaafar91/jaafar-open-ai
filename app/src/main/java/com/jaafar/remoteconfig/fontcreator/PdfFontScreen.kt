@@ -276,7 +276,7 @@ private suspend fun recognizeDocument(
     runCatching {
         val recognizer = RasterTextRecognizer(typeface)
         val mimeType = context.contentResolver.getType(sourceUri)
-        val looksLikePdf = mimeType == null && displayNameForUri(context, sourceUri)?.endsWith(".pdf", true) == true
+        val looksLikePdf = displayNameForUri(context, sourceUri)?.endsWith(".pdf", true) == true
         when {
             mimeType == "application/pdf" || looksLikePdf -> {
                 context.contentResolver.openFileDescriptor(sourceUri, "r")?.use { pfd ->

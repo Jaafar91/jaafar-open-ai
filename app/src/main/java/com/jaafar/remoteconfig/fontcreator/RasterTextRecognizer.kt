@@ -269,7 +269,7 @@ private data class BinaryMask(
                 luminance[index] = value
                 total += value
             }
-            val threshold = (total / luminance.size).toInt().coerceIn(30, 225)
+            val threshold = (total / luminance.size.coerceAtLeast(1)).toInt().coerceIn(30, 225)
             val mask = BooleanArray(pixels.size) { index -> luminance[index] < threshold }
             val darkPixels = mask.count { it }
             val shouldInvert = darkPixels > mask.size / 2
