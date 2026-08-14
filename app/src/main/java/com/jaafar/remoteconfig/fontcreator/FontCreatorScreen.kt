@@ -1,6 +1,7 @@
 package com.jaafar.remoteconfig.fontcreator
 
 import android.content.Intent
+import android.graphics.Typeface
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,7 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -49,28 +53,41 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
     var previewText by remember { mutableStateOf(preferences.getString("preview_text", DEFAULT_PREVIEW_TEXT) ?: DEFAULT_PREVIEW_TEXT) }
     var screen by remember { mutableStateOf(Screen.Dashboard) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
+    var imageTypeface by remember { mutableStateOf<Typeface?>(null) }
     MaterialTheme(
         colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme(),
         typography = appTypography(viewModel.previewTypeface?.takeIf { useSelectedFont }?.let(::FontFamily)),
     ) {
+        val referenceTypeface = remember(viewModel.referenceFontKey, viewModel.projects.size, viewModel.importedFonts.size) {
+            viewModel.referenceTypeface()
+        }
         when {
-            imageUri != null && viewModel.previewTypeface != null -> ImageTextEditorScreen(imageUri!!, viewModel.previewTypeface!!) { imageUri = null }
-            viewModel.selectedCodePoint != null -> GlyphEditorScreen(viewModel.selectedCodePoint!!, viewModel.drawings[viewModel.selectedCodePoint], viewModel.isPagingMode, viewModel::closeEditor, viewModel::skipLetter, viewModel::saveDrawing)
+            imageUri != null && imageTypeface != null -> ImageTextEditorScreen(imageUri!!, imageTypeface!!) { imageUri = null; imageTypeface = null }
+            viewModel.selectedCodePoint != null -> GlyphEditorScreen(
+                codePoint = viewModel.selectedCodePoint!!,
+                initial = viewModel.drawings[viewModel.selectedCodePoint],
+                pagingMode = viewModel.isPagingMode,
+                referenceTypeface = referenceTypeface,
+                onCancel = viewModel::closeEditor,
+                onSkip = viewModel::skipLetter,
+                onSave = viewModel::saveDrawing,
+            )
             else -> when (screen) {
                 Screen.Dashboard -> Dashboard(viewModel, { screen = it })
                 Screen.Fonts -> FontsScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }, { screen = Screen.Dashboard }, { screen = Screen.Letters }, { screen = Screen.Spacing })
                 Screen.Letters -> LettersScreen(viewModel, { screen = Screen.Dashboard })
                 Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Fonts }
-                Screen.Image -> ImageScreen(viewModel, { screen = Screen.Dashboard }) { imageUri = it }
+                Screen.Image -> ImageScreen(viewModel, { screen = Screen.Dashboard }) { tf, uri -> imageTypeface = tf; imageUri = uri }
                 Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Dashboard }
                 Screen.Signature -> SignatureScreen(viewModel) { screen = Screen.Dashboard }
                 Screen.Settings -> SettingsScreen(
-                    darkTheme,
-                    { value -> darkTheme = value; preferences.edit().putBoolean("dark_theme", value).apply() },
-                    useSelectedFont,
-                    { value -> useSelectedFont = value; preferences.edit().putBoolean(USE_SELECTED_FONT_KEY, value).apply() },
-                    previewText,
-                    { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }
+                    vm = viewModel,
+                    dark = darkTheme,
+                    change = { value -> darkTheme = value; preferences.edit().putBoolean("dark_theme", value).apply() },
+                    useSelectedFont = useSelectedFont,
+                    changeUseSelectedFont = { value -> useSelectedFont = value; preferences.edit().putBoolean(USE_SELECTED_FONT_KEY, value).apply() },
+                    previewText = previewText,
+                    changePreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
                 ) { screen = Screen.Dashboard }
             }
         }
@@ -119,7 +136,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     Text("${vm.projects.size} saved font${if (vm.projects.size == 1) "" else "s"}")
     DashboardButton("My fonts", "Create, open, generate, and share named fonts") { go(Screen.Fonts) }
     DashboardButton("Letters", "Draw and manage characters for the open font", vm.activeProject != null) { go(Screen.Letters) }
-    DashboardButton("Write on image", "Use the generated font on a photo", vm.previewTypeface != null) { go(Screen.Image) }
+    DashboardButton("Write on image", "Use the generated font on a photo") { go(Screen.Image) }
     DashboardButton("PDF font converter", "Recognize text from an image or rasterized PDF and rebuild it with your selected font") { go(Screen.PdfFont) }
     DashboardButton("Signature", "Draw, save, and apply a signature to images or PDFs") { go(Screen.Signature) }
     DashboardButton("Settings", "Change appearance and preview text") { go(Screen.Settings) }
@@ -131,14 +148,36 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
 }
 
 @Composable private fun FontsScreen(vm: FontCreatorViewModel, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit, edit: () -> Unit, spacing: () -> Unit) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
+    var showImportNameDialog by remember { mutableStateOf(false) }
+    var importPendingUri by remember { mutableStateOf<Uri?>(null) }
+    var importDisplayName by remember { mutableStateOf("") }
+
+    val fontFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            // Pre-fill display name from filename
+            val raw = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+            } ?: uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "Imported Font"
+            importDisplayName = raw.substringBeforeLast('.').trim().ifEmpty { "Imported Font" }
+            importPendingUri = uri
+            showImportNameDialog = true
+        }
+    }
+
     Page("My fonts", back, actions = {
+        IconButton(onClick = { fontFilePicker.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream", "*/*")) }) {
+            ActionIcon(ActionIconType.Import, "Import font")
+        }
         IconButton(onClick = { showCreateDialog = true }) {
             ActionIcon(ActionIconType.Add, "Add font")
         }
     }) {
         Text("Each font is saved separately on this device.")
+        if (vm.importStatus.isNotBlank()) Text(vm.importStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         HorizontalDivider()
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(vm.projects) { index, project ->
@@ -154,6 +193,25 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
                         }
                         IconButton(onClick = { vm.openProject(index); edit() }) {
                             ActionIcon(ActionIconType.Edit, "Edit ${project.name} letters")
+                        }
+                    }
+                }
+            }
+            if (vm.importedFonts.isNotEmpty()) {
+                item {
+                    Text("Imported fonts", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+                }
+                itemsIndexed(vm.importedFonts) { _, font ->
+                    OutlinedCard(Modifier.fillMaxWidth()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(font.displayName, style = MaterialTheme.typography.titleMedium)
+                                Text("Imported · read-only", style = MaterialTheme.typography.bodySmall)
+                            }
+                            OutlinedButton(onClick = { vm.deleteImportedFont(font.displayName) }) { Text("Remove") }
                         }
                     }
                 }
@@ -190,6 +248,24 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
         confirmButton = { TextButton(onClick = { if (vm.createProject(name)) { showCreateDialog = false; name = ""; edit() } }, enabled = name.isNotBlank()) { Text("Create") } },
         dismissButton = { TextButton(onClick = { showCreateDialog = false; name = "" }) { Text("Cancel") } }
     )
+    if (showImportNameDialog) AlertDialog(
+        onDismissRequest = { showImportNameDialog = false; importPendingUri = null },
+        title = { Text("Import font") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Choose a display name for this font.")
+                OutlinedTextField(importDisplayName, { importDisplayName = it }, Modifier.fillMaxWidth(), label = { Text("Display name") }, singleLine = true)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val uri = importPendingUri
+                if (uri != null) vm.importFont(context.contentResolver, uri, importDisplayName)
+                showImportNameDialog = false; importPendingUri = null
+            }, enabled = importDisplayName.isNotBlank()) { Text("Import") }
+        },
+        dismissButton = { TextButton(onClick = { showImportNameDialog = false; importPendingUri = null }) { Text("Cancel") } }
+    )
 }
 
 @Composable private fun ShareButton(file: java.io.File, name: String) {
@@ -197,7 +273,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     IconButton(onClick = { val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file); context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "font/ttf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Share $name")) }) { ActionIcon(ActionIconType.Share, "Share $name") }
 }
 
-private enum class ActionIconType { Add, Edit, Share }
+private enum class ActionIconType { Add, Edit, Share, Import }
 
 @Composable private fun ActionIcon(type: ActionIconType, description: String) {
     val color = LocalContentColor.current
@@ -222,6 +298,13 @@ private enum class ActionIconType { Add, Edit, Share }
                 drawCircle(color, radius, left)
                 drawCircle(color, radius, top)
                 drawCircle(color, radius, bottom)
+            }
+            ActionIconType.Import -> {
+                // Down-arrow-into-tray icon
+                drawLine(color, Offset(size.width / 2, size.height * .15f), Offset(size.width / 2, size.height * .7f), stroke)
+                drawLine(color, Offset(size.width * .3f, size.height * .5f), Offset(size.width / 2, size.height * .7f), stroke)
+                drawLine(color, Offset(size.width * .7f, size.height * .5f), Offset(size.width / 2, size.height * .7f), stroke)
+                drawLine(color, Offset(size.width * .2f, size.height * .82f), Offset(size.width * .8f, size.height * .82f), stroke)
             }
         }
     }
@@ -330,12 +413,39 @@ private enum class ActionIconType { Add, Edit, Share }
     if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
 }
 
-@Composable private fun ImageScreen(vm: FontCreatorViewModel, back: () -> Unit, selected: (Uri) -> Unit) {
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { it?.let(selected) }
-    Page("Write on image", back) { Text("Choose one image, then add text using ${vm.activeProject?.name.orEmpty()}."); Button({ picker.launch("image/*") }, Modifier.fillMaxWidth(), enabled = vm.previewTypeface != null) { Text("Choose image") } }
+@Composable private fun ImageScreen(vm: FontCreatorViewModel, back: () -> Unit, selected: (Typeface, Uri) -> Unit) {
+    val context = LocalContext.current
+    val allFonts = remember(vm.projects, vm.importedFonts) { vm.allFontOptions() }
+    val systemFonts = listOf("Default" to Typeface.DEFAULT, "Serif" to Typeface.SERIF, "Sans-Serif" to Typeface.SANS_SERIF, "Monospace" to Typeface.MONOSPACE)
+    val allAvailable = systemFonts + allFonts
+    var selectedFontLabel by remember(allAvailable) { mutableStateOf(allAvailable.firstOrNull()?.first ?: "Default") }
+    var expanded by remember { mutableStateOf(false) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            val tf = allAvailable.firstOrNull { it.first == selectedFontLabel }?.second ?: Typeface.DEFAULT
+            selected(tf, uri)
+        }
+    }
+    Page("Write on image", back) {
+        Text("Choose a font, then choose an image to write on.")
+        Box {
+            OutlinedButton({ expanded = true }, Modifier.fillMaxWidth()) { Text("Font: $selectedFontLabel") }
+            DropdownMenu(expanded, { expanded = false }) {
+                allAvailable.forEach { (label, _) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = { selectedFontLabel = label; expanded = false },
+                        trailingIcon = { if (label == selectedFontLabel) Text("✓") },
+                    )
+                }
+            }
+        }
+        Button({ picker.launch("image/*") }, Modifier.fillMaxWidth()) { Text("Choose image") }
+    }
 }
 
 @Composable private fun SettingsScreen(
+    vm: FontCreatorViewModel,
     dark: Boolean,
     change: (Boolean) -> Unit,
     useSelectedFont: Boolean,
@@ -362,6 +472,31 @@ private enum class ActionIconType { Add, Edit, Share }
         Switch(checked = useSelectedFont, onCheckedChange = changeUseSelectedFont)
     }
     HorizontalDivider()
+    // Letter reference font picker
+    val referenceFontOptions = remember(vm.projects, vm.importedFonts) {
+        val builtIn = listOf("Default", "Sans-serif", "Serif", "Monospace")
+        val userFontNames = vm.allFontOptions().map { it.first }
+        builtIn + userFontNames
+    }
+    var refExpanded by remember { mutableStateOf(false) }
+    Text("Letter reference font", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "A faint guide glyph shown while drawing letters. Does not affect the app font.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Box {
+        OutlinedButton({ refExpanded = true }, Modifier.fillMaxWidth()) { Text(vm.referenceFontKey) }
+        DropdownMenu(refExpanded, { refExpanded = false }) {
+            referenceFontOptions.forEach { key ->
+                DropdownMenuItem(
+                    text = { Text(key) },
+                    onClick = { vm.setReferenceFont(key); refExpanded = false },
+                    trailingIcon = { if (key == vm.referenceFontKey) Text("✓") },
+                )
+            }
+        }
+    }
+    HorizontalDivider()
     Text("Font preview", style = MaterialTheme.typography.titleMedium)
     OutlinedTextField(
         previewText,
@@ -375,7 +510,7 @@ private enum class ActionIconType { Add, Edit, Share }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun GlyphEditorScreen(codePoint: Int, initial: GlyphDrawing?, pagingMode: Boolean, onCancel: () -> Unit, onSkip: () -> Unit, onSave: (GlyphDrawing) -> Unit) {
+@Composable private fun GlyphEditorScreen(codePoint: Int, initial: GlyphDrawing?, pagingMode: Boolean, referenceTypeface: Typeface?, onCancel: () -> Unit, onSkip: () -> Unit, onSave: (GlyphDrawing) -> Unit) {
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember(codePoint) { mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)) }
@@ -389,12 +524,29 @@ private enum class ActionIconType { Add, Edit, Share }
                 ) { Text(codePoint.toChar().toString(), style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Bold) }
                 Canvas(Modifier.weight(.7f).fillMaxHeight().background(Color.White).border(1.dp, Color.Gray).pointerInput(codePoint, strokes) { detectDragGestures(onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) }, onDrag = { change, _ -> change.consume(); val next = GlyphPoint(change.position.x, change.position.y); if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) active = active + next }, onDragEnd = { if (active.size > 1) strokes = strokes + GlyphStroke(active); active = emptyList() }, onDragCancel = { active = emptyList() }) }) {
                     canvasSize = size.width to size.height
+                    // Draw faint reference glyph if a reference typeface is set
+                    if (referenceTypeface != null) {
+                        drawIntoCanvas { canvas ->
+                            val refPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                typeface = referenceTypeface
+                                textSize = size.height * 0.72f
+                                color = android.graphics.Color.argb(40, 0, 0, 0)
+                                textAlign = android.graphics.Paint.Align.CENTER
+                            }
+                            canvas.nativeCanvas.drawText(
+                                codePoint.toChar().toString(),
+                                size.width / 2,
+                                size.height * 0.82f,
+                                refPaint,
+                            )
+                        }
+                    }
                     drawCoordinateRulers()
                     drawLine(Color.LightGray, Offset(0f, size.height * .1f), Offset(size.width, size.height * .1f), 2f); drawLine(Color.Red, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f), 3f); drawLine(Color.LightGray, Offset(0f, size.height * .94f), Offset(size.width, size.height * .94f), 2f)
-                    (strokes.map { it.points } + listOf(active)).forEach { points -> if (points.size > 1) drawPath(Path().apply { moveTo(points[0].x, points[0].y); points.drop(1).forEach { lineTo(it.x, it.y) } }, Color.Black, style = Stroke(8f)) }
+                    (strokes.map { it.points } + listOf(active)).forEach { points -> if (points.size > 1) drawPath(Path().apply { moveTo(points[0].x, points[0].y); points.drop(1).forEach { lineTo(it.x, it.y) } }, Color.Black, style = Stroke(8f, cap = StrokeCap.Round, join = StrokeJoin.Round)) }
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onCancel) { Text("Cancel") }; OutlinedButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }; if (pagingMode) OutlinedButton(onSkip) { Text("Skip") }; Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) { Text(if (pagingMode) "Save & next" else "Save letter") } }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onCancel) { Text("Cancel") }; OutlinedButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }; OutlinedButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) { Text("Clear") }; if (pagingMode) OutlinedButton(onSkip) { Text("Skip") }; Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) { Text(if (pagingMode) "Save & next" else "Save letter") } }
         }
     }
 }

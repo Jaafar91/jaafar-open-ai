@@ -76,18 +76,8 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
     var outputFile by remember { mutableStateOf<File?>(null) }
     var recognizedDocument by remember { mutableStateOf<RecognizedDocument?>(null) }
 
-    val availableFonts: List<Pair<String, Typeface>> = remember(vm.projects, vm.previewTypeface) {
-        val userFonts = vm.projects.mapNotNull { project ->
-            val file = File(context.filesDir, "font-${project.name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')}.ttf")
-            if (file.exists()) {
-                val typeface = runCatching {
-                    if (Build.VERSION.SDK_INT >= 26) Typeface.Builder(file).build()
-                    else Typeface.createFromFile(file)
-                }.getOrNull()
-                if (typeface != null) project.name to typeface else null
-            } else null
-        }
-        SYSTEM_FONTS + userFonts
+    val availableFonts: List<Pair<String, Typeface>> = remember(vm.projects, vm.importedFonts, vm.previewTypeface) {
+        SYSTEM_FONTS + vm.allFontOptions()
     }
 
     val selectedTypeface = availableFonts.firstOrNull { it.first == selectedFontLabel }?.second
