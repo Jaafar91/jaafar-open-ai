@@ -2,21 +2,39 @@ package com.jaafar.remoteconfig.fontcreator
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Canvas
+import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.ImageDecoder
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
-import android.os.ParcelFileDescriptor
+import android.os.Build
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -40,22 +58,23 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var pdfUri by remember { mutableStateOf<Uri?>(null) }
-    var pdfName by remember { mutableStateOf("") }
+    var sourceUri by remember { mutableStateOf<Uri?>(null) }
+    var sourceName by remember { mutableStateOf("") }
     var selectedFontLabel by remember { mutableStateOf(SYSTEM_FONTS.first().first) }
     var expanded by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
-    var fontReplacementNotice by remember { mutableStateOf("") }
+    var extractionNotice by remember { mutableStateOf(DEFAULT_NOTICE) }
     var isError by remember { mutableStateOf(false) }
     var isProcessing by remember { mutableStateOf(false) }
     var outputFile by remember { mutableStateOf<File?>(null) }
+    var recognizedDocument by remember { mutableStateOf<RecognizedDocument?>(null) }
 
     val availableFonts: List<Pair<String, Typeface>> = remember(vm.projects, vm.previewTypeface) {
         val userFonts = vm.projects.mapNotNull { project ->
             val file = File(context.filesDir, "font-${project.name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')}.ttf")
             if (file.exists()) {
                 val typeface = runCatching {
-                    if (android.os.Build.VERSION.SDK_INT >= 26) Typeface.Builder(file).build()
+                    if (Build.VERSION.SDK_INT >= 26) Typeface.Builder(file).build()
                     else Typeface.createFromFile(file)
                 }.getOrNull()
                 if (typeface != null) project.name to typeface else null
@@ -67,15 +86,16 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
     val selectedTypeface = availableFonts.firstOrNull { it.first == selectedFontLabel }?.second
         ?: Typeface.DEFAULT
 
-    val pdfPickerLauncher = rememberLauncherForActivityResult(
+    val sourcePickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            pdfUri = uri
-            pdfName = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "document.pdf"
+            sourceUri = uri
+            sourceName = displayNameForUri(context, uri) ?: "document"
             outputFile = null
+            recognizedDocument = null
             status = ""
-            fontReplacementNotice = ""
+            extractionNotice = DEFAULT_NOTICE
             isError = false
         }
     }
@@ -86,21 +106,19 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                "Upload a PDF and convert it. Note: Android renders PDF pages as images, so original PDF fonts cannot be replaced.",
+                "Select an image or rasterized PDF, recognize its text with the closest matching font, then rebuild a fresh PDF using that font.",
                 style = MaterialTheme.typography.bodyMedium
             )
 
-            // Step 1: Pick PDF
-            SectionLabel("Step 1 – Select a PDF file")
+            SectionLabel("Step 1 – Select an image or PDF")
             OutlinedButton(
-                onClick = { pdfPickerLauncher.launch(arrayOf("application/pdf")) },
+                onClick = { sourcePickerLauncher.launch(arrayOf("application/pdf", "image/*")) },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (pdfName.isNotEmpty()) "📄 $pdfName" else "Choose PDF file")
+                Text(if (sourceName.isNotEmpty()) "📄 $sourceName" else "Choose image or PDF")
             }
 
-            // Step 2: Select font
-            SectionLabel("Step 2 – Select a font")
+            SectionLabel("Step 2 – Select the source font")
             Box(Modifier.fillMaxWidth()) {
                 OutlinedButton(
                     onClick = { expanded = true },
@@ -112,36 +130,82 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                     availableFonts.forEach { (label, _) ->
                         DropdownMenuItem(
                             text = { Text(label) },
-                            onClick = { selectedFontLabel = label; expanded = false }
+                            onClick = {
+                                selectedFontLabel = label
+                                recognizedDocument = null
+                                outputFile = null
+                                status = ""
+                                extractionNotice = DEFAULT_NOTICE
+                                isError = false
+                                expanded = false
+                            }
                         )
                     }
                 }
             }
 
-            // Step 3: Generate
-            SectionLabel("Step 3 – Generate PDF")
+            SectionLabel("Step 3 – Recognize text")
             Button(
                 onClick = {
-                    val uri = pdfUri ?: return@Button
+                    val uri = sourceUri ?: return@Button
                     isProcessing = true
-                    status = "Processing…"
-                    fontReplacementNotice = ""
+                    status = "Recognizing text…"
+                    extractionNotice = DEFAULT_NOTICE
                     outputFile = null
                     scope.launch {
-                        val result = convertPdf(context, uri, selectedTypeface)
+                        val document = recognizeDocument(context, uri, selectedTypeface)
                         isProcessing = false
-                        if (result != null) {
-                            outputFile = result.file
-                            status = "PDF generated successfully."
-                            fontReplacementNotice = result.fontReplacementNotice
+                        if (document != null && document.extractedText.isNotBlank()) {
+                            recognizedDocument = document
+                            status = "Recognized text from ${document.pages.size} page${if (document.pages.size == 1) "" else "s"}."
+                            extractionNotice = OCR_NOTICE
                             isError = false
                         } else {
-                            status = "Failed to process the PDF. Make sure the file is a valid PDF."
+                            recognizedDocument = null
+                            status = "No text could be recognized. Try a cleaner scan or choose a font closer to the source."
+                            extractionNotice = OCR_NOTICE
                             isError = true
                         }
                     }
                 },
-                enabled = pdfUri != null && !isProcessing,
+                enabled = sourceUri != null && !isProcessing,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isProcessing) "Recognizing…" else "Recognize text")
+            }
+
+            recognizedDocument?.let { document ->
+                OutlinedTextField(
+                    value = document.extractedText,
+                    onValueChange = {},
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Recognized text preview") },
+                    minLines = 5,
+                    readOnly = true,
+                )
+            }
+
+            SectionLabel("Step 4 – Generate rebuilt PDF")
+            Button(
+                onClick = {
+                    val document = recognizedDocument ?: return@Button
+                    isProcessing = true
+                    status = "Generating PDF…"
+                    outputFile = null
+                    scope.launch {
+                        val result = rebuildPdf(context, document, selectedTypeface)
+                        isProcessing = false
+                        if (result != null) {
+                            outputFile = result
+                            status = "PDF generated successfully."
+                            isError = false
+                        } else {
+                            status = "Failed to generate the PDF."
+                            isError = true
+                        }
+                    }
+                },
+                enabled = recognizedDocument != null && !isProcessing,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(if (isProcessing) "Generating…" else "Generate PDF")
@@ -158,9 +222,9 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                     color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                 )
             }
-            if (fontReplacementNotice.isNotEmpty()) {
+            if (extractionNotice.isNotEmpty()) {
                 Text(
-                    fontReplacementNotice,
+                    extractionNotice,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.secondary
                 )
@@ -204,75 +268,105 @@ private fun SectionLabel(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
 }
 
-private data class PdfConversionResult(
-    val file: File,
-    val fontReplacementNotice: String
-)
-
-private suspend fun convertPdf(
+private suspend fun recognizeDocument(
     context: android.content.Context,
     sourceUri: Uri,
     typeface: Typeface
-): PdfConversionResult? = withContext(Dispatchers.IO) {
+): RecognizedDocument? = withContext(Dispatchers.IO) {
     runCatching {
-        val pfd: ParcelFileDescriptor = context.contentResolver.openFileDescriptor(sourceUri, "r")
-            ?: return@runCatching null
-
-        val renderer = PdfRenderer(pfd)
-        val pageCount = renderer.pageCount
-        val outputDoc = PdfDocument()
-
-        val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-        val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.typeface = typeface
-            textSize = 24f
-            color = Color.DKGRAY
+        val recognizer = RasterTextRecognizer(typeface)
+        val mimeType = context.contentResolver.getType(sourceUri)
+        val looksLikePdf = displayNameForUri(context, sourceUri)?.endsWith(".pdf", true) == true
+        when {
+            mimeType == "application/pdf" || looksLikePdf -> {
+                context.contentResolver.openFileDescriptor(sourceUri, "r")?.use { pfd ->
+                    PdfRenderer(pfd).use { renderer ->
+                        val pages = buildList {
+                            for (index in 0 until renderer.pageCount) {
+                                val page = renderer.openPage(index)
+                                val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
+                                bitmap.eraseColor(Color.WHITE)
+                                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                add(recognizer.recognize(bitmap))
+                                page.close()
+                                bitmap.recycle()
+                            }
+                        }
+                        RecognizedDocument(pages)
+                    }
+                }
+            }
+            else -> {
+                val bitmap = loadBitmap(context.contentResolver, sourceUri) ?: return@runCatching null
+                val page = recognizer.recognize(bitmap)
+                bitmap.recycle()
+                RecognizedDocument(listOf(page))
+            }
         }
-
-        for (i in 0 until pageCount) {
-            val page = renderer.openPage(i)
-            val width = page.width
-            val height = page.height
-
-            // Render the PDF page to a bitmap
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-            canvas.drawColor(Color.WHITE)
-            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            page.close()
-
-            // Create a new PDF page with the same dimensions
-            val pageInfo = PdfDocument.PageInfo.Builder(width, height, i + 1).create()
-            val outputPage = outputDoc.startPage(pageInfo)
-            val pageCanvas = outputPage.canvas
-
-            // Draw the original page content
-            pageCanvas.drawBitmap(bitmap, 0f, 0f, bitmapPaint)
-            bitmap.recycle()
-
-            // Draw a footer with the selected font (making the font choice visible)
-            val footerText = "${i + 1} / $pageCount"
-            val textWidth = footerPaint.measureText(footerText)
-            pageCanvas.drawText(
-                footerText,
-                (width - textWidth) / 2f,
-                height - 12f,
-                footerPaint
-            )
-
-            outputDoc.finishPage(outputPage)
-        }
-
-        renderer.close()
-        pfd.close()
-
-        val outputFile = File(context.filesDir, "converted-${System.currentTimeMillis()}.pdf")
-        FileOutputStream(outputFile).use { outputDoc.writeTo(it) }
-        outputDoc.close()
-        PdfConversionResult(
-            file = outputFile,
-            fontReplacementNotice = "Original PDF text stays unchanged because Android's PDF renderer rasterizes pages. The selected font is applied only to the generated page footer."
-        )
     }.getOrNull()
 }
+
+private fun loadBitmap(resolver: android.content.ContentResolver, uri: Uri): Bitmap? = runCatching {
+    if (Build.VERSION.SDK_INT >= 28) {
+        ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, uri)) { decoder, _, _ ->
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        }
+    } else {
+        resolver.openInputStream(uri).use { input -> BitmapFactory.decodeStream(input) }
+    }
+}.getOrNull()
+
+private suspend fun rebuildPdf(
+    context: android.content.Context,
+    document: RecognizedDocument,
+    typeface: Typeface
+): File? = withContext(Dispatchers.IO) {
+    runCatching {
+        val outputDoc = PdfDocument()
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.typeface = typeface
+            color = Color.BLACK
+        }
+        document.pages.forEachIndexed { index, page ->
+            val pageInfo = PdfDocument.PageInfo.Builder(page.width.coerceAtLeast(1), page.height.coerceAtLeast(1), index + 1).create()
+            val outputPage = outputDoc.startPage(pageInfo)
+            val canvas = outputPage.canvas
+            canvas.drawColor(Color.WHITE)
+            page.lines.forEach { line ->
+                if (line.text.isBlank()) return@forEach
+                val baseTextSize = line.height * BASE_TEXT_SIZE_RATIO
+                textPaint.textSize = baseTextSize
+                val measuredWidth = textPaint.measureText(line.text)
+                if (measuredWidth > 0f) {
+                    val scaledTextSize = textPaint.textSize * (line.width * TEXT_WIDTH_PADDING_RATIO / measuredWidth)
+                    textPaint.textSize = scaledTextSize.coerceIn(10f, baseTextSize * MAX_TEXT_UPSCALE_RATIO)
+                }
+                val baseline = (line.bottom - textPaint.descent()).coerceAtLeast(textPaint.textSize)
+                canvas.drawText(line.text, line.left.toFloat(), baseline, textPaint)
+            }
+            outputDoc.finishPage(outputPage)
+        }
+        val outputFile = File(context.filesDir, "rebuild-${System.currentTimeMillis()}.pdf")
+        FileOutputStream(outputFile).use { outputDoc.writeTo(it) }
+        outputDoc.close()
+        outputFile
+    }.getOrNull()
+}
+
+private fun displayNameForUri(context: android.content.Context, uri: Uri): String? {
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (index >= 0 && cursor.moveToFirst()) return cursor.getString(index)
+    }
+    return uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')
+}
+
+private const val DEFAULT_NOTICE =
+    "Tip: pick the font that most closely matches the source. Recognition works best on clean, high-contrast Latin text."
+
+private const val OCR_NOTICE =
+    "This OCR flow recognizes text from images or rasterized PDF pages, then rebuilds a fresh PDF using the selected font."
+
+private const val BASE_TEXT_SIZE_RATIO = 0.82f
+private const val TEXT_WIDTH_PADDING_RATIO = 1.04f
+private const val MAX_TEXT_UPSCALE_RATIO = 1.15f
