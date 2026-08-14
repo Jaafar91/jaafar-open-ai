@@ -6,11 +6,36 @@ import org.json.JSONObject
 const val UNITS_PER_EM = 2048
 const val MAX_EDITABLE_GLYPHS = 95
 
+/** A language/script block that a font project can include. */
+enum class LanguageScript(
+    val displayName: String,
+    /** Unicode code-point ranges covered by this script (inclusive). */
+    val ranges: List<IntRange>,
+) {
+    BASIC_LATIN("Basic Latin", listOf(0x0020..0x007E)),
+    LATIN_EXTENDED("Latin Extended", listOf(0x00C0..0x024F)),
+    ARABIC("Arabic", listOf(0x0600..0x06FF)),
+    HEBREW("Hebrew", listOf(0x0590..0x05FF)),
+    GREEK("Greek", listOf(0x0370..0x03FF)),
+    CYRILLIC("Cyrillic", listOf(0x0400..0x04FF)),
+    DEVANAGARI("Devanagari", listOf(0x0900..0x097F)),
+    CJK("CJK Unified Ideographs", listOf(0x4E00..0x9FFF)),
+    HANGUL("Hangul Syllables", listOf(0xAC00..0xD7A3)),
+    HIRAGANA("Hiragana", listOf(0x3040..0x309F)),
+    KATAKANA("Katakana", listOf(0x30A0..0x30FF)),
+    THAI("Thai", listOf(0x0E00..0x0E7F)),
+    ;
+
+    /** All code points covered by this script. */
+    val codePoints: List<Int> by lazy { ranges.flatMap { it.toList() } }
+}
+
 data class FontProject(
     val name: String,
     val drawings: List<GlyphDrawing> = emptyList(),
     val letterSpacingMm: Float = 0f,
     val wordSpacingMm: Float = 3f,
+    val selectedLanguages: Set<LanguageScript> = setOf(LanguageScript.BASIC_LATIN),
 )
 
 data class GlyphPoint(val x: Float, val y: Float, val onCurve: Boolean = true)

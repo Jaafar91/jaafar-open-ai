@@ -22,6 +22,16 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         }.distinct()
     }
 
+    /** Returns the ordered code points for the active project's selected languages. */
+    val activeCharacterOrder: List<Int> get() {
+        val project = activeProject ?: return CHARACTER_ORDER
+        return project.selectedLanguages
+            .flatMap { it.codePoints }
+            .distinct()
+            .filter { it != 0x20 } // exclude plain space (handled separately in spacing)
+            .sorted()
+    }
+
     private val repository = GlyphRepository(application)
     private val executor = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -53,8 +63,15 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     fun closeProject() { syncActive(); activeProjectIndex = null; drawings.clear(); generatedFont = null; previewTypeface = null }
     fun edit(codePoint: Int) { isPagingMode = false; selectedCodePoint = codePoint }
-    fun startPaging() = startQueue(CHARACTER_ORDER.filter { it != 32 && it !in drawings }, "All supported characters have already been drawn.")
-    fun drawMissingCharacters(text: String) = startQueue(text.asSequence().map { it.code }.filter { it in 33..126 && it !in drawings }.distinct().toList(), "This text has no missing supported characters.")
+    fun setLanguages(languages: Set<LanguageScript>): Boolean {
+        if (languages.isEmpty()) { status = "Select at least one language."; return false }
+        updateActive { it.copy(selectedLanguages = languages) }
+        status = "Languages saved."
+        return true
+    }
+
+    fun startPaging() = startQueue(activeCharacterOrder.filter { it !in drawings }, "All supported characters have already been drawn.")
+    fun drawMissingCharacters(text: String) = startQueue(text.asSequence().map { it.code }.filter { it != 0x20 && it in activeCharacterOrder && it !in drawings }.distinct().toList(), "This text has no missing supported characters.")
     private fun startQueue(queue: List<Int>, emptyMessage: String) {
         if (queue.isEmpty()) { status = emptyMessage; return }
         pagingQueue = queue; isPagingMode = true; selectedCodePoint = queue.first()
