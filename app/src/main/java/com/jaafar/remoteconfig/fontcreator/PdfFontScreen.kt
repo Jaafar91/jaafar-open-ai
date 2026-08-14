@@ -45,6 +45,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
     var selectedFontLabel by remember { mutableStateOf(SYSTEM_FONTS.first().first) }
     var expanded by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
+    var fontReplacementNotice by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
     var isProcessing by remember { mutableStateOf(false) }
     var outputFile by remember { mutableStateOf<File?>(null) }
@@ -74,6 +75,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
             pdfName = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "document.pdf"
             outputFile = null
             status = ""
+            fontReplacementNotice = ""
             isError = false
         }
     }
@@ -84,7 +86,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                "Upload a PDF and convert it using your selected font. Each page is rendered into the new PDF document.",
+                "Upload a PDF and convert it. Note: Android renders PDF pages as images, so original PDF fonts cannot be replaced.",
                 style = MaterialTheme.typography.bodyMedium
             )
 
@@ -123,13 +125,15 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                     val uri = pdfUri ?: return@Button
                     isProcessing = true
                     status = "Processing…"
+                    fontReplacementNotice = ""
                     outputFile = null
                     scope.launch {
                         val result = convertPdf(context, uri, selectedTypeface)
                         isProcessing = false
                         if (result != null) {
-                            outputFile = result
+                            outputFile = result.file
                             status = "PDF generated successfully."
+                            fontReplacementNotice = result.fontReplacementNotice
                             isError = false
                         } else {
                             status = "Failed to process the PDF. Make sure the file is a valid PDF."
@@ -152,6 +156,13 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                     status,
                     style = MaterialTheme.typography.bodySmall,
                     color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                )
+            }
+            if (fontReplacementNotice.isNotEmpty()) {
+                Text(
+                    fontReplacementNotice,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.secondary
                 )
             }
 
@@ -193,11 +204,16 @@ private fun SectionLabel(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
 }
 
+private data class PdfConversionResult(
+    val file: File,
+    val fontReplacementNotice: String
+)
+
 private suspend fun convertPdf(
     context: android.content.Context,
     sourceUri: Uri,
     typeface: Typeface
-): File? = withContext(Dispatchers.IO) {
+): PdfConversionResult? = withContext(Dispatchers.IO) {
     runCatching {
         val pfd: ParcelFileDescriptor = context.contentResolver.openFileDescriptor(sourceUri, "r")
             ?: return@runCatching null
@@ -254,6 +270,9 @@ private suspend fun convertPdf(
         val outputFile = File(context.filesDir, "converted-${System.currentTimeMillis()}.pdf")
         FileOutputStream(outputFile).use { outputDoc.writeTo(it) }
         outputDoc.close()
-        outputFile
+        PdfConversionResult(
+            file = outputFile,
+            fontReplacementNotice = "Original PDF text stays unchanged because Android's PDF renderer rasterizes pages. The selected font is applied only to the generated page footer."
+        )
     }.getOrNull()
 }
