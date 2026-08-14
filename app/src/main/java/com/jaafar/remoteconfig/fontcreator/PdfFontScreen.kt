@@ -11,7 +11,6 @@ import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
-import android.os.ParcelFileDescriptor
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -279,23 +278,22 @@ private suspend fun recognizeDocument(
         val looksLikePdf = sourceUri.lastPathSegment?.endsWith(".pdf", true) == true
         when {
             mimeType == "application/pdf" || looksLikePdf -> {
-                val pfd: ParcelFileDescriptor = context.contentResolver.openFileDescriptor(sourceUri, "r")
-                    ?: return@runCatching null
-                val renderer = PdfRenderer(pfd)
-                val pages = buildList {
-                    for (index in 0 until renderer.pageCount) {
-                        val page = renderer.openPage(index)
-                        val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
-                        bitmap.eraseColor(Color.WHITE)
-                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                        add(recognizer.recognize(bitmap))
-                        page.close()
-                        bitmap.recycle()
+                context.contentResolver.openFileDescriptor(sourceUri, "r")?.use { pfd ->
+                    PdfRenderer(pfd).use { renderer ->
+                        val pages = buildList {
+                            for (index in 0 until renderer.pageCount) {
+                                val page = renderer.openPage(index)
+                                val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
+                                bitmap.eraseColor(Color.WHITE)
+                                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                add(recognizer.recognize(bitmap))
+                                page.close()
+                                bitmap.recycle()
+                            }
+                        }
+                        RecognizedDocument(pages)
                     }
                 }
-                renderer.close()
-                pfd.close()
-                RecognizedDocument(pages)
             }
             else -> {
                 val bitmap = loadBitmap(context.contentResolver, sourceUri) ?: return@runCatching null

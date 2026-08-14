@@ -72,7 +72,7 @@ internal class RasterTextRecognizer(typeface: Typeface) {
     }
 
     private fun classify(mask: BinaryMask, bounds: Rect): Char {
-        val sample = normalize(mask.crop(bounds), TEMPLATE_WIDTH, TEMPLATE_HEIGHT)
+        val sample = normalize(mask.crop(bounds), bounds.width(), bounds.height())
         val sampleAspect = bounds.width().toFloat() / bounds.height().coerceAtLeast(1)
         val sampleDensity = sample.count { it }.toFloat() / sample.size.coerceAtLeast(1)
         return templates.minByOrNull { template ->
