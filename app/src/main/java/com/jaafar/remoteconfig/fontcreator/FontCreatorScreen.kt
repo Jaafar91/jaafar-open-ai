@@ -119,7 +119,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     DashboardButton("My fonts", "Create, open, generate, and share named fonts") { go(Screen.Fonts) }
     DashboardButton("Letters", "Draw and manage characters for the open font", vm.activeProject != null) { go(Screen.Letters) }
     DashboardButton("Write on image", "Use the generated font on a photo", vm.previewTypeface != null) { go(Screen.Image) }
-    DashboardButton("PDF font converter", "Upload a PDF and rewrite it with your selected font") { go(Screen.PdfFont) }
+    DashboardButton("PDF font converter", "Recognize text from an image or rasterized PDF and rebuild it with your selected font") { go(Screen.PdfFont) }
     DashboardButton("Settings", "Change appearance and preview text") { go(Screen.Settings) }
     vm.activeProject?.let { Text("Open font: ${it.name}", style = MaterialTheme.typography.titleMedium) }
 }
