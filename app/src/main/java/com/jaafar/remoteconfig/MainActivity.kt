@@ -2,6 +2,7 @@ package com.jaafar.remoteconfig
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,7 +23,11 @@ class MainActivity : ComponentActivity() {
         if (intent?.action != Intent.ACTION_SEND) return null
         val mimeType = intent.type ?: return null
         if (mimeType != "application/pdf" && !mimeType.startsWith("image/")) return null
-        @Suppress("DEPRECATION")
-        return intent.getParcelableExtra(Intent.EXTRA_STREAM)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(Intent.EXTRA_STREAM)
+        }
     }
 }

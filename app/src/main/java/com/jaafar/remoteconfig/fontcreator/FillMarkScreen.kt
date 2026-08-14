@@ -323,22 +323,22 @@ private fun FillMarkEditorScreen(
 
     // Load document
     LaunchedEffect(documentUri) {
-        withContext(Dispatchers.IO) {
-            val mimeType = context.contentResolver.getType(documentUri)
-            val looksLikePdf = displayNameForUri(context, documentUri)?.endsWith(".pdf", true) == true
-            if (mimeType == "application/pdf" || looksLikePdf) {
-                isPdf = true
-                val count = getPdfPageCount(context, documentUri)
-                pageCount = count
-                currentPage = 0
-                val bmp = renderPdfPage(context, documentUri, 0)
-                withContext(Dispatchers.Main) { previewBitmap = bmp }
-            } else {
-                isPdf = false
-                pageCount = 0
-                val bmp = loadBitmap(context.contentResolver, documentUri)
-                withContext(Dispatchers.Main) { previewBitmap = bmp }
-            }
+        val mimeType = withContext(Dispatchers.IO) { context.contentResolver.getType(documentUri) }
+        val looksLikePdf = withContext(Dispatchers.IO) {
+            displayNameForUri(context, documentUri)?.endsWith(".pdf", true) == true
+        }
+        if (mimeType == "application/pdf" || looksLikePdf) {
+            val count = withContext(Dispatchers.IO) { getPdfPageCount(context, documentUri) }
+            val bmp = withContext(Dispatchers.IO) { renderPdfPage(context, documentUri, 0) }
+            isPdf = true
+            pageCount = count
+            currentPage = 0
+            previewBitmap = bmp
+        } else {
+            val bmp = withContext(Dispatchers.IO) { loadBitmap(context.contentResolver, documentUri) }
+            isPdf = false
+            pageCount = 0
+            previewBitmap = bmp
         }
     }
 

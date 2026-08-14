@@ -240,6 +240,7 @@ private fun signPdf(
     val signatureBitmap = loadSignatureBitmap(context, signature)
     descriptor.use { pfd ->
         PdfRenderer(pfd).use { renderer ->
+            if (renderer.pageCount == 0) return null
             val outputDocument = PdfDocument()
             try {
                 for (index in 0 until renderer.pageCount) {
