@@ -15,14 +15,17 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,8 +58,10 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.Path as ComposePath
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -80,30 +86,61 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
     }
     var selectedSignatureName by remember { mutableStateOf(vm.signatures.firstOrNull()?.name) }
     var signatureScale by remember { mutableFloatStateOf(22f) }
-    // Position of the signature as fractions of page size (top-left anchor of the signature bounding box)
-    var sigOffsetX by remember { mutableFloatStateOf(0.75f) }
+    // Position of the signature as fractions of page size (top-left anchor); start bottom-center
+    var sigOffsetX by remember { mutableFloatStateOf(0.5f) }
     var sigOffsetY by remember { mutableFloatStateOf(0.82f) }
     var isProcessing by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
     val selectedSignature = vm.signatures.firstOrNull { it.name == selectedSignatureName } ?: vm.signatures.firstOrNull()
 
+    // File selection & preview state
+    var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
+    var isPdf by remember { mutableStateOf(false) }
+    var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var currentPage by remember { mutableIntStateOf(0) }
+    var pageCount by remember { mutableIntStateOf(0) }
+    var applyToAll by remember { mutableStateOf(false) }
+
     LaunchedEffect(vm.signatures.firstOrNull()?.name, selectedSignatureName) {
         if (selectedSignatureName == null) selectedSignatureName = vm.signatures.firstOrNull()?.name
     }
 
+    // Reload PDF preview when the page changes
+    LaunchedEffect(selectedFileUri, currentPage) {
+        val uri = selectedFileUri ?: return@LaunchedEffect
+        if (!isPdf) return@LaunchedEffect
+        val bitmap = withContext(Dispatchers.IO) { renderPdfPage(context, uri, currentPage) }
+        if (bitmap != null) {
+            previewBitmap?.recycle()
+            previewBitmap = bitmap
+        }
+    }
+
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        val signature = selectedSignature
-        if (uri != null && signature != null) {
+        if (uri != null) {
+            selectedFileUri = uri
+            status = ""
+            // Reset signature position to bottom-center for the new document
+            sigOffsetX = 0.5f
+            sigOffsetY = 0.82f
             scope.launch {
-                isProcessing = true
-                status = "Signing document..."
-                val result = signDocument(context, uri, signature, signatureScale / 100f, sigOffsetX, sigOffsetY)
-                isProcessing = false
-                if (result != null) {
-                    shareSignedDocument(context, result)
-                    status = "Signed ${if (result.mimeType == "application/pdf") "PDF" else "image"} ready to share."
+                val mimeType = context.contentResolver.getType(uri)
+                val looksLikePdf = displayNameForUri(context, uri)?.endsWith(".pdf", true) == true
+                if (mimeType == "application/pdf" || looksLikePdf) {
+                    isPdf = true
+                    currentPage = 0
+                    applyToAll = false
+                    val count = withContext(Dispatchers.IO) { getPdfPageCount(context, uri) }
+                    pageCount = count
+                    val bitmap = withContext(Dispatchers.IO) { renderPdfPage(context, uri, 0) }
+                    previewBitmap?.recycle()
+                    previewBitmap = bitmap
                 } else {
-                    status = "Unable to sign the selected file."
+                    isPdf = false
+                    pageCount = 0
+                    val bitmap = withContext(Dispatchers.IO) { loadBitmap(context.contentResolver, uri) }
+                    previewBitmap?.recycle()
+                    previewBitmap = bitmap
                 }
             }
         }
@@ -180,109 +217,188 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                 valueRange = 12f..35f,
             )
             Text("${signatureScale.toInt()}% of page width", style = MaterialTheme.typography.bodySmall)
-            Text("PDF files are signed on the last page.", style = MaterialTheme.typography.bodySmall)
             HorizontalDivider()
-            Text("Signature placement", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Drag the signature preview to set its position on the document.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            // Interactive placement canvas: tap or drag to move the signature anchor point
-            val placementBgColor = ComposeColor(0xFFF5F5F5)
-            val placementBorderColor = ComposeColor.Gray
-            Canvas(
-                modifier = Modifier.fillMaxWidth().height(200.dp)
-                    .background(placementBgColor)
-                    .border(1.dp, placementBorderColor)
-                    .pointerInput(Unit) {
-                        detectTapGestures { offset ->
-                            sigOffsetX = (offset.x / size.width).coerceIn(0f, 1f)
-                            sigOffsetY = (offset.y / size.height).coerceIn(0f, 1f)
-                        }
-                    }
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                sigOffsetX = (offset.x / size.width).coerceIn(0f, 1f)
-                                sigOffsetY = (offset.y / size.height).coerceIn(0f, 1f)
-                            },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                sigOffsetX = (change.position.x / size.width).coerceIn(0f, 1f)
-                                sigOffsetY = (change.position.y / size.height).coerceIn(0f, 1f)
-                            },
-                        )
-                    }
-            ) {
-                // Draw page outline
-                drawRect(
-                    color = ComposeColor.White,
-                    topLeft = Offset.Zero,
-                    size = this.size,
-                )
-                // Draw dashed grid lines for guidance
-                val dashColor = ComposeColor(0xFFCCCCCC)
-                for (i in 1..2) {
-                    drawLine(dashColor, Offset(size.width * i / 3f, 0f), Offset(size.width * i / 3f, size.height), strokeWidth = 1f)
-                    drawLine(dashColor, Offset(0f, size.height * i / 3f), Offset(size.width, size.height * i / 3f), strokeWidth = 1f)
-                }
-                // Draw the signature preview at the chosen position
-                val sig = selectedSignature
-                if (sig != null) {
-                    val sigPoints = sig.strokes.flatMap { it.points }
-                    if (sigPoints.isNotEmpty()) {
-                        val minX = sigPoints.minOf { it.x }
-                        val minY = sigPoints.minOf { it.y }
-                        val maxX = sigPoints.maxOf { it.x }
-                        val maxY = sigPoints.maxOf { it.y }
-                        val sigNatWidth = (maxX - minX).coerceAtLeast(1f)
-                        val sigNatHeight = (maxY - minY).coerceAtLeast(1f)
-                        val targetSigWidth = size.width * (signatureScale / 100f).coerceIn(0.12f, 0.35f)
-                        val scale = targetSigWidth / sigNatWidth
-                        // Clamp so the signature stays within the canvas
-                        val left = (sigOffsetX * size.width).coerceIn(0f, (size.width - sigNatWidth * scale).coerceAtLeast(0f))
-                        val top = (sigOffsetY * size.height).coerceIn(0f, (size.height - sigNatHeight * scale).coerceAtLeast(0f))
-                        sig.strokes.forEach { stroke ->
-                            if (stroke.points.size > 1) {
-                                drawPath(
-                                    ComposePath().apply {
-                                        moveTo(left + (stroke.points.first().x - minX) * scale, top + (stroke.points.first().y - minY) * scale)
-                                        stroke.points.drop(1).forEach { pt ->
-                                            lineTo(left + (pt.x - minX) * scale, top + (pt.y - minY) * scale)
-                                        }
-                                    },
-                                    ComposeColor.Black,
-                                    style = Stroke(width = 3f, cap = StrokeCap.Round, join = StrokeJoin.Round),
-                                )
-                            }
-                        }
-                        // Bounding box highlight
-                        drawRect(
-                            color = ComposeColor(0x44_1565C0),
-                            topLeft = Offset(left, top),
-                            size = androidx.compose.ui.geometry.Size(sigNatWidth * scale, sigNatHeight * scale),
-                        )
-                        // Crosshair at the actual (clamped) anchor point
-                        val cx = left
-                        val cy = top
-                        drawLine(ComposeColor(0xFF_1565C0), Offset(cx - 12f, cy), Offset(cx + 12f, cy), strokeWidth = 2f)
-                        drawLine(ComposeColor(0xFF_1565C0), Offset(cx, cy - 12f), Offset(cx, cy + 12f), strokeWidth = 2f)
-                    }
-                } else {
-                    val cx = sigOffsetX * size.width
-                    val cy = sigOffsetY * size.height
-                    drawCircle(ComposeColor(0xFF_BBBBBB), radius = 12f, center = Offset(cx, cy))
-                    drawLine(ComposeColor(0xFF_1565C0), Offset(cx - 12f, cy), Offset(cx + 12f, cy), strokeWidth = 2f)
-                    drawLine(ComposeColor(0xFF_1565C0), Offset(cx, cy - 12f), Offset(cx, cy + 12f), strokeWidth = 2f)
-                }
-            }
-            Button(
+
+            // File picker button
+            OutlinedButton(
                 onClick = { picker.launch(arrayOf("application/pdf", "image/*")) },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = selectedSignature != null && !isProcessing,
+                enabled = !isProcessing,
             ) {
-                Text(if (selectedSignature == null) "Save a signature first" else "Choose image or PDF to sign")
+                Text(if (selectedFileUri == null) "Choose image or PDF" else "Choose a different file")
             }
+
+            // Preview + signature placement
+            if (selectedFileUri != null) {
+                val bitmap = previewBitmap
+                if (bitmap != null) {
+                    Text("Signature placement", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Drag the signature to position it on the document.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+
+                    // PDF page navigation
+                    if (isPdf && pageCount > 0) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    if (currentPage > 0) currentPage--
+                                },
+                                enabled = currentPage > 0,
+                            ) { Text("← Previous") }
+                            Text(
+                                "Page ${currentPage + 1} of $pageCount",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    if (currentPage < pageCount - 1) currentPage++
+                                },
+                                enabled = currentPage < pageCount - 1,
+                            ) { Text("Next →") }
+                        }
+
+                        // Apply scope toggle
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (!applyToAll) {
+                                Button(onClick = { applyToAll = false }, modifier = Modifier.weight(1f)) { Text("This page only") }
+                            } else {
+                                OutlinedButton(onClick = { applyToAll = false }, modifier = Modifier.weight(1f)) { Text("This page only") }
+                            }
+                            if (applyToAll) {
+                                Button(onClick = { applyToAll = true }, modifier = Modifier.weight(1f)) { Text("All pages") }
+                            } else {
+                                OutlinedButton(onClick = { applyToAll = true }, modifier = Modifier.weight(1f)) { Text("All pages") }
+                            }
+                        }
+                    }
+
+                    // Preview canvas: real image/PDF page behind, signature draggable on top
+                    val previewAspect = bitmap.width.toFloat() / bitmap.height.toFloat()
+                    Box(
+                        Modifier.fillMaxWidth()
+                            .aspectRatio(previewAspect)
+                            .border(1.dp, ComposeColor.Gray),
+                    ) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
+                        )
+                        Canvas(
+                            modifier = Modifier.fillMaxSize()
+                                .pointerInput(Unit) {
+                                    detectTapGestures { offset ->
+                                        sigOffsetX = (offset.x / size.width).coerceIn(0f, 1f)
+                                        sigOffsetY = (offset.y / size.height).coerceIn(0f, 1f)
+                                    }
+                                }
+                                .pointerInput(Unit) {
+                                    detectDragGestures(
+                                        onDragStart = { offset ->
+                                            sigOffsetX = (offset.x / size.width).coerceIn(0f, 1f)
+                                            sigOffsetY = (offset.y / size.height).coerceIn(0f, 1f)
+                                        },
+                                        onDrag = { change, _ ->
+                                            change.consume()
+                                            sigOffsetX = (change.position.x / size.width).coerceIn(0f, 1f)
+                                            sigOffsetY = (change.position.y / size.height).coerceIn(0f, 1f)
+                                        },
+                                    )
+                                },
+                        ) {
+                            val sig = selectedSignature
+                            if (sig != null) {
+                                val sigPoints = sig.strokes.flatMap { it.points }
+                                if (sigPoints.isNotEmpty()) {
+                                    val minX = sigPoints.minOf { it.x }
+                                    val minY = sigPoints.minOf { it.y }
+                                    val maxX = sigPoints.maxOf { it.x }
+                                    val maxY = sigPoints.maxOf { it.y }
+                                    val sigNatWidth = (maxX - minX).coerceAtLeast(1f)
+                                    val sigNatHeight = (maxY - minY).coerceAtLeast(1f)
+                                    val targetSigWidth = size.width * (signatureScale / 100f).coerceIn(0.12f, 0.35f)
+                                    val scale = targetSigWidth / sigNatWidth
+                                    val left = (sigOffsetX * size.width).coerceIn(0f, (size.width - sigNatWidth * scale).coerceAtLeast(0f))
+                                    val top = (sigOffsetY * size.height).coerceIn(0f, (size.height - sigNatHeight * scale).coerceAtLeast(0f))
+                                    sig.strokes.forEach { stroke ->
+                                        if (stroke.points.size > 1) {
+                                            drawPath(
+                                                ComposePath().apply {
+                                                    moveTo(left + (stroke.points.first().x - minX) * scale, top + (stroke.points.first().y - minY) * scale)
+                                                    stroke.points.drop(1).forEach { pt ->
+                                                        lineTo(left + (pt.x - minX) * scale, top + (pt.y - minY) * scale)
+                                                    }
+                                                },
+                                                ComposeColor.Black,
+                                                style = Stroke(width = 3f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                                            )
+                                        }
+                                    }
+                                    drawRect(
+                                        color = ComposeColor(0x44_1565C0),
+                                        topLeft = Offset(left, top),
+                                        size = androidx.compose.ui.geometry.Size(sigNatWidth * scale, sigNatHeight * scale),
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Sign and share button
+                    Button(
+                        onClick = {
+                            val uri = selectedFileUri ?: return@Button
+                            val signature = selectedSignature ?: return@Button
+                            scope.launch {
+                                isProcessing = true
+                                status = "Signing document…"
+                                val result = withContext(Dispatchers.IO) {
+                                    signDocumentWithPage(
+                                        context, uri, signature,
+                                        signatureScale / 100f, sigOffsetX, sigOffsetY,
+                                        if (isPdf) currentPage else 0,
+                                        if (isPdf) applyToAll else false,
+                                    )
+                                }
+                                isProcessing = false
+                                if (result != null) {
+                                    shareSignedDocument(context, result)
+                                    status = "Signed ${if (result.mimeType == "application/pdf") "PDF" else "image"} ready to share."
+                                } else {
+                                    status = "Unable to sign the selected file."
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = selectedSignature != null && !isProcessing,
+                    ) {
+                        Text(if (selectedSignature == null) "Save a signature first" else "Sign and share")
+                    }
+                } else {
+                    // Loading preview
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text("Loading preview…", style = MaterialTheme.typography.bodySmall)
+                }
+            } else {
+                // No file selected yet – show the generic placement canvas as a fallback guide
+                Text("Signature placement preview", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Choose a file above. The signature will start at the bottom-centre and can be dragged into position.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
             if (isProcessing) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             }
@@ -374,19 +490,21 @@ private fun SignaturePreview(modifier: Modifier, signature: SavedSignature) {
 
 private data class SignedDocument(val file: File, val mimeType: String)
 
-private suspend fun signDocument(
+private suspend fun signDocumentWithPage(
     context: android.content.Context,
     sourceUri: Uri,
     signature: SavedSignature,
     widthFraction: Float,
     offsetXFraction: Float,
     offsetYFraction: Float,
+    targetPage: Int,
+    applyToAll: Boolean,
 ): SignedDocument? = withContext(Dispatchers.IO) {
     runCatching {
         val mimeType = context.contentResolver.getType(sourceUri)
         val looksLikePdf = displayNameForUri(context, sourceUri)?.endsWith(".pdf", true) == true
         if (mimeType == "application/pdf" || looksLikePdf) {
-            SignedDocument(signPdf(context, sourceUri, signature, widthFraction, offsetXFraction, offsetYFraction) ?: return@runCatching null, "application/pdf")
+            SignedDocument(signPdf(context, sourceUri, signature, widthFraction, offsetXFraction, offsetYFraction, targetPage, applyToAll) ?: return@runCatching null, "application/pdf")
         } else {
             SignedDocument(signImage(context, sourceUri, signature, widthFraction, offsetXFraction, offsetYFraction) ?: return@runCatching null, "image/png")
         }
@@ -425,6 +543,8 @@ private fun signPdf(
     widthFraction: Float,
     offsetXFraction: Float,
     offsetYFraction: Float,
+    targetPage: Int,
+    applyToAll: Boolean,
 ): File? {
     val descriptor = context.contentResolver.openFileDescriptor(sourceUri, "r") ?: return null
     descriptor.use { pfd ->
@@ -437,7 +557,8 @@ private fun signPdf(
                     try {
                         bitmap.eraseColor(Color.WHITE)
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                        if (index == renderer.pageCount - 1) {
+                        val shouldSign = applyToAll || index == targetPage
+                        if (shouldSign) {
                             drawSignature(Canvas(bitmap), signature, bitmap.width, bitmap.height, widthFraction, offsetXFraction, offsetYFraction)
                         }
                         val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, index + 1).create()
@@ -456,6 +577,29 @@ private fun signPdf(
                 }
             } finally {
                 outputDocument.close()
+            }
+        }
+    }
+}
+
+private fun getPdfPageCount(context: android.content.Context, uri: Uri): Int {
+    val descriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: return 0
+    return descriptor.use { pfd -> PdfRenderer(pfd).use { it.pageCount } }
+}
+
+private fun renderPdfPage(context: android.content.Context, uri: Uri, pageIndex: Int): Bitmap? {
+    val descriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: return null
+    return descriptor.use { pfd ->
+        PdfRenderer(pfd).use { renderer ->
+            val safeIndex = pageIndex.coerceIn(0, renderer.pageCount - 1)
+            val page = renderer.openPage(safeIndex)
+            try {
+                val bitmap = Bitmap.createBitmap(page.width.coerceAtLeast(1), page.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+                bitmap.eraseColor(Color.WHITE)
+                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                bitmap
+            } finally {
+                page.close()
             }
         }
     }
