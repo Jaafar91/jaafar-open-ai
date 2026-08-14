@@ -169,9 +169,9 @@ internal class RasterTextRecognizer(typeface: Typeface) {
             }
             val normalized = BooleanArray(TEMPLATE_WIDTH * TEMPLATE_HEIGHT)
             for (y in 0 until TEMPLATE_HEIGHT) {
-                val sourceY = (y * sourceHeight / TEMPLATE_HEIGHT).coerceIn(0, sourceHeight - 1)
+                val sourceY = ((y * sourceHeight + sourceHeight / 2) / TEMPLATE_HEIGHT).coerceIn(0, sourceHeight - 1)
                 for (x in 0 until TEMPLATE_WIDTH) {
-                    val sourceX = (x * sourceWidth / TEMPLATE_WIDTH).coerceIn(0, sourceWidth - 1)
+                    val sourceX = ((x * sourceWidth + sourceWidth / 2) / TEMPLATE_WIDTH).coerceIn(0, sourceWidth - 1)
                     normalized[y * TEMPLATE_WIDTH + x] = source[sourceY * sourceWidth + sourceX]
                 }
             }
