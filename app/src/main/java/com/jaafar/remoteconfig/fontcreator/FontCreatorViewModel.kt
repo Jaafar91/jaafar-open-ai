@@ -36,10 +36,12 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private val repository = GlyphRepository(application)
+    private val signatureRepository = SignatureRepository(application)
     private val executor = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private var pagingQueue = emptyList<Int>()
     val projects = mutableStateListOf<FontProject>().apply { addAll(repository.load()) }
+    val signatures = mutableStateListOf<SavedSignature>().apply { addAll(signatureRepository.load().sortedByDescending { it.savedAt }) }
     val drawings = mutableStateMapOf<Int, GlyphDrawing>()
     var activeProjectIndex by mutableStateOf<Int?>(null); private set
     val activeProject: FontProject? get() = activeProjectIndex?.let { projects.getOrNull(it) }
@@ -117,10 +119,35 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             .onFailure { error -> main.post { status = "Could not generate font: ${error.message ?: "unknown error"}" } } }
     }
 
+    fun saveSignature(name: String, strokes: List<GlyphStroke>, canvasWidth: Float, canvasHeight: Float): String {
+        val cleanName = name.trim().ifEmpty { "My signature" }
+        val signature = SavedSignature(
+            name = cleanName,
+            strokes = strokes,
+            canvasWidth = canvasWidth.coerceAtLeast(1f),
+            canvasHeight = canvasHeight.coerceAtLeast(1f),
+            savedAt = System.currentTimeMillis(),
+        )
+        val existingIndex = signatures.indexOfFirst { it.name.equals(cleanName, ignoreCase = true) }
+        if (existingIndex >= 0) signatures.removeAt(existingIndex)
+        signatures.add(0, signature)
+        persistSignatures()
+        return cleanName
+    }
+
+    fun deleteSignature(name: String) {
+        val index = signatures.indexOfFirst { it.name == name }
+        if (index >= 0) {
+            signatures.removeAt(index)
+            persistSignatures()
+        }
+    }
+
     private fun loadTypeface(file: File) = if (Build.VERSION.SDK_INT >= 26) Typeface.Builder(file).build() else Typeface.createFromFile(file)
     private fun generatedFile(name: String) = File(getApplication<Application>().filesDir, "font-${name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')}.ttf")
     private fun updateActive(transform: (FontProject) -> FontProject) { val index = activeProjectIndex ?: return; projects[index] = transform(projects[index]); persist() }
     private fun syncActive() { val index = activeProjectIndex ?: return; projects[index] = projects[index].copy(drawings = drawings.values.toList()) }
     private fun persist() { val snapshot = projects.toList(); executor.execute { repository.save(snapshot) } }
+    private fun persistSignatures() { val snapshot = signatures.toList(); executor.execute { signatureRepository.save(snapshot) } }
     override fun onCleared() { syncActive(); executor.shutdown(); super.onCleared() }
 }

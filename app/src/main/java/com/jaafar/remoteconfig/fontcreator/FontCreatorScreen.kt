@@ -38,7 +38,7 @@ import androidx.core.content.FileProvider
 private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
 private const val USE_SELECTED_FONT_KEY = "use_selected_font_for_app"
 
-private enum class Screen { Dashboard, Fonts, Letters, Spacing, Image, PdfFont, Settings }
+private enum class Screen { Dashboard, Fonts, Letters, Spacing, Image, PdfFont, Signature, Settings }
 
 @Composable
 fun FontCreatorApp(viewModel: FontCreatorViewModel) {
@@ -63,6 +63,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
                 Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Fonts }
                 Screen.Image -> ImageScreen(viewModel, { screen = Screen.Dashboard }) { imageUri = it }
                 Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Dashboard }
+                Screen.Signature -> SignatureScreen(viewModel) { screen = Screen.Dashboard }
                 Screen.Settings -> SettingsScreen(
                     darkTheme,
                     { value -> darkTheme = value; preferences.edit().putBoolean("dark_theme", value).apply() },
@@ -120,6 +121,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     DashboardButton("Letters", "Draw and manage characters for the open font", vm.activeProject != null) { go(Screen.Letters) }
     DashboardButton("Write on image", "Use the generated font on a photo", vm.previewTypeface != null) { go(Screen.Image) }
     DashboardButton("PDF font converter", "Recognize text from an image or rasterized PDF and rebuild it with your selected font") { go(Screen.PdfFont) }
+    DashboardButton("Signature", "Draw, save, and apply a signature to images or PDFs") { go(Screen.Signature) }
     DashboardButton("Settings", "Change appearance and preview text") { go(Screen.Settings) }
     vm.activeProject?.let { Text("Open font: ${it.name}", style = MaterialTheme.typography.titleMedium) }
 }
@@ -421,5 +423,3 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCoordinateRuler
     drawContext.canvas.nativeCanvas.drawText("X", size.width - 3.dp.toPx(), 25.dp.toPx(), paint)
     drawContext.canvas.nativeCanvas.drawText("Y", 20.dp.toPx(), size.height - 3.dp.toPx(), paint)
 }
-
-private fun hypotSquared(a: GlyphPoint, b: GlyphPoint): Float { val dx = a.x - b.x; val dy = a.y - b.y; return dx * dx + dy * dy }

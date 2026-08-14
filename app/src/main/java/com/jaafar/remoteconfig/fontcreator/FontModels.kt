@@ -104,3 +104,13 @@ data class GlyphDrawing(
         }
     }
 }
+
+data class SavedSignature(
+    val name: String,
+    val strokes: List<GlyphStroke>,
+    val canvasWidth: Float,
+    val canvasHeight: Float,
+    val savedAt: Long = System.currentTimeMillis(),
+)
+
+internal fun hypotSquared(a: GlyphPoint, b: GlyphPoint): Float { val dx = a.x - b.x; val dy = a.y - b.y; return dx * dx + dy * dy }
