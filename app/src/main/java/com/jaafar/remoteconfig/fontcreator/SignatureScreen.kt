@@ -26,11 +26,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -40,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,38 +76,201 @@ import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.max
 
+private enum class SignaturePage { Library, Editor, Apply }
+
 @Composable
 internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
+    var page by remember { mutableStateOf(SignaturePage.Library) }
+    var selectedSignatureName by remember { mutableStateOf<String?>(null) }
+
+    when (page) {
+        SignaturePage.Library -> SignatureLibraryScreen(
+            vm = vm,
+            selectedSignatureName = selectedSignatureName,
+            onSelect = { name -> selectedSignatureName = name },
+            onCreateNew = { page = SignaturePage.Editor },
+            onUseSelected = { page = SignaturePage.Apply },
+            back = back,
+        )
+        SignaturePage.Editor -> SignatureEditorScreen(
+            vm = vm,
+            onSaved = { name ->
+                selectedSignatureName = name
+                page = SignaturePage.Library
+            },
+            back = { page = SignaturePage.Library },
+        )
+        SignaturePage.Apply -> {
+            val sig = vm.signatures.firstOrNull { it.name == selectedSignatureName }
+                ?: vm.signatures.firstOrNull()
+            if (sig == null) {
+                page = SignaturePage.Library
+            } else {
+                ApplySignatureScreen(
+                    vm = vm,
+                    signature = sig,
+                    back = { page = SignaturePage.Library },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SignatureLibraryScreen(
+    vm: FontCreatorViewModel,
+    selectedSignatureName: String?,
+    onSelect: (String) -> Unit,
+    onCreateNew: () -> Unit,
+    onUseSelected: () -> Unit,
+    back: () -> Unit,
+) {
+    Page("Signatures", back) {
+        if (vm.signatures.isEmpty()) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text("No saved signatures yet.", style = MaterialTheme.typography.bodyLarge)
+                    Button(onClick = onCreateNew) { Text("Create your first signature") }
+                }
+            }
+        } else {
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(vm.signatures, key = { it.name }) { signature ->
+                    val isSelected = signature.name == selectedSignatureName
+                    OutlinedCard(
+                        Modifier.fillMaxWidth().border(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            shape = MaterialTheme.shapes.medium,
+                        ).clickable { onSelect(signature.name) }
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = isSelected, onClick = { onSelect(signature.name) })
+                            SignaturePreview(Modifier.size(88.dp, 56.dp), signature)
+                            Column(Modifier.weight(1f)) {
+                                Text(signature.name, style = MaterialTheme.typography.titleSmall)
+                                if (isSelected) Text("Selected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                            OutlinedButton(onClick = {
+                                vm.deleteSignature(signature.name)
+                                if (selectedSignatureName == signature.name) {
+                                    onSelect(vm.signatures.firstOrNull()?.name ?: "")
+                                }
+                            }) { Text("Delete") }
+                        }
+                    }
+                }
+            }
+            HorizontalDivider()
+            OutlinedButton(onClick = onCreateNew, modifier = Modifier.fillMaxWidth()) { Text("Create new signature") }
+            Button(
+                onClick = onUseSelected,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = selectedSignatureName != null && vm.signatures.any { it.name == selectedSignatureName },
+            ) {
+                Text("Use selected signature")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SignatureEditorScreen(
+    vm: FontCreatorViewModel,
+    onSaved: (String) -> Unit,
+    back: () -> Unit,
+) {
+    var name by remember { mutableStateOf("My signature") }
+    var strokes by remember { mutableStateOf<List<GlyphStroke>>(emptyList()) }
+    var active by remember { mutableStateOf<List<GlyphPoint>>(emptyList()) }
+    var canvasSize by remember { mutableStateOf(1f to 1f) }
+    var status by remember { mutableStateOf("") }
+
+    Page("New Signature", back) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Signature name") },
+            singleLine = true,
+        )
+        Canvas(
+            Modifier.fillMaxWidth().height(220.dp)
+                .background(ComposeColor.White)
+                .border(1.dp, ComposeColor.Gray)
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            val next = GlyphPoint(change.position.x, change.position.y)
+                            if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) {
+                                active = active + next
+                            }
+                        },
+                        onDragEnd = {
+                            if (active.size > 1) strokes = strokes + GlyphStroke(active)
+                            active = emptyList()
+                        },
+                        onDragCancel = { active = emptyList() },
+                    )
+                }
+        ) {
+            canvasSize = size.width to size.height
+            (strokes.map { it.points } + listOf(active)).forEach { points ->
+                if (points.size > 1) {
+                    drawPath(
+                        ComposePath().apply {
+                            moveTo(points.first().x, points.first().y)
+                            points.drop(1).forEach { lineTo(it.x, it.y) }
+                        },
+                        ComposeColor.Black,
+                        style = Stroke(width = 8f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                    )
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) { Text("Clear") }
+            OutlinedButton(onClick = { strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }
+            Button(
+                onClick = {
+                    val savedName = vm.saveSignature(name, strokes, canvasSize.first, canvasSize.second)
+                    status = "Saved."
+                    onSaved(savedName)
+                },
+                enabled = strokes.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+            ) { Text("Save signature") }
+        }
+        if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun ApplySignatureScreen(
+    vm: FontCreatorViewModel,
+    signature: SavedSignature,
+    back: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf(vm.signatures.firstOrNull()?.name ?: "My signature") }
-    var strokes by remember { mutableStateOf(vm.signatures.firstOrNull()?.strokes ?: emptyList()) }
-    var active by remember { mutableStateOf<List<GlyphPoint>>(emptyList()) }
-    var canvasSize by remember {
-        mutableStateOf(
-            vm.signatures.firstOrNull()?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)
-        )
-    }
-    var selectedSignatureName by remember { mutableStateOf(vm.signatures.firstOrNull()?.name) }
     var signatureScale by remember { mutableFloatStateOf(22f) }
-    // Position of the signature as fractions of page size (top-left anchor); start bottom-center
     var sigOffsetX by remember { mutableFloatStateOf(0.5f) }
     var sigOffsetY by remember { mutableFloatStateOf(0.82f) }
     var isProcessing by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
-    val selectedSignature = vm.signatures.firstOrNull { it.name == selectedSignatureName } ?: vm.signatures.firstOrNull()
 
-    // File selection & preview state
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var isPdf by remember { mutableStateOf(false) }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var currentPage by remember { mutableIntStateOf(0) }
     var pageCount by remember { mutableIntStateOf(0) }
     var applyToAll by remember { mutableStateOf(false) }
-
-    LaunchedEffect(vm.signatures.firstOrNull()?.name, selectedSignatureName) {
-        if (selectedSignatureName == null) selectedSignatureName = vm.signatures.firstOrNull()?.name
-    }
 
     // Reload PDF preview when the page changes
     LaunchedEffect(selectedFileUri, currentPage) {
@@ -120,7 +287,6 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
         if (uri != null) {
             selectedFileUri = uri
             status = ""
-            // Reset signature position to bottom-center for the new document
             sigOffsetX = 0.5f
             sigOffsetY = 0.82f
             scope.launch {
@@ -146,77 +312,23 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
         }
     }
 
-    Page("Signature", back) {
+    Page("Apply Signature", back) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Draw your signature, save it on this device, then apply it to an image or PDF.")
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Signature name") },
-                singleLine = true,
-            )
-            Canvas(
-                Modifier.fillMaxWidth().height(220.dp)
-                    .background(ComposeColor.White)
-                    .border(1.dp, ComposeColor.Gray)
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                val next = GlyphPoint(change.position.x, change.position.y)
-                                if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) {
-                                    active = active + next
-                                }
-                            },
-                            onDragEnd = {
-                                if (active.size > 1) strokes = strokes + GlyphStroke(active)
-                                active = emptyList()
-                            },
-                            onDragCancel = { active = emptyList() },
-                        )
-                    }
-            ) {
-                canvasSize = size.width to size.height
-                (strokes.map { it.points } + listOf(active)).forEach { points ->
-                    if (points.size > 1) {
-                        drawPath(
-                            ComposePath().apply {
-                                moveTo(points.first().x, points.first().y)
-                                points.drop(1).forEach { lineTo(it.x, it.y) }
-                            },
-                            ComposeColor.Black,
-                            style = Stroke(width = 8f, cap = StrokeCap.Round, join = StrokeJoin.Round),
-                        )
-                    }
+            // Show active signature info
+            OutlinedCard(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SignaturePreview(Modifier.size(88.dp, 56.dp), signature)
+                    Text(signature.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) { Text("Clear") }
-                OutlinedButton(onClick = { strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }
-                Button(
-                    onClick = {
-                        val savedName = vm.saveSignature(name, strokes, canvasSize.first, canvasSize.second)
-                        name = savedName
-                        selectedSignatureName = savedName
-                        status = "Signature saved."
-                    },
-                    enabled = strokes.isNotEmpty(),
-                    modifier = Modifier.weight(1f),
-                ) { Text("Save signature") }
-            }
-            HorizontalDivider()
+
             Text("Signed output size", style = MaterialTheme.typography.titleMedium)
-            Slider(
-                value = signatureScale,
-                onValueChange = { signatureScale = it },
-                valueRange = 12f..35f,
-            )
+            Slider(value = signatureScale, onValueChange = { signatureScale = it }, valueRange = 12f..35f)
             Text("${signatureScale.toInt()}% of page width", style = MaterialTheme.typography.bodySmall)
+
             HorizontalDivider()
 
             // File picker button
@@ -228,15 +340,19 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                 Text(if (selectedFileUri == null) "Choose image or PDF" else "Choose a different file")
             }
 
+            if (selectedFileUri == null) {
+                Text(
+                    "Choose a file above to see the signature placement preview.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
             // Preview + signature placement
             if (selectedFileUri != null) {
                 val bitmap = previewBitmap
                 if (bitmap != null) {
                     Text("Signature placement", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "Drag the signature to position it on the document.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    Text("Drag the signature to position it.", style = MaterialTheme.typography.bodySmall)
 
                     // PDF page navigation
                     if (isPdf && pageCount > 0) {
@@ -245,39 +361,19 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            OutlinedButton(
-                                onClick = {
-                                    if (currentPage > 0) currentPage--
-                                },
-                                enabled = currentPage > 0,
-                            ) { Text("← Previous") }
-                            Text(
-                                "Page ${currentPage + 1} of $pageCount",
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            OutlinedButton(
-                                onClick = {
-                                    if (currentPage < pageCount - 1) currentPage++
-                                },
-                                enabled = currentPage < pageCount - 1,
-                            ) { Text("Next →") }
+                            OutlinedButton(onClick = { if (currentPage > 0) currentPage-- }, enabled = currentPage > 0) { Text("← Previous") }
+                            Text("Page ${currentPage + 1} of $pageCount", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            OutlinedButton(onClick = { if (currentPage < pageCount - 1) currentPage++ }, enabled = currentPage < pageCount - 1) { Text("Next →") }
                         }
 
                         // Apply scope toggle
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (!applyToAll) {
-                                Button(onClick = { applyToAll = false }, modifier = Modifier.weight(1f)) { Text("This page only") }
+                                Button(onClick = { applyToAll = false }, modifier = Modifier.weight(1f)) { Text("Apply to this page") }
+                                OutlinedButton(onClick = { applyToAll = true }, modifier = Modifier.weight(1f)) { Text("Apply to all pages") }
                             } else {
-                                OutlinedButton(onClick = { applyToAll = false }, modifier = Modifier.weight(1f)) { Text("This page only") }
-                            }
-                            if (applyToAll) {
-                                Button(onClick = { applyToAll = true }, modifier = Modifier.weight(1f)) { Text("All pages") }
-                            } else {
-                                OutlinedButton(onClick = { applyToAll = true }, modifier = Modifier.weight(1f)) { Text("All pages") }
+                                OutlinedButton(onClick = { applyToAll = false }, modifier = Modifier.weight(1f)) { Text("Apply to this page") }
+                                Button(onClick = { applyToAll = true }, modifier = Modifier.weight(1f)) { Text("Apply to all pages") }
                             }
                         }
                     }
@@ -285,9 +381,7 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                     // Preview canvas: real image/PDF page behind, signature draggable on top
                     val previewAspect = bitmap.width.toFloat() / bitmap.height.toFloat()
                     Box(
-                        Modifier.fillMaxWidth()
-                            .aspectRatio(previewAspect)
-                            .border(1.dp, ComposeColor.Gray),
+                        Modifier.fillMaxWidth().aspectRatio(previewAspect).border(1.dp, ComposeColor.Gray),
                     ) {
                         Image(
                             bitmap = bitmap.asImageBitmap(),
@@ -317,40 +411,37 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                                     )
                                 },
                         ) {
-                            val sig = selectedSignature
-                            if (sig != null) {
-                                val sigPoints = sig.strokes.flatMap { it.points }
-                                if (sigPoints.isNotEmpty()) {
-                                    val minX = sigPoints.minOf { it.x }
-                                    val minY = sigPoints.minOf { it.y }
-                                    val maxX = sigPoints.maxOf { it.x }
-                                    val maxY = sigPoints.maxOf { it.y }
-                                    val sigNatWidth = (maxX - minX).coerceAtLeast(1f)
-                                    val sigNatHeight = (maxY - minY).coerceAtLeast(1f)
-                                    val targetSigWidth = size.width * (signatureScale / 100f).coerceIn(0.12f, 0.35f)
-                                    val scale = targetSigWidth / sigNatWidth
-                                    val left = (sigOffsetX * size.width).coerceIn(0f, (size.width - sigNatWidth * scale).coerceAtLeast(0f))
-                                    val top = (sigOffsetY * size.height).coerceIn(0f, (size.height - sigNatHeight * scale).coerceAtLeast(0f))
-                                    sig.strokes.forEach { stroke ->
-                                        if (stroke.points.size > 1) {
-                                            drawPath(
-                                                ComposePath().apply {
-                                                    moveTo(left + (stroke.points.first().x - minX) * scale, top + (stroke.points.first().y - minY) * scale)
-                                                    stroke.points.drop(1).forEach { pt ->
-                                                        lineTo(left + (pt.x - minX) * scale, top + (pt.y - minY) * scale)
-                                                    }
-                                                },
-                                                ComposeColor.Black,
-                                                style = Stroke(width = 3f, cap = StrokeCap.Round, join = StrokeJoin.Round),
-                                            )
-                                        }
+                            val sigPoints = signature.strokes.flatMap { it.points }
+                            if (sigPoints.isNotEmpty()) {
+                                val minX = sigPoints.minOf { it.x }
+                                val minY = sigPoints.minOf { it.y }
+                                val maxX = sigPoints.maxOf { it.x }
+                                val maxY = sigPoints.maxOf { it.y }
+                                val sigNatWidth = (maxX - minX).coerceAtLeast(1f)
+                                val sigNatHeight = (maxY - minY).coerceAtLeast(1f)
+                                val targetSigWidth = size.width * (signatureScale / 100f).coerceIn(0.12f, 0.35f)
+                                val scale = targetSigWidth / sigNatWidth
+                                val left = (sigOffsetX * size.width).coerceIn(0f, (size.width - sigNatWidth * scale).coerceAtLeast(0f))
+                                val top = (sigOffsetY * size.height).coerceIn(0f, (size.height - sigNatHeight * scale).coerceAtLeast(0f))
+                                signature.strokes.forEach { stroke ->
+                                    if (stroke.points.size > 1) {
+                                        drawPath(
+                                            ComposePath().apply {
+                                                moveTo(left + (stroke.points.first().x - minX) * scale, top + (stroke.points.first().y - minY) * scale)
+                                                stroke.points.drop(1).forEach { pt ->
+                                                    lineTo(left + (pt.x - minX) * scale, top + (pt.y - minY) * scale)
+                                                }
+                                            },
+                                            ComposeColor.Black,
+                                            style = Stroke(width = 3f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                                        )
                                     }
-                                    drawRect(
-                                        color = ComposeColor(0x44_1565C0),
-                                        topLeft = Offset(left, top),
-                                        size = androidx.compose.ui.geometry.Size(sigNatWidth * scale, sigNatHeight * scale),
-                                    )
                                 }
+                                drawRect(
+                                    color = ComposeColor(0x44_1565C0),
+                                    topLeft = Offset(left, top),
+                                    size = androidx.compose.ui.geometry.Size(sigNatWidth * scale, sigNatHeight * scale),
+                                )
                             }
                         }
                     }
@@ -359,7 +450,6 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                     Button(
                         onClick = {
                             val uri = selectedFileUri ?: return@Button
-                            val signature = selectedSignature ?: return@Button
                             scope.launch {
                                 isProcessing = true
                                 status = "Signing document…"
@@ -381,79 +471,18 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = selectedSignature != null && !isProcessing,
+                        enabled = !isProcessing,
                     ) {
-                        Text(if (selectedSignature == null) "Save a signature first" else "Sign and share")
+                        Text("Sign and share")
                     }
                 } else {
-                    // Loading preview
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text("Loading preview…", style = MaterialTheme.typography.bodySmall)
                 }
-            } else {
-                // No file selected yet – show the generic placement canvas as a fallback guide
-                Text("Signature placement preview", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Choose a file above. The signature will start at the bottom-centre and can be dragged into position.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
             }
 
-            if (isProcessing) {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-            }
-            if (status.isNotBlank()) {
-                Text(status, style = MaterialTheme.typography.bodySmall)
-            }
-            if (vm.signatures.isNotEmpty()) {
-                Text("Saved signatures", style = MaterialTheme.typography.titleMedium)
-                vm.signatures.forEach { signature ->
-                    OutlinedCard(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            selectedSignatureName = signature.name
-                            name = signature.name
-                            strokes = signature.strokes
-                            active = emptyList()
-                            canvasSize = signature.canvasWidth to signature.canvasHeight
-                            status = "Loaded ${signature.name}."
-                        }
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            SignaturePreview(
-                                modifier = Modifier.size(88.dp, 56.dp),
-                                signature = signature,
-                            )
-                            Column(Modifier.weight(1f)) {
-                                Text(signature.name, style = MaterialTheme.typography.titleSmall)
-                                if (selectedSignatureName == signature.name) {
-                                    Text("Used for signing", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                            OutlinedButton(onClick = {
-                                vm.deleteSignature(signature.name)
-                                if (selectedSignatureName == signature.name) {
-                                    selectedSignatureName = vm.signatures.firstOrNull()?.name
-                                }
-                                val replacement = vm.signatures.firstOrNull { it.name == selectedSignatureName }
-                                if (name == signature.name) name = replacement?.name ?: "My signature"
-                                if (replacement == null) {
-                                    strokes = emptyList()
-                                    active = emptyList()
-                                } else {
-                                    strokes = replacement.strokes
-                                    active = emptyList()
-                                    canvasSize = replacement.canvasWidth to replacement.canvasHeight
-                                }
-                                status = "Signature deleted."
-                            }) { Text("Delete") }
-                        }
-                    }
-                }
-            }
+            if (isProcessing) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -628,8 +657,6 @@ private fun drawSignature(
     val signatureHeight = (maxY - minY).coerceAtLeast(1f)
     val targetWidth = pageWidth * widthFraction.coerceIn(.12f, .35f)
     val scale = targetWidth / signatureWidth
-    // Place the top-left corner of the signature at the chosen fractional position,
-    // clamped so the entire signature remains within the page.
     val left = (offsetXFraction * pageWidth).coerceIn(0f, (pageWidth - signatureWidth * scale).coerceAtLeast(0f))
     val top = (offsetYFraction * pageHeight).coerceIn(0f, (pageHeight - signatureHeight * scale).coerceAtLeast(0f))
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {

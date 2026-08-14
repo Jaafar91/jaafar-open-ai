@@ -1,7 +1,9 @@
 package com.jaafar.remoteconfig.fontcreator
 
 import android.app.Application
+import android.content.ContentResolver
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -37,11 +39,14 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     private val repository = GlyphRepository(application)
     private val signatureRepository = SignatureRepository(application)
+    private val importedFontRepository = ImportedFontRepository(application)
+    private val prefs = application.getSharedPreferences("appearance", 0)
     private val executor = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private var pagingQueue = emptyList<Int>()
     val projects = mutableStateListOf<FontProject>().apply { addAll(repository.load()) }
     val signatures = mutableStateListOf<SavedSignature>().apply { addAll(signatureRepository.load().sortedByDescending { it.savedAt }) }
+    val importedFonts = mutableStateListOf<ImportedFont>().apply { addAll(importedFontRepository.load()) }
     val drawings = mutableStateMapOf<Int, GlyphDrawing>()
     var activeProjectIndex by mutableStateOf<Int?>(null); private set
     val activeProject: FontProject? get() = activeProjectIndex?.let { projects.getOrNull(it) }
@@ -50,6 +55,22 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     var status by mutableStateOf(""); private set
     var generatedFont by mutableStateOf<File?>(null); private set
     var previewTypeface by mutableStateOf<Typeface?>(null); private set
+    var referenceFontKey by mutableStateOf(prefs.getString("reference_font", "Default") ?: "Default"); private set
+    var importStatus by mutableStateOf(""); private set
+
+    /** Returns all available typefaces (generated + imported) with their display labels. */
+    fun allFontOptions(): List<Pair<String, Typeface>> {
+        val app = getApplication<Application>()
+        val generated = projects.mapNotNull { project ->
+            val file = generatedFile(project.name)
+            if (file.exists()) runCatching { project.name to loadTypeface(file) }.getOrNull() else null
+        }
+        val imported = importedFonts.mapNotNull { font ->
+            val file = File(app.filesDir, font.fileName)
+            if (file.exists()) runCatching { font.displayName to loadTypeface(file) }.getOrNull() else null
+        }
+        return generated + imported
+    }
 
     fun createProject(name: String): Boolean {
         val clean = name.trim()
@@ -119,6 +140,73 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             .onFailure { error -> main.post { status = "Could not generate font: ${error.message ?: "unknown error"}" } } }
     }
 
+    fun importFont(contentResolver: ContentResolver, uri: Uri, displayName: String) {
+        val cleanName = displayName.trim().ifEmpty { "Imported Font" }
+        importStatus = "Importing…"
+        executor.execute {
+            runCatching {
+                val ext = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx)?.substringAfterLast('.', "ttf") else "ttf"
+                } ?: "ttf"
+                val safeExt = if (ext.lowercase() in listOf("ttf", "otf")) ext.lowercase() else "ttf"
+                val fileName = "imported-${System.currentTimeMillis()}.$safeExt"
+                val destFile = File(getApplication<Application>().filesDir, fileName)
+                contentResolver.openInputStream(uri)?.use { input -> destFile.outputStream().use { output -> input.copyTo(output) } }
+                    ?: error("Cannot read source file")
+                // Validate as Typeface
+                loadTypeface(destFile)
+                ImportedFont(displayName = cleanName, fileName = fileName)
+            }.onSuccess { font ->
+                main.post {
+                    val existing = importedFonts.indexOfFirst { it.displayName.equals(font.displayName, ignoreCase = true) }
+                    if (existing >= 0) importedFonts[existing] = font else importedFonts.add(0, font)
+                    persistImportedFonts()
+                    importStatus = "\"${font.displayName}\" imported."
+                }
+            }.onFailure { error ->
+                main.post { importStatus = "Import failed: ${error.message ?: "unknown error"}" }
+            }
+        }
+    }
+
+    fun deleteImportedFont(displayName: String) {
+        val idx = importedFonts.indexOfFirst { it.displayName == displayName }
+        if (idx >= 0) {
+            val font = importedFonts[idx]
+            importedFonts.removeAt(idx)
+            persistImportedFonts()
+            executor.execute { File(getApplication<Application>().filesDir, font.fileName).delete() }
+        }
+    }
+
+    fun setReferenceFont(key: String) {
+        referenceFontKey = key
+        prefs.edit().putString("reference_font", key).apply()
+    }
+
+    fun referenceTypeface(): Typeface? {
+        val app = getApplication<Application>()
+        return when (referenceFontKey) {
+            "Default" -> null
+            "Sans-serif" -> Typeface.SANS_SERIF
+            "Serif" -> Typeface.SERIF
+            "Monospace" -> Typeface.MONOSPACE
+            else -> {
+                val imported = importedFonts.firstOrNull { it.displayName == referenceFontKey }
+                if (imported != null) {
+                    runCatching { loadTypeface(File(app.filesDir, imported.fileName)) }.getOrNull()
+                } else {
+                    val project = projects.firstOrNull { it.name == referenceFontKey }
+                    if (project != null) {
+                        val file = generatedFile(project.name)
+                        runCatching { if (file.exists()) loadTypeface(file) else null }.getOrNull()
+                    } else null
+                }
+            }
+        }
+    }
+
     fun saveSignature(name: String, strokes: List<GlyphStroke>, canvasWidth: Float, canvasHeight: Float): String {
         val cleanName = name.trim().ifEmpty { "My signature" }
         val signature = SavedSignature(
@@ -149,5 +237,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     private fun syncActive() { val index = activeProjectIndex ?: return; projects[index] = projects[index].copy(drawings = drawings.values.toList()) }
     private fun persist() { val snapshot = projects.toList(); executor.execute { repository.save(snapshot) } }
     private fun persistSignatures() { val snapshot = signatures.toList(); executor.execute { signatureRepository.save(snapshot) } }
+    private fun persistImportedFonts() { val snapshot = importedFonts.toList(); executor.execute { importedFontRepository.save(snapshot) } }
     override fun onCleared() { syncActive(); executor.shutdown(); super.onCleared() }
 }
