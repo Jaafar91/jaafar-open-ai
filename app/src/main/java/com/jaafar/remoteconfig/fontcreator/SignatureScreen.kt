@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -427,3 +426,5 @@ private fun displayNameForUri(context: android.content.Context, uri: Uri): Strin
         if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
     } ?: uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')
 }
+
+private fun hypotSquared(a: GlyphPoint, b: GlyphPoint): Float { val dx = a.x - b.x; val dy = a.y - b.y; return dx * dx + dy * dy }
