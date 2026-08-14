@@ -426,5 +426,3 @@ private fun displayNameForUri(context: android.content.Context, uri: Uri): Strin
         if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
     } ?: uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')
 }
-
-private fun hypotSquared(a: GlyphPoint, b: GlyphPoint): Float { val dx = a.x - b.x; val dy = a.y - b.y; return dx * dx + dy * dy }
