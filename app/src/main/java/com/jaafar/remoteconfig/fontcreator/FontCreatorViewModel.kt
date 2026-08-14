@@ -232,8 +232,13 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         val safeExt = extension.lowercase().takeIf { it in setOf("png", "jpg", "jpeg", "webp") } ?: "png"
         val fileName = "stamp-${System.currentTimeMillis()}.$safeExt"
         val outputFile = File(getApplication<Application>().filesDir, fileName)
-        contentResolver.openInputStream(uri)?.use { input -> outputFile.outputStream().use { output -> input.copyTo(output) } }
-            ?: error("Cannot read source image")
+        try {
+            contentResolver.openInputStream(uri)?.use { input -> outputFile.outputStream().use { output -> input.copyTo(output) } }
+                ?: error("Cannot read source image")
+        } catch (error: Exception) {
+            outputFile.delete()
+            throw error
+        }
         upsertSignature(
             SavedSignature(
                 name = cleanName,
