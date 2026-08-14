@@ -92,7 +92,7 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
         if (uri != null && signature != null) {
             scope.launch {
                 isProcessing = true
-                status = "Signing document…"
+                status = "Signing document..."
                 val result = signDocument(context, uri, signature, signatureScale / 100f)
                 isProcessing = false
                 if (result != null) {
@@ -122,7 +122,7 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                 Modifier.fillMaxWidth().height(220.dp)
                     .background(ComposeColor.White)
                     .border(1.dp, ComposeColor.Gray)
-                    .pointerInput(strokes) {
+                    .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) },
                             onDrag = { change, _ ->
@@ -176,6 +176,7 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                 valueRange = 12f..35f,
             )
             Text("${signatureScale.toInt()}% of page width", style = MaterialTheme.typography.bodySmall)
+            Text("PDF files are signed on the last page.", style = MaterialTheme.typography.bodySmall)
             Button(
                 onClick = { picker.launch(arrayOf("application/pdf", "image/*")) },
                 modifier = Modifier.fillMaxWidth(),
@@ -298,12 +299,19 @@ private fun signImage(
     widthFraction: Float,
 ): File? {
     val source = loadBitmap(context.contentResolver, sourceUri) ?: return null
-    val output = source.copy(Bitmap.Config.ARGB_8888, true)
-    source.recycle()
-    drawSignature(Canvas(output), signature, output.width, output.height, widthFraction)
-    return File(context.cacheDir, "signed-image-${System.currentTimeMillis()}.png").also { file ->
-        FileOutputStream(file).use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        output.recycle()
+    try {
+        val output = source.copy(Bitmap.Config.ARGB_8888, true) ?: return null
+        return try {
+            drawSignature(Canvas(output), signature, output.width, output.height, widthFraction)
+            deleteOldSignedFiles(context.cacheDir, "signed-image-", ".png")
+            File(context.cacheDir, "signed-image-${System.currentTimeMillis()}.png").also { file ->
+                FileOutputStream(file).use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            }
+        } finally {
+            output.recycle()
+        }
+    } finally {
+        source.recycle()
     }
 }
 
@@ -323,7 +331,7 @@ private fun signPdf(
                     val bitmap = Bitmap.createBitmap(page.width.coerceAtLeast(1), page.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
                     try {
                         bitmap.eraseColor(Color.WHITE)
-                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
                         if (index == renderer.pageCount - 1) {
                             drawSignature(Canvas(bitmap), signature, bitmap.width, bitmap.height, widthFraction)
                         }
@@ -337,6 +345,7 @@ private fun signPdf(
                         page.close()
                     }
                 }
+                deleteOldSignedFiles(context.cacheDir, "signed-pdf-", ".pdf")
                 return File(context.cacheDir, "signed-pdf-${System.currentTimeMillis()}.pdf").also { file ->
                     FileOutputStream(file).use { outputDocument.writeTo(it) }
                 }
@@ -345,6 +354,10 @@ private fun signPdf(
             }
         }
     }
+}
+
+private fun deleteOldSignedFiles(directory: File, prefix: String, suffix: String) {
+    directory.listFiles()?.filter { it.name.startsWith(prefix) && it.name.endsWith(suffix) }?.forEach { it.delete() }
 }
 
 private fun drawSignature(

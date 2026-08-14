@@ -82,8 +82,10 @@ class SignatureRepository(context: Context) {
         }
         val temporary = File(signatureFile.parentFile, "${signatureFile.name}.tmp")
         temporary.writeText(payload.toString())
-        if (!temporary.renameTo(signatureFile)) {
+        if (temporary.renameTo(signatureFile)) return
+        try {
             signatureFile.writeText(payload.toString())
+        } finally {
             temporary.delete()
         }
     }
