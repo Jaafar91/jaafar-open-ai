@@ -65,11 +65,12 @@ import androidx.compose.ui.graphics.Path as ComposePath
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
@@ -524,15 +525,11 @@ private fun ApplySignatureScreen(
                                 val left = (sigOffsetX * size.width).coerceIn(0f, (size.width - sigNatWidth * scale).coerceAtLeast(0f))
                                 val top = (sigOffsetY * size.height).coerceIn(0f, (size.height - sigNatHeight * scale).coerceAtLeast(0f))
                                 if (signatureImageBitmap != null) {
-                                    drawIntoCanvas { canvas ->
-                                        val dst = android.graphics.RectF(
-                                            left,
-                                            top,
-                                            left + sigNatWidth * scale,
-                                            top + sigNatHeight * scale,
-                                        )
-                                        canvas.nativeCanvas.drawBitmap(signatureImageBitmap, null, dst, Paint(Paint.ANTI_ALIAS_FLAG))
-                                    }
+                                    drawImage(
+                                        image = signatureImageBitmap.asImageBitmap(),
+                                        dstOffset = IntOffset(left.toInt(), top.toInt()),
+                                        dstSize = IntSize((sigNatWidth * scale).toInt(), (sigNatHeight * scale).toInt()),
+                                    )
                                 } else {
                                     val minX = sigPoints.minOf { it.x }
                                     val minY = sigPoints.minOf { it.y }
