@@ -1,4 +1,4 @@
-name: Android APK and Firebase distribution
+name: Build Android APK
 
 on:
   push:
@@ -29,28 +29,3 @@ jobs:
         with:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
-
-  distribute-to-firebase:
-    name: Distribute master APK to Firebase
-    needs: build
-    if: >-
-      github.ref == 'refs/heads/master' &&
-      secrets.FIREBASE_APP_ID != '' &&
-      secrets.FIREBASE_SERVICE_ACCOUNT_BASE64 != ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
-      FIREBASE_SERVICE_ACCOUNT_BASE64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BASE64 }}
-    steps:
-      - name: Download APK artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: app-debug-apk
-          path: apk
-      - name: Upload to Firebase App Distribution
-        run: |
-          echo "$FIREBASE_SERVICE_ACCOUNT_BASE64" | base64 --decode > "$RUNNER_TEMP/firebase-service-account.json"
-          npm install -g firebase-tools
-          firebase appdistribution:distribute apk/app-debug.apk --app "$FIREBASE_APP_ID" --groups "testers" --service-credentials "$RUNNER_TEMP/firebase-service-account.json"
