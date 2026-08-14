@@ -58,9 +58,9 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
             viewModel.selectedCodePoint != null -> GlyphEditorScreen(viewModel.selectedCodePoint!!, viewModel.drawings[viewModel.selectedCodePoint], viewModel.isPagingMode, viewModel::closeEditor, viewModel::saveDrawing)
             else -> when (screen) {
                 Screen.Dashboard -> Dashboard(viewModel, { screen = it })
-                Screen.Fonts -> FontsScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }, { screen = Screen.Dashboard }, { screen = Screen.Letters })
-                Screen.Letters -> LettersScreen(viewModel, { screen = Screen.Dashboard }, { screen = Screen.Spacing })
-                Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Letters }
+                Screen.Fonts -> FontsScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }, { screen = Screen.Dashboard }, { screen = Screen.Letters }, { screen = Screen.Spacing })
+                Screen.Letters -> LettersScreen(viewModel, { screen = Screen.Dashboard })
+                Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Fonts }
                 Screen.Image -> ImageScreen(viewModel, { screen = Screen.Dashboard }) { imageUri = it }
                 Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Dashboard }
                 Screen.Settings -> SettingsScreen(
@@ -128,7 +128,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     OutlinedButton(onClick = click, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth()) { Text(title, fontWeight = FontWeight.Bold); Text(detail, style = MaterialTheme.typography.bodySmall) } }
 }
 
-@Composable private fun FontsScreen(vm: FontCreatorViewModel, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit, edit: () -> Unit) {
+@Composable private fun FontsScreen(vm: FontCreatorViewModel, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit, edit: () -> Unit, spacing: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
     Page("My fonts", back, actions = {
@@ -177,6 +177,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
                 Button(vm::generate, Modifier.weight(1f)) { Text("Generate font") }
                 vm.generatedFont?.let { file -> ShareButton(file, project.name) }
             }
+            OutlinedButton(spacing, Modifier.fillMaxWidth()) { Text("Adjust spacing") }
         }
         if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
     }
@@ -224,7 +225,7 @@ private enum class ActionIconType { Add, Edit, Share }
     }
 }
 
-@Composable private fun LettersScreen(vm: FontCreatorViewModel, back: () -> Unit, spacing: () -> Unit) = Page("Letters · ${vm.activeProject?.name.orEmpty()}", back) {
+@Composable private fun LettersScreen(vm: FontCreatorViewModel, back: () -> Unit) = Page("Letters · ${vm.activeProject?.name.orEmpty()}", back) {
     var text by remember { mutableStateOf("") }
     var showFonts by remember { mutableStateOf(false) }
     var showLanguages by remember { mutableStateOf(false) }
@@ -291,11 +292,8 @@ private enum class ActionIconType { Add, Edit, Share }
     }
     OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text("Text to support") }, supportingText = { Text("Characters from selected languages") })
     Button({ vm.drawMissingCharacters(text) }, Modifier.fillMaxWidth(), enabled = text.isNotEmpty()) { Text("Draw missing letters") }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(vm::startPaging, Modifier.weight(1f)) { Text("Draw all missing") }
-        OutlinedButton(spacing, Modifier.weight(1f)) { Text("Adjust spacing") }
-    }
-    Text("Tap one character to draw it. Spacing has its own page.", style = MaterialTheme.typography.bodySmall)
+    Button(vm::startPaging, Modifier.fillMaxWidth()) { Text("Draw all missing") }
+    Text("Tap one character to draw it.", style = MaterialTheme.typography.bodySmall)
     LazyVerticalGrid(GridCells.Adaptive(52.dp), Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         items(vm.activeCharacterOrder, key = { it }) { code ->
             val complete = code in vm.drawings
