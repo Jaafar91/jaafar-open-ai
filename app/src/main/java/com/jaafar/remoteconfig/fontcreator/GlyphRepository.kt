@@ -15,6 +15,14 @@ class GlyphRepository(context: Context) {
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
                 val glyphs = item.getJSONArray("drawings")
+                val langArray = item.optJSONArray("selectedLanguages")
+                val selectedLanguages: Set<LanguageScript> = if (langArray != null) {
+                    buildSet {
+                        for (k in 0 until langArray.length()) {
+                            runCatching { add(LanguageScript.valueOf(langArray.getString(k))) }
+                        }
+                    }.ifEmpty { setOf(LanguageScript.BASIC_LATIN) }
+                } else setOf(LanguageScript.BASIC_LATIN)
                 add(FontProject(
                     name = item.getString("name"),
                     drawings = buildList {
@@ -22,6 +30,7 @@ class GlyphRepository(context: Context) {
                     },
                     letterSpacingMm = item.optDouble("letterSpacingMm", 0.0).toFloat(),
                     wordSpacingMm = item.optDouble("wordSpacingMm", 3.0).toFloat(),
+                    selectedLanguages = selectedLanguages,
                 ))
             }
         }
@@ -38,6 +47,7 @@ class GlyphRepository(context: Context) {
                 put("name", project.name)
                 put("letterSpacingMm", project.letterSpacingMm.toDouble())
                 put("wordSpacingMm", project.wordSpacingMm.toDouble())
+                put("selectedLanguages", JSONArray().apply { project.selectedLanguages.forEach { put(it.name) } })
                 put("drawings", JSONArray().apply {
                     project.drawings.sortedBy { it.codePoint }.forEach { put(it.toJson()) }
                 })

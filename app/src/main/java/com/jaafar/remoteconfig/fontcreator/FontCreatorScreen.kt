@@ -227,6 +227,9 @@ private enum class ActionIconType { Add, Edit, Share }
 @Composable private fun LettersScreen(vm: FontCreatorViewModel, back: () -> Unit, spacing: () -> Unit) = Page("Letters · ${vm.activeProject?.name.orEmpty()}", back) {
     var text by remember { mutableStateOf("") }
     var showFonts by remember { mutableStateOf(false) }
+    var showLanguages by remember { mutableStateOf(false) }
+    val selectedLanguages = vm.activeProject?.selectedLanguages ?: setOf(LanguageScript.BASIC_LATIN)
+    var pendingLanguages by remember(selectedLanguages) { mutableStateOf(selectedLanguages) }
     Box {
         OutlinedButton({ showFonts = true }, Modifier.fillMaxWidth()) {
             Text("Font: ${vm.activeProject?.name.orEmpty()}")
@@ -241,7 +244,52 @@ private enum class ActionIconType { Add, Edit, Share }
             }
         }
     }
-    OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text("Text to support") }, supportingText = { Text("Basic Latin characters only") })
+    OutlinedButton({ pendingLanguages = selectedLanguages; showLanguages = true }, Modifier.fillMaxWidth()) {
+        Text("Languages: ${selectedLanguages.joinToString(", ") { it.displayName }}")
+    }
+    if (showLanguages) {
+        AlertDialog(
+            onDismissRequest = { showLanguages = false },
+            title = { Text("Select languages") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    LanguageScript.entries.forEach { script ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                pendingLanguages = pendingLanguages.toMutableSet().apply {
+                                    if (contains(script)) remove(script) else add(script)
+                                }
+                            }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Checkbox(
+                                checked = pendingLanguages.contains(script),
+                                onCheckedChange = { checked ->
+                                    pendingLanguages = pendingLanguages.toMutableSet().apply {
+                                        if (checked) add(script) else remove(script)
+                                    }
+                                }
+                            )
+                            Column {
+                                Text(script.displayName)
+                                Text("${script.codePoints.size} characters", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (vm.setLanguages(pendingLanguages)) showLanguages = false
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showLanguages = false }) { Text("Cancel") }
+            }
+        )
+    }
+    OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text("Text to support") }, supportingText = { Text("Characters from selected languages") })
     Button({ vm.drawMissingCharacters(text) }, Modifier.fillMaxWidth(), enabled = text.isNotEmpty()) { Text("Draw missing letters") }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(vm::startPaging, Modifier.weight(1f)) { Text("Draw all missing") }
@@ -249,7 +297,7 @@ private enum class ActionIconType { Add, Edit, Share }
     }
     Text("Tap one character to draw it. Spacing has its own page.", style = MaterialTheme.typography.bodySmall)
     LazyVerticalGrid(GridCells.Adaptive(52.dp), Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        items(FontCreatorViewModel.CHARACTER_ORDER.filter { it != 32 }, key = { it }) { code ->
+        items(vm.activeCharacterOrder, key = { it }) { code ->
             val complete = code in vm.drawings
             Box(Modifier.aspectRatio(1f).background(if (complete) MaterialTheme.colorScheme.primaryContainer else Color.Transparent).border(1.dp, MaterialTheme.colorScheme.outline).clickable { vm.edit(code) }, contentAlignment = Alignment.Center) { Text(code.toChar().toString()) }
         }
