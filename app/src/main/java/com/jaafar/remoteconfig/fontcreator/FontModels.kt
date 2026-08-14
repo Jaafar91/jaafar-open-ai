@@ -104,3 +104,11 @@ data class GlyphDrawing(
         }
     }
 }
+
+data class SavedSignature(
+    val name: String,
+    val strokes: List<GlyphStroke>,
+    val canvasWidth: Float,
+    val canvasHeight: Float,
+    val savedAt: Long = System.currentTimeMillis(),
+)
