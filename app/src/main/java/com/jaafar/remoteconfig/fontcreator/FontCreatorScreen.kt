@@ -44,7 +44,7 @@ private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the laz
 private const val USE_SELECTED_FONT_KEY = "use_selected_font_for_app"
 
 private enum class Screen { Home, Library, Fonts, Letters, Spacing, Image, PdfFont, Signature, Settings }
-private enum class LibraryTab { Fonts, Signatures }
+private enum class LibraryTab(val label: String) { Fonts("Fonts"), Signatures("Signatures") }
 
 @Composable
 fun FontCreatorApp(viewModel: FontCreatorViewModel) {
@@ -170,7 +170,7 @@ private fun LibraryScreen(
             Tab(
                 selected = tab == section,
                 onClick = { tab = section },
-                text = { Text(if (section == LibraryTab.Fonts) "Fonts" else "Signatures") }
+                text = { Text(section.label) }
             )
         }
     }
@@ -183,7 +183,7 @@ private fun LibraryScreen(
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (vm.projects.isNotEmpty()) {
                         item { Text("Generated fonts", style = MaterialTheme.typography.titleSmall) }
-                        itemsIndexed(vm.projects) { index, project ->
+                        items(vm.projects) { project ->
                             OutlinedCard(Modifier.fillMaxWidth()) {
                                 Row(
                                     Modifier.fillMaxWidth().padding(16.dp),
@@ -193,14 +193,20 @@ private fun LibraryScreen(
                                         Text(project.name, style = MaterialTheme.typography.titleMedium)
                                         Text("${project.drawings.size} drawn characters")
                                     }
-                                    OutlinedButton(onClick = { vm.openProject(index); openLetterEditor() }) { Text("Edit letters") }
+                                    OutlinedButton(onClick = {
+                                        val index = vm.projects.indexOf(project)
+                                        if (index >= 0) {
+                                            vm.openProject(index)
+                                            openLetterEditor()
+                                        }
+                                    }) { Text("Edit letters") }
                                 }
                             }
                         }
                     }
                     if (vm.importedFonts.isNotEmpty()) {
                         item { Text("Imported fonts", style = MaterialTheme.typography.titleSmall) }
-                        itemsIndexed(vm.importedFonts) { _, font ->
+                        items(vm.importedFonts) { font ->
                             OutlinedCard(Modifier.fillMaxWidth()) {
                                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
                                     Text(font.displayName, style = MaterialTheme.typography.titleMedium)
