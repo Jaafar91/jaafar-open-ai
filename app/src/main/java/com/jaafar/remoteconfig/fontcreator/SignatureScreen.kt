@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -48,6 +49,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.Path as ComposePath
 import androidx.compose.ui.graphics.StrokeCap
@@ -78,6 +80,9 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
     }
     var selectedSignatureName by remember { mutableStateOf(vm.signatures.firstOrNull()?.name) }
     var signatureScale by remember { mutableFloatStateOf(22f) }
+    // Position of the signature as fractions of page size (top-left anchor of the signature bounding box)
+    var sigOffsetX by remember { mutableFloatStateOf(0.75f) }
+    var sigOffsetY by remember { mutableFloatStateOf(0.82f) }
     var isProcessing by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
     val selectedSignature = vm.signatures.firstOrNull { it.name == selectedSignatureName } ?: vm.signatures.firstOrNull()
@@ -92,7 +97,7 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
             scope.launch {
                 isProcessing = true
                 status = "Signing document..."
-                val result = signDocument(context, uri, signature, signatureScale / 100f)
+                val result = signDocument(context, uri, signature, signatureScale / 100f, sigOffsetX, sigOffsetY)
                 isProcessing = false
                 if (result != null) {
                     shareSignedDocument(context, result)
@@ -176,6 +181,101 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
             )
             Text("${signatureScale.toInt()}% of page width", style = MaterialTheme.typography.bodySmall)
             Text("PDF files are signed on the last page.", style = MaterialTheme.typography.bodySmall)
+            HorizontalDivider()
+            Text("Signature placement", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Drag the signature preview to set its position on the document.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            // Interactive placement canvas: tap or drag to move the signature anchor point
+            val placementBgColor = ComposeColor(0xFFF5F5F5)
+            val placementBorderColor = ComposeColor.Gray
+            Canvas(
+                modifier = Modifier.fillMaxWidth().height(200.dp)
+                    .background(placementBgColor)
+                    .border(1.dp, placementBorderColor)
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            sigOffsetX = (offset.x / size.width).coerceIn(0f, 1f)
+                            sigOffsetY = (offset.y / size.height).coerceIn(0f, 1f)
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                sigOffsetX = (offset.x / size.width).coerceIn(0f, 1f)
+                                sigOffsetY = (offset.y / size.height).coerceIn(0f, 1f)
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                sigOffsetX = (change.position.x / size.width).coerceIn(0f, 1f)
+                                sigOffsetY = (change.position.y / size.height).coerceIn(0f, 1f)
+                            },
+                        )
+                    }
+            ) {
+                // Draw page outline
+                drawRect(
+                    color = ComposeColor.White,
+                    topLeft = Offset.Zero,
+                    size = this.size,
+                )
+                // Draw dashed grid lines for guidance
+                val dashColor = ComposeColor(0xFFCCCCCC)
+                for (i in 1..2) {
+                    drawLine(dashColor, Offset(size.width * i / 3f, 0f), Offset(size.width * i / 3f, size.height), strokeWidth = 1f)
+                    drawLine(dashColor, Offset(0f, size.height * i / 3f), Offset(size.width, size.height * i / 3f), strokeWidth = 1f)
+                }
+                // Draw the signature preview at the chosen position
+                val sig = selectedSignature
+                if (sig != null) {
+                    val sigPoints = sig.strokes.flatMap { it.points }
+                    if (sigPoints.isNotEmpty()) {
+                        val minX = sigPoints.minOf { it.x }
+                        val minY = sigPoints.minOf { it.y }
+                        val maxX = sigPoints.maxOf { it.x }
+                        val maxY = sigPoints.maxOf { it.y }
+                        val sigNatWidth = (maxX - minX).coerceAtLeast(1f)
+                        val sigNatHeight = (maxY - minY).coerceAtLeast(1f)
+                        val targetSigWidth = size.width * (signatureScale / 100f).coerceIn(0.12f, 0.35f)
+                        val scale = targetSigWidth / sigNatWidth
+                        // Clamp so the signature stays within the canvas
+                        val left = (sigOffsetX * size.width).coerceIn(0f, (size.width - sigNatWidth * scale).coerceAtLeast(0f))
+                        val top = (sigOffsetY * size.height).coerceIn(0f, (size.height - sigNatHeight * scale).coerceAtLeast(0f))
+                        sig.strokes.forEach { stroke ->
+                            if (stroke.points.size > 1) {
+                                drawPath(
+                                    ComposePath().apply {
+                                        moveTo(left + (stroke.points.first().x - minX) * scale, top + (stroke.points.first().y - minY) * scale)
+                                        stroke.points.drop(1).forEach { pt ->
+                                            lineTo(left + (pt.x - minX) * scale, top + (pt.y - minY) * scale)
+                                        }
+                                    },
+                                    ComposeColor.Black,
+                                    style = Stroke(width = 3f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                                )
+                            }
+                        }
+                        // Bounding box highlight
+                        drawRect(
+                            color = ComposeColor(0x44_1565C0),
+                            topLeft = Offset(left, top),
+                            size = androidx.compose.ui.geometry.Size(sigNatWidth * scale, sigNatHeight * scale),
+                        )
+                        // Crosshair at the actual (clamped) anchor point
+                        val cx = left
+                        val cy = top
+                        drawLine(ComposeColor(0xFF_1565C0), Offset(cx - 12f, cy), Offset(cx + 12f, cy), strokeWidth = 2f)
+                        drawLine(ComposeColor(0xFF_1565C0), Offset(cx, cy - 12f), Offset(cx, cy + 12f), strokeWidth = 2f)
+                    }
+                } else {
+                    val cx = sigOffsetX * size.width
+                    val cy = sigOffsetY * size.height
+                    drawCircle(ComposeColor(0xFF_BBBBBB), radius = 12f, center = Offset(cx, cy))
+                    drawLine(ComposeColor(0xFF_1565C0), Offset(cx - 12f, cy), Offset(cx + 12f, cy), strokeWidth = 2f)
+                    drawLine(ComposeColor(0xFF_1565C0), Offset(cx, cy - 12f), Offset(cx, cy + 12f), strokeWidth = 2f)
+                }
+            }
             Button(
                 onClick = { picker.launch(arrayOf("application/pdf", "image/*")) },
                 modifier = Modifier.fillMaxWidth(),
@@ -279,14 +379,16 @@ private suspend fun signDocument(
     sourceUri: Uri,
     signature: SavedSignature,
     widthFraction: Float,
+    offsetXFraction: Float,
+    offsetYFraction: Float,
 ): SignedDocument? = withContext(Dispatchers.IO) {
     runCatching {
         val mimeType = context.contentResolver.getType(sourceUri)
         val looksLikePdf = displayNameForUri(context, sourceUri)?.endsWith(".pdf", true) == true
         if (mimeType == "application/pdf" || looksLikePdf) {
-            SignedDocument(signPdf(context, sourceUri, signature, widthFraction) ?: return@runCatching null, "application/pdf")
+            SignedDocument(signPdf(context, sourceUri, signature, widthFraction, offsetXFraction, offsetYFraction) ?: return@runCatching null, "application/pdf")
         } else {
-            SignedDocument(signImage(context, sourceUri, signature, widthFraction) ?: return@runCatching null, "image/png")
+            SignedDocument(signImage(context, sourceUri, signature, widthFraction, offsetXFraction, offsetYFraction) ?: return@runCatching null, "image/png")
         }
     }.getOrNull()
 }
@@ -296,12 +398,14 @@ private fun signImage(
     sourceUri: Uri,
     signature: SavedSignature,
     widthFraction: Float,
+    offsetXFraction: Float,
+    offsetYFraction: Float,
 ): File? {
     val source = loadBitmap(context.contentResolver, sourceUri) ?: return null
     try {
         val output = source.copy(Bitmap.Config.ARGB_8888, true) ?: return null
         return try {
-            drawSignature(Canvas(output), signature, output.width, output.height, widthFraction)
+            drawSignature(Canvas(output), signature, output.width, output.height, widthFraction, offsetXFraction, offsetYFraction)
             deleteOldSignedFiles(context.cacheDir, "signed-image-", ".png")
             File(context.cacheDir, "signed-image-${System.currentTimeMillis()}.png").also { file ->
                 FileOutputStream(file).use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -319,6 +423,8 @@ private fun signPdf(
     sourceUri: Uri,
     signature: SavedSignature,
     widthFraction: Float,
+    offsetXFraction: Float,
+    offsetYFraction: Float,
 ): File? {
     val descriptor = context.contentResolver.openFileDescriptor(sourceUri, "r") ?: return null
     descriptor.use { pfd ->
@@ -332,7 +438,7 @@ private fun signPdf(
                         bitmap.eraseColor(Color.WHITE)
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
                         if (index == renderer.pageCount - 1) {
-                            drawSignature(Canvas(bitmap), signature, bitmap.width, bitmap.height, widthFraction)
+                            drawSignature(Canvas(bitmap), signature, bitmap.width, bitmap.height, widthFraction, offsetXFraction, offsetYFraction)
                         }
                         val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, index + 1).create()
                         val outputPage = outputDocument.startPage(pageInfo)
@@ -365,6 +471,8 @@ private fun drawSignature(
     pageWidth: Int,
     pageHeight: Int,
     widthFraction: Float,
+    offsetXFraction: Float,
+    offsetYFraction: Float,
 ) {
     val points = signature.strokes.flatMap { it.points }
     if (points.isEmpty()) return
@@ -376,9 +484,10 @@ private fun drawSignature(
     val signatureHeight = (maxY - minY).coerceAtLeast(1f)
     val targetWidth = pageWidth * widthFraction.coerceIn(.12f, .35f)
     val scale = targetWidth / signatureWidth
-    val margin = pageWidth * .05f
-    val left = pageWidth - margin - signatureWidth * scale
-    val top = pageHeight - margin - signatureHeight * scale
+    // Place the top-left corner of the signature at the chosen fractional position,
+    // clamped so the entire signature remains within the page.
+    val left = (offsetXFraction * pageWidth).coerceIn(0f, (pageWidth - signatureWidth * scale).coerceAtLeast(0f))
+    val top = (offsetYFraction * pageHeight).coerceIn(0f, (pageHeight - signatureHeight * scale).coerceAtLeast(0f))
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.BLACK
         style = Paint.Style.STROKE
