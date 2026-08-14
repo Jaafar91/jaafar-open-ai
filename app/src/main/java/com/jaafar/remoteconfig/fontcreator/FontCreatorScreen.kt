@@ -55,7 +55,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
     ) {
         when {
             imageUri != null && viewModel.previewTypeface != null -> ImageTextEditorScreen(imageUri!!, viewModel.previewTypeface!!) { imageUri = null }
-            viewModel.selectedCodePoint != null -> GlyphEditorScreen(viewModel.selectedCodePoint!!, viewModel.drawings[viewModel.selectedCodePoint], viewModel.isPagingMode, viewModel::closeEditor, viewModel::saveDrawing)
+            viewModel.selectedCodePoint != null -> GlyphEditorScreen(viewModel.selectedCodePoint!!, viewModel.drawings[viewModel.selectedCodePoint], viewModel.isPagingMode, viewModel::closeEditor, viewModel::skipLetter, viewModel::saveDrawing)
             else -> when (screen) {
                 Screen.Dashboard -> Dashboard(viewModel, { screen = it })
                 Screen.Fonts -> FontsScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }, { screen = Screen.Dashboard }, { screen = Screen.Letters }, { screen = Screen.Spacing })
@@ -373,7 +373,7 @@ private enum class ActionIconType { Add, Edit, Share }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun GlyphEditorScreen(codePoint: Int, initial: GlyphDrawing?, pagingMode: Boolean, onCancel: () -> Unit, onSave: (GlyphDrawing) -> Unit) {
+@Composable private fun GlyphEditorScreen(codePoint: Int, initial: GlyphDrawing?, pagingMode: Boolean, onCancel: () -> Unit, onSkip: () -> Unit, onSave: (GlyphDrawing) -> Unit) {
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember(codePoint) { mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)) }
@@ -392,7 +392,7 @@ private enum class ActionIconType { Add, Edit, Share }
                     (strokes.map { it.points } + listOf(active)).forEach { points -> if (points.size > 1) drawPath(Path().apply { moveTo(points[0].x, points[0].y); points.drop(1).forEach { lineTo(it.x, it.y) } }, Color.Black, style = Stroke(8f)) }
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onCancel) { Text("Cancel") }; OutlinedButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }; Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) { Text(if (pagingMode) "Save & next" else "Save letter") } }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onCancel) { Text("Cancel") }; OutlinedButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }; if (pagingMode) OutlinedButton(onSkip) { Text("Skip") }; Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) { Text(if (pagingMode) "Save & next" else "Save letter") } }
         }
     }
 }
