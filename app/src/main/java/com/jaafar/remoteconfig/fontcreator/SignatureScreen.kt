@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,6 +44,7 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -85,7 +85,7 @@ private enum class SignaturePage { Library, Editor, ImportStamp, Apply }
 
 @Composable
 internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
-    var page by remember { mutableStateOf(SignaturePage.Library) }
+    var page by remember { mutableStateOf(SignaturePage.Apply) }
     var selectedSignatureName by remember { mutableStateOf<String?>(null) }
 
     when (page) {
@@ -96,13 +96,13 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
             onCreateNew = { page = SignaturePage.Editor },
             onImportStamp = { page = SignaturePage.ImportStamp },
             onUseSelected = { page = SignaturePage.Apply },
-            back = back,
+            back = { page = SignaturePage.Apply },
         )
         SignaturePage.Editor -> SignatureEditorScreen(
             vm = vm,
             onSaved = { name ->
                 selectedSignatureName = name
-                page = SignaturePage.Library
+                page = SignaturePage.Apply
             },
             back = { page = SignaturePage.Library },
         )
@@ -110,22 +110,18 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
             vm = vm,
             onSaved = { name ->
                 selectedSignatureName = name
-                page = SignaturePage.Library
+                page = SignaturePage.Apply
             },
             back = { page = SignaturePage.Library },
         )
         SignaturePage.Apply -> {
             val sig = vm.signatures.firstOrNull { it.name == selectedSignatureName }
-                ?: vm.signatures.firstOrNull()
-            if (sig == null) {
-                page = SignaturePage.Library
-            } else {
-                ApplySignatureScreen(
-                    vm = vm,
-                    signature = sig,
-                    back = { page = SignaturePage.Library },
-                )
-            }
+            ApplySignatureScreen(
+                vm = vm,
+                signature = sig,
+                onAddMark = { page = SignaturePage.Library },
+                back = back,
+            )
         }
     }
 }
@@ -140,59 +136,100 @@ private fun SignatureLibraryScreen(
     onUseSelected: () -> Unit,
     back: () -> Unit,
 ) {
-    Page("Signatures", back) {
+    val signatures = vm.signatures.filter { it.imageFileName == null }
+    val stamps = vm.signatures.filter { it.imageFileName != null }
+
+    Page("Signatures & Stamps", back) {
         if (vm.signatures.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("No saved signatures yet.", style = MaterialTheme.typography.bodyLarge)
-                    Button(onClick = onCreateNew) { Text("Create your first signature") }
-                    OutlinedButton(onClick = onImportStamp) { Text("Add stamp from image") }
+                    Text("No saved signatures or stamps yet.", style = MaterialTheme.typography.bodyLarge)
+                    Button(onClick = onCreateNew) { Text("Draw a signature") }
+                    OutlinedButton(onClick = onImportStamp) { Text("Import a stamp") }
                 }
             }
         } else {
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(vm.signatures, key = { it.name }) { signature ->
-                    val isSelected = signature.name == selectedSignatureName
-                    OutlinedCard(
-                        Modifier.fillMaxWidth().border(
-                            width = if (isSelected) 2.dp else 1.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                            shape = MaterialTheme.shapes.medium,
-                        ).clickable { onSelect(signature.name) }
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(selected = isSelected, onClick = { onSelect(signature.name) })
-                            SignaturePreview(Modifier.size(88.dp, 56.dp), signature)
-                            Column(Modifier.weight(1f)) {
-                                Text(signature.name, style = MaterialTheme.typography.titleSmall)
-                                if (isSelected) Text("Selected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                            }
-                            OutlinedButton(onClick = {
+                if (signatures.isNotEmpty()) {
+                    item { Text("Signatures", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp)) }
+                    items(signatures, key = { it.name }) { signature ->
+                        MarkLibraryItem(
+                            mark = signature,
+                            isSelected = signature.name == selectedSignatureName,
+                            onSelect = { onSelect(signature.name) },
+                            onDelete = {
                                 vm.deleteSignature(signature.name)
                                 if (selectedSignatureName == signature.name) {
                                     onSelect(vm.signatures.firstOrNull()?.name ?: "")
                                 }
-                            }) { Text("Delete") }
-                        }
+                            },
+                        )
+                    }
+                }
+                if (stamps.isNotEmpty()) {
+                    item { Text("Stamps", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp)) }
+                    items(stamps, key = { it.name }) { stamp ->
+                        MarkLibraryItem(
+                            mark = stamp,
+                            isSelected = stamp.name == selectedSignatureName,
+                            onSelect = { onSelect(stamp.name) },
+                            onDelete = {
+                                vm.deleteSignature(stamp.name)
+                                if (selectedSignatureName == stamp.name) {
+                                    onSelect(vm.signatures.firstOrNull()?.name ?: "")
+                                }
+                            },
+                        )
                     }
                 }
             }
             HorizontalDivider()
-            OutlinedButton(onClick = onCreateNew, modifier = Modifier.fillMaxWidth()) { Text("Create new signature") }
-            OutlinedButton(onClick = onImportStamp, modifier = Modifier.fillMaxWidth()) { Text("Add stamp from image") }
+            OutlinedButton(onClick = onCreateNew, modifier = Modifier.fillMaxWidth()) { Text("Draw a new signature") }
+            OutlinedButton(onClick = onImportStamp, modifier = Modifier.fillMaxWidth()) { Text("Import a new stamp") }
             Button(
                 onClick = onUseSelected,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = selectedSignatureName != null && vm.signatures.any { it.name == selectedSignatureName },
             ) {
-                Text("Use selected signature")
+                Text("Use selected mark")
             }
         }
 
+    }
+}
+
+@Composable
+private fun MarkLibraryItem(
+    mark: SavedSignature,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    OutlinedCard(
+        Modifier.fillMaxWidth().border(
+            width = if (isSelected) 2.dp else 1.dp,
+            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            shape = MaterialTheme.shapes.medium,
+        ).clickable { onSelect() }
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(selected = isSelected, onClick = onSelect)
+            SignaturePreview(Modifier.size(88.dp, 56.dp), mark)
+            Column(Modifier.weight(1f)) {
+                Text(mark.name, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (mark.imageFileName != null) "Stamp" else "Signature",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (isSelected) Text("Selected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+            OutlinedButton(onClick = onDelete) { Text("Delete") }
+        }
     }
 }
 
@@ -206,11 +243,12 @@ private fun ImportStampFromImageScreen(
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("My stamp") }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
-    var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var rawBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var removeWhiteBackground by remember { mutableStateOf(true) }
     var status by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
-    DisposableEffect(previewBitmap) {
-        val bitmapToRecycle = previewBitmap
+    DisposableEffect(rawBitmap) {
+        val bitmapToRecycle = rawBitmap
         onDispose { bitmapToRecycle?.recycle() }
     }
 
@@ -220,12 +258,32 @@ private fun ImportStampFromImageScreen(
         status = ""
         scope.launch {
             val bitmap = withContext(Dispatchers.IO) { loadBitmap(context.contentResolver, uri) }
-            previewBitmap = bitmap
+            rawBitmap = bitmap
             if (bitmap == null) status = "Could not load image."
         }
     }
 
-    Page("Add Stamp from Image", back) {
+    var processedPreview by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(rawBitmap, removeWhiteBackground) {
+        val old = processedPreview
+        processedPreview = null
+        old?.recycle()
+        val src = rawBitmap ?: return@LaunchedEffect
+        if (!removeWhiteBackground) return@LaunchedEffect
+        var processed: Bitmap? = null
+        try {
+            processed = withContext(Dispatchers.Default) { removeNearWhitePixels(src) }
+            processedPreview = processed
+            processed = null
+        } finally {
+            processed?.recycle()
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { processedPreview?.recycle() }
+    }
+
+    Page("Import Stamp", back) {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
@@ -238,20 +296,32 @@ private fun ImportStampFromImageScreen(
             modifier = Modifier.fillMaxWidth(),
             enabled = !saving,
         ) { Text(if (selectedUri == null) "Choose image" else "Choose a different image") }
-        if (previewBitmap != null) {
-            val bitmap = previewBitmap!!
+        if (rawBitmap != null) {
+            val bitmap = rawBitmap!!
+            val displayBitmap = processedPreview ?: bitmap
             Box(
                 Modifier.fillMaxWidth().aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat()).border(1.dp, ComposeColor.Gray)
             ) {
                 Image(
-                    bitmap = bitmap.asImageBitmap(),
+                    bitmap = displayBitmap.asImageBitmap(),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit,
                 )
             }
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Switch(
+                    checked = removeWhiteBackground,
+                    onCheckedChange = { removeWhiteBackground = it },
+                )
+                Text("Remove white background", style = MaterialTheme.typography.bodyMedium)
+            }
         } else {
-            Text("Select an image to import it as a reusable stamp.", style = MaterialTheme.typography.bodySmall)
+            Text("Select an image to preview and import it as a reusable stamp.", style = MaterialTheme.typography.bodySmall)
         }
         Button(
             onClick = {
@@ -260,7 +330,7 @@ private fun ImportStampFromImageScreen(
                     saving = true
                     status = "Saving stamp…"
                     val savedName = withContext(Dispatchers.IO) {
-                        runCatching { vm.saveSignatureFromImage(context.contentResolver, uri, name) }.getOrNull()
+                        runCatching { vm.saveSignatureFromImage(context.contentResolver, uri, name, removeWhiteBackground) }.getOrNull()
                     }
                     saving = false
                     if (savedName != null) {
@@ -355,12 +425,14 @@ private fun SignatureEditorScreen(
 @Composable
 private fun ApplySignatureScreen(
     vm: FontCreatorViewModel,
-    signature: SavedSignature,
+    signature: SavedSignature?,
+    onAddMark: () -> Unit,
     back: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val signatureImageBitmap = rememberImageBitmap(vm.signatureImageFile(signature))
+    val signatureImageFile = signature?.let { vm.signatureImageFile(it) }
+    val signatureImageBitmap = rememberImageBitmap(signatureImageFile)
     var signatureScale by remember { mutableFloatStateOf(22f) }
     var sigOffsetX by remember { mutableFloatStateOf(0.5f) }
     var sigOffsetY by remember { mutableFloatStateOf(0.82f) }
@@ -415,24 +487,36 @@ private fun ApplySignatureScreen(
         }
     }
 
-    Page("Apply Signature", back) {
+    Page("Sign or Stamp a Document", back) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // Show active signature info
+            // Show active mark info or "add mark" prompt
             OutlinedCard(Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SignaturePreview(Modifier.size(88.dp, 56.dp), signature)
-                    Text(signature.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    if (signature != null) {
+                        SignaturePreview(Modifier.size(88.dp, 56.dp), signature)
+                        Text(signature.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        OutlinedButton(onClick = onAddMark) { Text("Change mark") }
+                    } else {
+                        Text(
+                            "No mark selected.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Button(onClick = onAddMark) { Text("Add mark") }
+                    }
                 }
             }
 
-            Text("Signed output size", style = MaterialTheme.typography.titleMedium)
-            Slider(value = signatureScale, onValueChange = { signatureScale = it }, valueRange = 12f..35f)
-            Text("${signatureScale.toInt()}% of page width", style = MaterialTheme.typography.bodySmall)
+            if (signature != null) {
+                Text("Mark size", style = MaterialTheme.typography.titleMedium)
+                Slider(value = signatureScale, onValueChange = { signatureScale = it }, valueRange = 12f..35f)
+                Text("${signatureScale.toInt()}% of page width", style = MaterialTheme.typography.bodySmall)
 
-            HorizontalDivider()
+                HorizontalDivider()
+            }
 
             // File picker button
             OutlinedButton(
@@ -445,7 +529,7 @@ private fun ApplySignatureScreen(
 
             if (selectedFileUri == null) {
                 Text(
-                    "Choose a file above to see the signature placement preview.",
+                    "Choose a document above to see the mark placement preview.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -454,8 +538,8 @@ private fun ApplySignatureScreen(
             if (selectedFileUri != null) {
                 val bitmap = previewBitmap
                 if (bitmap != null) {
-                    Text("Signature placement", style = MaterialTheme.typography.titleMedium)
-                    Text("Drag the signature to position it.", style = MaterialTheme.typography.bodySmall)
+                    Text("Mark placement", style = MaterialTheme.typography.titleMedium)
+                    Text("Drag the mark to position it.", style = MaterialTheme.typography.bodySmall)
 
                     // PDF page navigation
                     if (isPdf && pageCount > 0) {
@@ -514,7 +598,7 @@ private fun ApplySignatureScreen(
                                     )
                                 },
                         ) {
-                            val sigPoints = if (signatureImageBitmap == null) signature.strokes.flatMap { it.points } else emptyList()
+                            val sigPoints = if (signatureImageBitmap == null && signature != null) signature.strokes.flatMap { it.points } else emptyList()
                             if (signatureImageBitmap != null || sigPoints.isNotEmpty()) {
                                 val sigNatWidth = signatureImageBitmap?.width?.toFloat()?.coerceAtLeast(1f)
                                     ?: (sigPoints.maxOf { it.x } - sigPoints.minOf { it.x }).coerceAtLeast(1f)
@@ -530,7 +614,7 @@ private fun ApplySignatureScreen(
                                         dstOffset = IntOffset(left.toInt(), top.toInt()),
                                         dstSize = IntSize((sigNatWidth * scale).toInt(), (sigNatHeight * scale).toInt()),
                                     )
-                                } else {
+                                } else if (signature != null) {
                                     val minX = sigPoints.minOf { it.x }
                                     val minY = sigPoints.minOf { it.y }
                                     signature.strokes.forEach { stroke ->
@@ -557,16 +641,17 @@ private fun ApplySignatureScreen(
                         }
                     }
 
-                    // Sign and share button
+                    // Apply mark and share button
                     Button(
                         onClick = {
                             val uri = selectedFileUri ?: return@Button
+                            val sig = signature ?: return@Button
                             scope.launch {
                                 isProcessing = true
-                                status = "Signing document…"
+                                status = "Applying mark…"
                                 val result = withContext(Dispatchers.IO) {
                                     signDocumentWithPage(
-                                        context, uri, signature,
+                                        context, uri, sig,
                                         signatureScale / 100f, sigOffsetX, sigOffsetY,
                                         if (isPdf) currentPage else 0,
                                         if (isPdf) applyToAll else false,
@@ -582,9 +667,9 @@ private fun ApplySignatureScreen(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !isProcessing,
+                        enabled = !isProcessing && signature != null,
                     ) {
-                        Text("Sign and share")
+                        Text("Apply mark and share")
                     }
                 } else {
                     LinearProgressIndicator(Modifier.fillMaxWidth())

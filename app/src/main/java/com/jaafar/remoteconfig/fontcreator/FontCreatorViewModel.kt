@@ -2,6 +2,9 @@ package com.jaafar.remoteconfig.fontcreator
 
 import android.app.Application
 import android.content.ContentResolver
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
@@ -223,18 +226,30 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return cleanName
     }
 
-    fun saveSignatureFromImage(contentResolver: ContentResolver, uri: Uri, name: String): String {
+    fun saveSignatureFromImage(contentResolver: ContentResolver, uri: Uri, name: String, removeWhiteBackground: Boolean = true): String {
         val cleanName = name.trim().ifEmpty { "My stamp" }
-        val extension = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-            val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-            if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx)?.substringAfterLast('.', "png") else "png"
-        } ?: "png"
-        val safeExt = extension.lowercase().takeIf { it in setOf("png", "jpg", "jpeg", "webp") } ?: "png"
-        val fileName = "stamp-${System.currentTimeMillis()}.$safeExt"
+        val fileName = "stamp-${System.currentTimeMillis()}.png"
         val outputFile = File(getApplication<Application>().filesDir, fileName)
         try {
-            contentResolver.openInputStream(uri)?.use { input -> outputFile.outputStream().use { output -> input.copyTo(output) } }
-                ?: error("Cannot read source image")
+            val sourceBitmap: Bitmap = if (Build.VERSION.SDK_INT >= 28) {
+                ImageDecoder.decodeBitmap(ImageDecoder.createSource(contentResolver, uri)) { decoder, _, _ ->
+                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                }
+            } else {
+                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            } ?: error("Cannot read source image")
+            val outputBitmap = if (removeWhiteBackground) {
+                val result = removeNearWhitePixels(sourceBitmap)
+                sourceBitmap.recycle()
+                result
+            } else {
+                sourceBitmap
+            }
+            try {
+                java.io.FileOutputStream(outputFile).use { outputBitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            } finally {
+                outputBitmap.recycle()
+            }
         } catch (error: Exception) {
             outputFile.delete()
             throw error

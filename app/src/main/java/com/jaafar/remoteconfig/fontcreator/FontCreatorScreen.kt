@@ -45,7 +45,7 @@ private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the laz
 private const val USE_SELECTED_FONT_KEY = "use_selected_font_for_app"
 
 private enum class Screen { Home, Library, Fonts, Letters, Spacing, Image, PdfFont, Signature, Settings }
-private enum class LibraryTab(val label: String) { Fonts("Fonts"), Signatures("Signatures") }
+private enum class LibraryTab(val label: String) { Fonts("Fonts"), Signatures("Signatures & Stamps") }
 
 @Composable
 fun FontCreatorApp(viewModel: FontCreatorViewModel) {
@@ -149,7 +149,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     HomeButton("Create a Font", "Start or continue your generated font workflow") { go(Screen.Fonts) }
     HomeButton("Add Text to an Image", "Use the existing write-on-image workflow") { go(Screen.Image) }
     HomeButton("Change Text in a Document", "Use PDF Font Converter (includes OCR inside this flow)") { go(Screen.PdfFont) }
-    HomeButton("Sign a Document", "Open your signature workflow for images and PDFs") { go(Screen.Signature) }
+    HomeButton("Sign or Stamp a Document", "Open your signature and stamp workflow for images and PDFs") { go(Screen.Signature) }
     HomeButton("My Library", "Browse and manage your fonts and signatures") { go(Screen.Library) }
     vm.activeProject?.let { Text("Open font: ${it.name}", style = MaterialTheme.typography.titleMedium) }
 }
@@ -222,22 +222,27 @@ private fun LibraryScreen(
             OutlinedButton(openFontManager, Modifier.fillMaxWidth()) { Text("Open font manager") }
         }
         LibraryTab.Signatures -> {
-            Text("${vm.signatures.size} saved signature${if (vm.signatures.size == 1) "" else "s"}")
+            val sigCount = vm.signatures.count { it.imageFileName == null }
+            val stampCount = vm.signatures.count { it.imageFileName != null }
+            Text("$sigCount signature${if (sigCount == 1) "" else "s"} · $stampCount stamp${if (stampCount == 1) "" else "s"}")
             if (vm.signatures.isEmpty()) {
-                Text("No signatures in your library yet.")
+                Text("No signatures or stamps in your library yet.")
             } else {
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(vm.signatures) { signature ->
                         OutlinedCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                                 Text(signature.name, style = MaterialTheme.typography.titleMedium)
-                                Text("Use the signature library to preview, edit, and apply.", style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    if (signature.imageFileName != null) "Stamp" else "Signature",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                             }
                         }
                     }
                 }
             }
-            OutlinedButton(openSignatureManager, Modifier.fillMaxWidth()) { Text("Open signature library") }
+            OutlinedButton(openSignatureManager, Modifier.fillMaxWidth()) { Text("Open Signatures & Stamps") }
         }
     }
 }

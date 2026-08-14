@@ -1,5 +1,7 @@
 package com.jaafar.remoteconfig.fontcreator
 
+import android.graphics.Bitmap
+import android.graphics.Color
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -119,5 +121,21 @@ data class ImportedFont(
     val fileName: String,
     val importedAt: Long = System.currentTimeMillis(),
 )
+
+internal fun removeNearWhitePixels(source: Bitmap, threshold: Int = 240): Bitmap {
+    val result = source.copy(Bitmap.Config.ARGB_8888, true)
+    val pixels = IntArray(result.width * result.height)
+    result.getPixels(pixels, 0, result.width, 0, 0, result.width, result.height)
+    for (i in pixels.indices) {
+        val r = Color.red(pixels[i])
+        val g = Color.green(pixels[i])
+        val b = Color.blue(pixels[i])
+        if (r >= threshold && g >= threshold && b >= threshold) {
+            pixels[i] = Color.TRANSPARENT
+        }
+    }
+    result.setPixels(pixels, 0, result.width, 0, 0, result.width, result.height)
+    return result
+}
 
 internal fun hypotSquared(a: GlyphPoint, b: GlyphPoint): Float { val dx = a.x - b.x; val dy = a.y - b.y; return dx * dx + dy * dy }
