@@ -11,6 +11,7 @@ import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -90,7 +91,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
     ) { uri ->
         if (uri != null) {
             sourceUri = uri
-            sourceName = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "document"
+            sourceName = displayNameForUri(context, uri) ?: "document"
             outputFile = null
             recognizedDocument = null
             status = ""
@@ -275,7 +276,7 @@ private suspend fun recognizeDocument(
     runCatching {
         val recognizer = RasterTextRecognizer(typeface)
         val mimeType = context.contentResolver.getType(sourceUri)
-        val looksLikePdf = sourceUri.lastPathSegment?.endsWith(".pdf", true) == true
+        val looksLikePdf = displayNameForUri(context, sourceUri)?.endsWith(".pdf", true) == true
         when {
             mimeType == "application/pdf" || looksLikePdf -> {
                 context.contentResolver.openFileDescriptor(sourceUri, "r")?.use { pfd ->
@@ -333,12 +334,12 @@ private suspend fun rebuildPdf(
             canvas.drawColor(Color.WHITE)
             page.lines.forEach { line ->
                 if (line.text.isBlank()) return@forEach
-                val baseTextSize = line.height * 0.82f
+                val baseTextSize = line.height * BASE_TEXT_SIZE_RATIO
                 textPaint.textSize = baseTextSize
                 val measuredWidth = textPaint.measureText(line.text)
                 if (measuredWidth > 0f) {
-                    val scaledTextSize = textPaint.textSize * (line.width * 1.04f / measuredWidth)
-                    textPaint.textSize = scaledTextSize.coerceIn(10f, baseTextSize * 1.15f)
+                    val scaledTextSize = textPaint.textSize * (line.width * TEXT_WIDTH_PADDING_RATIO / measuredWidth)
+                    textPaint.textSize = scaledTextSize.coerceIn(10f, baseTextSize * MAX_TEXT_UPSCALE_RATIO)
                 }
                 val baseline = line.bottom.toFloat().coerceAtLeast(textPaint.textSize)
                 canvas.drawText(line.text, line.left.toFloat(), baseline, textPaint)
@@ -352,8 +353,20 @@ private suspend fun rebuildPdf(
     }.getOrNull()
 }
 
+private fun displayNameForUri(context: android.content.Context, uri: Uri): String? {
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (index >= 0 && cursor.moveToFirst()) return cursor.getString(index)
+    }
+    return uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')
+}
+
 private const val DEFAULT_NOTICE =
     "Tip: pick the font that most closely matches the source. Recognition works best on clean, high-contrast Latin text."
 
 private const val OCR_NOTICE =
     "This OCR flow recognizes text from images or rasterized PDF pages, then rebuilds a fresh PDF using the selected font."
+
+private const val BASE_TEXT_SIZE_RATIO = 0.82f
+private const val TEXT_WIDTH_PADDING_RATIO = 1.04f
+private const val MAX_TEXT_UPSCALE_RATIO = 1.15f

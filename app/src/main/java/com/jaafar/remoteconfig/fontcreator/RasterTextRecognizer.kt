@@ -179,6 +179,7 @@ internal class RasterTextRecognizer(typeface: Typeface) {
         }
 
         private fun diff(first: BooleanArray, second: BooleanArray): Float {
+            if (first.size != second.size) return Float.MAX_VALUE
             var difference = 0f
             for (index in first.indices) if (first[index] != second[index]) difference += 1f
             return difference
