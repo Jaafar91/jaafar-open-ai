@@ -275,8 +275,9 @@ private suspend fun recognizeDocument(
 ): RecognizedDocument? = withContext(Dispatchers.IO) {
     runCatching {
         val recognizer = RasterTextRecognizer(typeface)
+        val mimeType = context.contentResolver.getType(sourceUri)
         when {
-            context.contentResolver.getType(sourceUri) == "application/pdf" || sourceUri.toString().endsWith(".pdf", true) -> {
+            mimeType == "application/pdf" || sourceUri.toString().endsWith(".pdf", true) -> {
                 val pfd: ParcelFileDescriptor = context.contentResolver.openFileDescriptor(sourceUri, "r")
                     ?: return@runCatching null
                 val renderer = PdfRenderer(pfd)
@@ -334,8 +335,10 @@ private suspend fun rebuildPdf(
             page.lines.forEach { line ->
                 if (line.text.isBlank()) return@forEach
                 textPaint.textSize = line.height * 0.82f
-                while (textPaint.measureText(line.text) > line.width * 1.04f && textPaint.textSize > 10f) {
-                    textPaint.textSize -= 1f
+                val measuredWidth = textPaint.measureText(line.text)
+                if (measuredWidth > 0f) {
+                    val scaledTextSize = textPaint.textSize * (line.width * 1.04f / measuredWidth)
+                    textPaint.textSize = scaledTextSize.coerceIn(10f, textPaint.textSize)
                 }
                 val baseline = line.bottom.toFloat().coerceAtLeast(textPaint.textSize)
                 canvas.drawText(line.text, line.left.toFloat(), baseline, textPaint)
