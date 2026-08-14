@@ -25,11 +25,14 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     /** Returns the ordered code points for the active project's selected languages. */
     val activeCharacterOrder: List<Int> get() {
         val project = activeProject ?: return CHARACTER_ORDER
-        return project.selectedLanguages
+        val codePoints = project.selectedLanguages
             .flatMap { it.codePoints }
             .distinct()
             .filter { it != 0x20 } // exclude plain space (handled separately in spacing)
-            .sorted()
+        val letters = codePoints.filter { it.toChar().isLetter() }.sorted()
+        val digits = codePoints.filter { it.toChar().isDigit() }.sorted()
+        val symbols = codePoints.filter { !it.toChar().isLetter() && !it.toChar().isDigit() }.sorted()
+        return letters + digits + symbols
     }
 
     private val repository = GlyphRepository(application)
