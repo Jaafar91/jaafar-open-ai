@@ -3,6 +3,7 @@ package com.jaafar.remoteconfig.fontcreator
 import android.content.Intent
 import android.graphics.Typeface
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -69,6 +70,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
                 codePoint = viewModel.selectedCodePoint!!,
                 initial = viewModel.drawings[viewModel.selectedCodePoint],
                 pagingMode = viewModel.isPagingMode,
+                pagingProgress = viewModel.pagingProgress,
                 referenceTypeface = referenceTypeface,
                 onCancel = viewModel::closeEditor,
                 onSkip = viewModel::skipLetter,
@@ -244,6 +246,8 @@ private fun LibraryScreen(
     val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
+    var showAddCharsSetupDialog by remember { mutableStateOf(false) }
+    var setupCharsText by remember { mutableStateOf("") }
     var showImportNameDialog by remember { mutableStateOf(false) }
     var importPendingUri by remember { mutableStateOf<Uri?>(null) }
     var importDisplayName by remember { mutableStateOf("") }
@@ -338,7 +342,7 @@ private fun LibraryScreen(
         onDismissRequest = { showCreateDialog = false; name = "" },
         title = { Text("Add font") },
         text = { OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Font name") }, singleLine = true) },
-        confirmButton = { TextButton(onClick = { if (vm.createProject(name)) { showCreateDialog = false; name = ""; edit() } }, enabled = name.isNotBlank()) { Text("Create") } },
+        confirmButton = { TextButton(onClick = { if (vm.createProject(name)) { showCreateDialog = false; name = ""; setupCharsText = ""; showAddCharsSetupDialog = true } }, enabled = name.isNotBlank()) { Text("Create") } },
         dismissButton = { TextButton(onClick = { showCreateDialog = false; name = "" }) { Text("Cancel") } }
     )
     if (showImportNameDialog) AlertDialog(
@@ -358,6 +362,20 @@ private fun LibraryScreen(
             }, enabled = importDisplayName.isNotBlank()) { Text("Import") }
         },
         dismissButton = { TextButton(onClick = { showImportNameDialog = false; importPendingUri = null }) { Text("Cancel") } }
+    )
+    if (showAddCharsSetupDialog) AlertDialog(
+        onDismissRequest = { showAddCharsSetupDialog = false; edit() },
+        title = { Text("Add characters from text (optional)") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Paste sample text to identify which supported characters to draw first. You can skip this step and add characters later.")
+                OutlinedTextField(setupCharsText, { setupCharsText = it }, Modifier.fillMaxWidth(), label = { Text("Sample text") }, minLines = 3)
+            }
+        },
+        confirmButton = {
+            Button(onClick = { if (setupCharsText.isNotBlank()) vm.drawMissingCharacters(setupCharsText); showAddCharsSetupDialog = false; edit() }) { Text("Start drawing") }
+        },
+        dismissButton = { OutlinedButton(onClick = { showAddCharsSetupDialog = false; edit() }) { Text("Skip") } },
     )
 }
 
@@ -404,9 +422,10 @@ private enum class ActionIconType { Add, Edit, Share, Import }
 }
 
 @Composable private fun LettersScreen(vm: FontCreatorViewModel, back: () -> Unit) = Page("Letters · ${vm.activeProject?.name.orEmpty()}", back) {
-    var text by remember { mutableStateOf("") }
     var showFonts by remember { mutableStateOf(false) }
     var showLanguages by remember { mutableStateOf(false) }
+    var showAddCharsDialog by remember { mutableStateOf(false) }
+    var addCharsText by remember { mutableStateOf("") }
     val selectedLanguages = vm.activeProject?.selectedLanguages ?: setOf(LanguageScript.BASIC_LATIN)
     var pendingLanguages by remember(selectedLanguages) { mutableStateOf(selectedLanguages) }
     Box {
@@ -468,10 +487,25 @@ private enum class ActionIconType { Add, Edit, Share, Import }
             }
         )
     }
-    OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text("Text to support") }, supportingText = { Text("Characters from selected languages") })
-    Button({ vm.drawMissingCharacters(text) }, Modifier.fillMaxWidth(), enabled = text.isNotEmpty()) { Text("Draw missing letters") }
-    Button(vm::startPaging, Modifier.fillMaxWidth()) { Text("Draw all missing") }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton({ addCharsText = ""; showAddCharsDialog = true }, Modifier.weight(1f)) { Text("Add more characters") }
+        Button(vm::startPaging, Modifier.weight(1f)) { Text("Draw all missing") }
+    }
     Text("Tap one character to draw it.", style = MaterialTheme.typography.bodySmall)
+    if (showAddCharsDialog) AlertDialog(
+        onDismissRequest = { showAddCharsDialog = false },
+        title = { Text("Add characters from text") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Paste sample text. The app will find supported characters you haven't drawn yet and begin them.")
+                OutlinedTextField(addCharsText, { addCharsText = it }, Modifier.fillMaxWidth(), label = { Text("Sample text") }, minLines = 3)
+            }
+        },
+        confirmButton = {
+            Button(onClick = { vm.drawMissingCharacters(addCharsText); showAddCharsDialog = false }, enabled = addCharsText.isNotBlank()) { Text("Start drawing") }
+        },
+        dismissButton = { OutlinedButton(onClick = { showAddCharsDialog = false }) { Text("Cancel") } },
+    )
     LazyVerticalGrid(GridCells.Adaptive(52.dp), Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         items(vm.activeCharacterOrder, key = { it }) { code ->
             val complete = code in vm.drawings
@@ -614,21 +648,33 @@ private enum class ActionIconType { Add, Edit, Share, Import }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun GlyphEditorScreen(codePoint: Int, initial: GlyphDrawing?, pagingMode: Boolean, referenceTypeface: Typeface?, onCancel: () -> Unit, onSkip: () -> Unit, onSave: (GlyphDrawing) -> Unit) {
+@Composable private fun GlyphEditorScreen(codePoint: Int, initial: GlyphDrawing?, pagingMode: Boolean, pagingProgress: Pair<Int, Int>?, referenceTypeface: Typeface?, onCancel: () -> Unit, onSkip: () -> Unit, onSave: (GlyphDrawing) -> Unit) {
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember(codePoint) { mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)) }
-    Scaffold(topBar = { AppTopBar("Draw ${codePoint.toChar()}", onCancel) }) { padding ->
+    var showDiscardDialog by remember { mutableStateOf(false) }
+    val initialStrokes = remember(codePoint) { initial?.strokes ?: emptyList<GlyphStroke>() }
+    val isDirty = strokes != initialStrokes
+    val handleBack = { if (isDirty) showDiscardDialog = true else onCancel() }
+    BackHandler(onBack = handleBack)
+    val char = codePoint.toChar().toString()
+    val title = if (pagingProgress != null) "Draw $char · ${pagingProgress.first} of ${pagingProgress.second}" else "Draw $char"
+    val isLastInQueue = pagingProgress != null && pagingProgress.first == pagingProgress.second
+    val saveLabel = when {
+        isLastInQueue -> "Save & Finish"
+        pagingMode -> "Save & Next"
+        else -> "Save letter"
+    }
+    Scaffold(topBar = { AppTopBar(title, handleBack) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Gray: ascender/descender · Red: baseline", style = MaterialTheme.typography.bodySmall)
             Row(Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(
                     Modifier.weight(.3f).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline),
                     contentAlignment = Alignment.Center
-                ) { Text(codePoint.toChar().toString(), style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Bold) }
+                ) { Text(char, style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Bold) }
                 Canvas(Modifier.weight(.7f).fillMaxHeight().background(Color.White).border(1.dp, Color.Gray).pointerInput(codePoint, strokes) { detectDragGestures(onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) }, onDrag = { change, _ -> change.consume(); val next = GlyphPoint(change.position.x, change.position.y); if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) active = active + next }, onDragEnd = { if (active.size > 1) strokes = strokes + GlyphStroke(active); active = emptyList() }, onDragCancel = { active = emptyList() }) }) {
                     canvasSize = size.width to size.height
-                    // Draw faint reference glyph if a reference typeface is set
                     if (referenceTypeface != null) {
                         drawIntoCanvas { canvas ->
                             val refPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
@@ -637,12 +683,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
                                 color = android.graphics.Color.argb(40, 0, 0, 0)
                                 textAlign = android.graphics.Paint.Align.CENTER
                             }
-                            canvas.nativeCanvas.drawText(
-                                codePoint.toChar().toString(),
-                                size.width / 2,
-                                size.height * 0.82f,
-                                refPaint,
-                            )
+                            canvas.nativeCanvas.drawText(char, size.width / 2, size.height * 0.82f, refPaint)
                         }
                     }
                     drawCoordinateRulers()
@@ -650,9 +691,21 @@ private enum class ActionIconType { Add, Edit, Share, Import }
                     (strokes.map { it.points } + listOf(active)).forEach { points -> if (points.size > 1) drawPath(Path().apply { moveTo(points[0].x, points[0].y); points.drop(1).forEach { lineTo(it.x, it.y) } }, Color.Black, style = Stroke(8f, cap = StrokeCap.Round, join = StrokeJoin.Round)) }
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onCancel) { Text("Cancel") }; OutlinedButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }; OutlinedButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) { Text("Clear") }; if (pagingMode) OutlinedButton(onSkip) { Text("Skip") }; Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) { Text(if (pagingMode) "Save & next" else "Save letter") } }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }
+                OutlinedButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) { Text("Clear") }
+                if (pagingMode) TextButton(onSkip) { Text("Skip") }
+                Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) { Text(saveLabel) }
+            }
         }
     }
+    if (showDiscardDialog) AlertDialog(
+        onDismissRequest = { showDiscardDialog = false },
+        title = { Text("Discard changes?") },
+        text = { Text("You have unsaved strokes for this letter. Discard them?") },
+        confirmButton = { TextButton(onClick = { showDiscardDialog = false; onCancel() }) { Text("Discard") } },
+        dismissButton = { OutlinedButton(onClick = { showDiscardDialog = false }) { Text("Keep drawing") } },
+    )
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCoordinateRulers() {

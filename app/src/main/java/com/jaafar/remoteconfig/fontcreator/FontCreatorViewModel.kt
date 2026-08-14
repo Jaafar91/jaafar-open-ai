@@ -43,7 +43,8 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     private val prefs = application.getSharedPreferences("appearance", 0)
     private val executor = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
-    private var pagingQueue = emptyList<Int>()
+    private var pagingQueue by mutableStateOf(emptyList<Int>())
+    private var pagingTotal by mutableStateOf(0)
     val projects = mutableStateListOf<FontProject>().apply { addAll(repository.load()) }
     val signatures = mutableStateListOf<SavedSignature>().apply { addAll(signatureRepository.load().sortedByDescending { it.savedAt }) }
     val importedFonts = mutableStateListOf<ImportedFont>().apply { addAll(importedFontRepository.load()) }
@@ -52,6 +53,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     val activeProject: FontProject? get() = activeProjectIndex?.let { projects.getOrNull(it) }
     var selectedCodePoint by mutableStateOf<Int?>(null)
     var isPagingMode by mutableStateOf(false); private set
+    val pagingProgress: Pair<Int, Int>? get() = if (isPagingMode && pagingTotal > 0) (pagingTotal - pagingQueue.size + 1).coerceAtMost(pagingTotal) to pagingTotal else null
     var status by mutableStateOf(""); private set
     var generatedFont by mutableStateOf<File?>(null); private set
     var previewTypeface by mutableStateOf<Typeface?>(null); private set
@@ -100,7 +102,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun drawMissingCharacters(text: String) = startQueue(text.asSequence().map { it.code }.filter { it != 0x20 && it in activeCharacterOrder && it !in drawings }.distinct().toList(), "This text has no missing supported characters.")
     private fun startQueue(queue: List<Int>, emptyMessage: String) {
         if (queue.isEmpty()) { status = emptyMessage; return }
-        pagingQueue = queue; isPagingMode = true; selectedCodePoint = queue.first()
+        pagingQueue = queue; pagingTotal = queue.size; isPagingMode = true; selectedCodePoint = queue.first()
     }
 
     fun setSpacing(letter: String, word: String): Boolean {
