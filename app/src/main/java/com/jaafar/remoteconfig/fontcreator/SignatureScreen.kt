@@ -80,7 +80,8 @@ internal fun SignatureScreen(
     onQuickMark: (String) -> Unit = {},
     back: () -> Unit,
 ) {
-    var page by remember { mutableStateOf(SignaturePage.Apply) }
+    // The library is the asset-management destination. Applying a mark starts only after one is selected.
+    var page by remember { mutableStateOf(SignaturePage.Library) }
     var selectedSignatureName by remember { mutableStateOf<String?>(null) }
 
     when (page) {
@@ -92,7 +93,7 @@ internal fun SignatureScreen(
             onImportStamp = { page = SignaturePage.ImportStamp },
             onUseSelected = { page = SignaturePage.Apply },
             onQuickMark = onQuickMark,
-            back = { page = SignaturePage.Apply },
+            back = back,
         )
         SignaturePage.Editor -> SignatureEditorScreen(
             vm = vm,
