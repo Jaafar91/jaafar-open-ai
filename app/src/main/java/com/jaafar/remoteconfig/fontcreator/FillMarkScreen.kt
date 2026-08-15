@@ -220,24 +220,12 @@ private fun FillMarkLandingScreen(
     }
 
     Page("Complete a document", back) {
-        Text("Start with a document", style = MaterialTheme.typography.headlineSmall)
-        Text(
-            "Open a PDF or scanned document, then add names, dates, notes, signatures, or stamps.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         Button(
             onClick = { picker.launch(arrayOf("application/pdf", "image/*")) },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Choose a PDF or scanned image")
+            Text("Choose PDF or image")
         }
-
-        Text(
-            "Visual marks are added to the exported copy.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
 
         if (recentDocs.isNotEmpty()) {
             HorizontalDivider()
@@ -316,6 +304,13 @@ private fun FillMarkEditorScreen(
     }
 
     val selectedMark = marks.firstOrNull { it.id == selectedMarkId }
+    val availableTools = MarkType.entries.filter { tool ->
+        when (tool) {
+            MarkType.Signature -> vm.signatures.any { it.imageFileName == null }
+            MarkType.Stamp -> vm.signatures.any { it.imageFileName != null }
+            else -> true
+        }
+    }
 
     // Canvas display size (tracked so pointer handlers can use it)
     var canvasDisplaySize by remember { mutableStateOf(IntSize.Zero) }
@@ -667,7 +662,7 @@ private fun FillMarkEditorScreen(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    MarkType.entries.forEach { tool ->
+                    availableTools.forEach { tool ->
                         val compactLabel = when (tool) {
                             MarkType.Text -> "Text"
                             MarkType.Date -> "Date"
@@ -681,6 +676,11 @@ private fun FillMarkEditorScreen(
                         } else {
                             TextButton(onClick = {
                                 activeTool = tool
+                                configSignatureName = when (tool) {
+                                    MarkType.Signature -> vm.signatures.firstOrNull { it.imageFileName == null }?.name
+                                    MarkType.Stamp -> vm.signatures.firstOrNull { it.imageFileName != null }?.name
+                                    else -> configSignatureName
+                                }
                                 selectedMarkId = null
                                 showMarkOptions = true
                             }) { Text(compactLabel) }
@@ -962,11 +962,11 @@ private fun SignatureStampSelector(
                     )
                     SignaturePreview(
                         modifier = Modifier
-                            .weight(1f)
+                            .size(96.dp, 56.dp)
                             .border(1.dp, ComposeColor.Gray),
                         signature = sig,
                     )
-                    Text(sig.name, style = MaterialTheme.typography.bodySmall)
+                    Text(sig.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
