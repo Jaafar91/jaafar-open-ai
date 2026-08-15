@@ -216,7 +216,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                         Text("Aa", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                     }
                 }
-                Text("Font Creator", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(if (title == "Studio") "Font Creator" else title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
         },
         navigationIcon = {
