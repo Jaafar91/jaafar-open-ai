@@ -369,7 +369,8 @@ private suspend fun rebuildPdf(
                 val measuredWidth = textPaint.measureText(line.text)
                 if (measuredWidth > 0f) {
                     val scaledTextSize = textPaint.textSize * (line.width * TEXT_WIDTH_PADDING_RATIO / measuredWidth)
-                    textPaint.textSize = scaledTextSize.coerceIn(10f, baseTextSize * MAX_TEXT_UPSCALE_RATIO)
+                    val maxTextSize = maxOf(10f, baseTextSize * MAX_TEXT_UPSCALE_RATIO)
+                    textPaint.textSize = scaledTextSize.coerceIn(10f, maxTextSize)
                 }
                 val baseline = (line.bottom - textPaint.descent()).coerceAtLeast(textPaint.textSize)
                 canvas.drawText(line.text, line.left.toFloat(), baseline, textPaint)
