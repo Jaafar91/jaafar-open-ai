@@ -181,6 +181,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
             SectionLabel("Create the restyled copy")
             Button(
                 onClick = {
+                    val uri = sourceUri ?: return@Button
                     val document = recognizedDocument ?: return@Button
                     isProcessing = true
                     status = "Generating PDF…"
