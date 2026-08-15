@@ -2,16 +2,12 @@ package com.jaafar.remoteconfig.fontcreator
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.ImageDecoder
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
-import android.os.Build
-import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -301,16 +297,6 @@ private suspend fun recognizeDocument(
     }.getOrNull()
 }
 
-private fun loadBitmap(resolver: android.content.ContentResolver, uri: Uri): Bitmap? = runCatching {
-    if (Build.VERSION.SDK_INT >= 28) {
-        ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, uri)) { decoder, _, _ ->
-            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-        }
-    } else {
-        resolver.openInputStream(uri).use { input -> BitmapFactory.decodeStream(input) }
-    }
-}.getOrNull()
-
 private suspend fun recognizeBitmap(bitmap: Bitmap): RecognizedPage {
     val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     return try {
@@ -378,14 +364,6 @@ private suspend fun rebuildPdf(
         outputDoc.close()
         outputFile
     }.getOrNull()
-}
-
-private fun displayNameForUri(context: android.content.Context, uri: Uri): String? {
-    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-        if (index >= 0 && cursor.moveToFirst()) return cursor.getString(index)
-    }
-    return uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')
 }
 
 private const val DEFAULT_NOTICE =
