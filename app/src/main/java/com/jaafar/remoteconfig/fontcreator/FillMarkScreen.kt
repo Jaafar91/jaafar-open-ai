@@ -490,6 +490,7 @@ private fun FillMarkEditorScreen(
                 Button(
                     onClick = {
                         updateSelectedMark()
+                        if (selectedMark != null) activeTool = null
                         showMarkOptions = false
                     },
                     modifier = Modifier.fillMaxWidth(),
