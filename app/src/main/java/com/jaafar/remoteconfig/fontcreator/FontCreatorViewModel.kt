@@ -64,6 +64,8 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     var importStatus by mutableStateOf(""); private set
 
     /** Returns all available typefaces (generated + imported) with their display labels. */
+    fun hasGeneratedFont(name: String): Boolean = generatedFile(name).exists()
+
     fun allFontOptions(): List<Pair<String, Typeface>> {
         val app = getApplication<Application>()
         val generated = projects.mapNotNull { project ->
