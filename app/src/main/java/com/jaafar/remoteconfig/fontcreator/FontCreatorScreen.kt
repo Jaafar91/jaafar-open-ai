@@ -471,7 +471,7 @@ private fun LibraryScreen(
         featuredProject?.let { project ->
             val selectedCharacters = project.selectedLanguages.flatMap { it.codePoints }.filter { it != 0x20 }.toSet()
             val total = selectedCharacters.size
-            val drawn = project.drawings.count { it in selectedCharacters }
+            val drawn = project.drawings.keys.count { it in selectedCharacters }
             val ready = vm.hasGeneratedFont(project.name)
             Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -614,8 +614,8 @@ private fun LibraryScreen(
     }
     val requiredCharacters = vm.activeCharacterOrder.toSet()
     val total = requiredCharacters.size
-    val drawn = project.drawings.count { it in requiredCharacters }
-    val complete = requiredCharacters.isNotEmpty() && requiredCharacters.all { it in project.drawings }
+    val drawn = project.drawings.keys.count { it in requiredCharacters }
+    val complete = requiredCharacters.isNotEmpty() && requiredCharacters.all { it in project.drawings.keys }
     Page(if (complete) "Your font" else "Try your font", back, scrollable = true) {
         Text(project.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         if (vm.previewTypeface == null) {
