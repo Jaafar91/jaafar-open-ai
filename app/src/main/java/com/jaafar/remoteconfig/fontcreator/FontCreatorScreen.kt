@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -126,9 +128,14 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun Page(title: String, back: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
+@Composable internal fun Page(title: String, back: (() -> Unit)? = null, scrollable: Boolean = false, actions: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
     Scaffold(topBar = { AppTopBar(title, back, actions) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+        val scrollModifier = if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier
+        Column(
+            Modifier.fillMaxSize().padding(padding).padding(16.dp).then(scrollModifier),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            content = content,
+        )
     }
 }
 
@@ -162,7 +169,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     )
 }
 
-@Composable private fun HomeScreen(vm: FontCreatorViewModel, go: (Screen) -> Unit) = Page("Home", actions = {
+@Composable private fun HomeScreen(vm: FontCreatorViewModel, go: (Screen) -> Unit) = Page("Home", scrollable = true, actions = {
     TextButton(onClick = { go(Screen.Settings) }) { Text("Settings") }
 }) {
     Text("Choose an action", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -541,7 +548,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
 }
 
-@Composable private fun SpacingScreen(vm: FontCreatorViewModel, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit) = Page("Letter spacing", back) {
+@Composable private fun SpacingScreen(vm: FontCreatorViewModel, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit) = Page("Letter spacing", back, scrollable = true) {
     var letter by remember(vm.activeProject) { mutableStateOf(vm.activeProject?.letterSpacingMm?.toString().orEmpty()) }
     var word by remember(vm.activeProject) { mutableStateOf(vm.activeProject?.wordSpacingMm?.toString().orEmpty()) }
     Text("Character spacing", style = MaterialTheme.typography.titleMedium)
@@ -579,7 +586,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
             selected(tf, uri)
         }
     }
-    Page("Write on image", back) {
+    Page("Write on image", back, scrollable = true) {
         Text("Choose a font, then choose an image to write on.")
         Box {
             OutlinedButton({ expanded = true }, Modifier.fillMaxWidth()) { Text("Font: $selectedFontLabel") }
@@ -606,7 +613,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     previewText: String,
     changePreviewText: (String) -> Unit,
     back: () -> Unit,
-) = Page("Settings", back) {
+) = Page("Settings", back, scrollable = true) {
     Text("Appearance", style = MaterialTheme.typography.titleMedium)
     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(!dark, { change(false) }); Text("Light") }
     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(dark, { change(true) }); Text("Dark") }
