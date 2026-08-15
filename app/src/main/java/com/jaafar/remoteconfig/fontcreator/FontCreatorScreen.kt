@@ -474,9 +474,9 @@ private fun LibraryScreen(
             val ready = vm.hasGeneratedFont(project.name)
             Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("CONTINUE WHERE YOU LEFT OFF", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text(if (ready) "YOUR FONT IS READY" else "CONTINUE WHERE YOU LEFT OFF", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Text(project.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(if (ready) "Font preview ready" else "$drawn of $total letters drawn", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(if (ready) "Ready to use." else "$drawn of $total letters drawn", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     if (!ready) LinearProgressIndicator(progress = if (total == 0) 0f else drawn.toFloat() / total, modifier = Modifier.fillMaxWidth())
                     Button(onClick = {
                         featuredIndex?.let(vm::openProject)
@@ -627,7 +627,7 @@ private fun LibraryScreen(
             Text(if (complete) "Your font is ready to use." else "Your preview uses the letters you have drawn so far.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(value = previewText, onValueChange = changePreviewText, modifier = Modifier.fillMaxWidth(), label = { Text("Try typing with your font") }, minLines = 3, textStyle = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(vm.previewTypeface!!)))
             Button(onClick = { useOnImage(project.name) }, modifier = Modifier.fillMaxWidth()) { Text("Use on an image") }
-            OutlinedButton(onClick = editLetters, modifier = Modifier.fillMaxWidth()) { Text("Add more letters") }
+            if (!complete) OutlinedButton(onClick = editLetters, modifier = Modifier.fillMaxWidth()) { Text("Continue drawing") }
             TextButton(onClick = adjustSpacing, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Adjust spacing") }
             vm.generatedFont?.let { file ->
                 Row(Modifier.align(Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
@@ -722,7 +722,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     } else {
         Text("Your letter set is complete.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Button(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) { Text("Try your font") }
-        TextButton(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Add letters from a phrase") }
+        Text("You can start another font from Fonts whenever you are ready.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
     TextButton(onClick = { pendingLanguages = selectedLanguages; showLanguages = true }, modifier = Modifier.fillMaxWidth()) {
