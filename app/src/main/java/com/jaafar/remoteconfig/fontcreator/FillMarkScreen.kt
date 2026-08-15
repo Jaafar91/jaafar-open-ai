@@ -11,12 +11,15 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -95,6 +98,8 @@ internal enum class MarkType(val label: String) {
     Signature("Signature"),
     Stamp("Stamp"),
 }
+
+private enum class TextEntryMode { Text, QuickMark }
 
 internal enum class CheckStyle(val symbol: String) { Check("\u2713"), Cross("\u2717") }
 
@@ -299,6 +304,7 @@ private fun FillMarkEditorScreen(
     var configCheckStyle by remember { mutableStateOf(CheckStyle.Check) }
     var configSignatureName by remember { mutableStateOf<String?>(null) }
     var configApplyToAll by remember { mutableStateOf(false) }
+    var textEntryMode by remember { mutableStateOf(TextEntryMode.Text) }
 
     val textColors = remember {
         listOf(
@@ -456,29 +462,38 @@ private fun FillMarkEditorScreen(
                     if (selectedMark == null) "Add ${activeTool!!.label}" else "Edit ${activeTool!!.label}",
                     style = MaterialTheme.typography.titleLarge,
                 )
-                MarkConfigPanel(
-                    tool = activeTool!!,
-                    configText = configText,
-                    onConfigTextChange = { configText = it },
-                    configColorIdx = configColorIdx,
-                    onColorChange = { configColorIdx = it; updateSelectedMark() },
-                    textColors = textColors,
-                    configFontIdx = configFontIdx,
-                    onFontChange = { configFontIdx = it; updateSelectedMark() },
-                    fontOptions = fontOptions,
-                    configSizeFraction = configSizeFraction,
-                    onSizeChange = { configSizeFraction = it; updateSelectedMark() },
-                    configCheckStyle = configCheckStyle,
-                    onCheckStyleChange = { configCheckStyle = it; updateSelectedMark() },
-                    configSignatureName = configSignatureName,
-                    onSignatureChange = { configSignatureName = it; updateSelectedMark() },
-                    vm = vm,
-                    isPdf = isPdf,
-                    configApplyToAll = configApplyToAll,
-                    onApplyToAllChange = { configApplyToAll = it; updateSelectedMark() },
-                    selectedMark = selectedMark,
-                    onTextCommit = { updateSelectedMark() },
-                )
+                if (activeTool == MarkType.Text && selectedMark == null) {
+                    TextEntryPanel(
+                        mode = textEntryMode,
+                        onModeChange = { textEntryMode = it },
+                        text = configText,
+                        onTextChange = { configText = it },
+                    )
+                } else {
+                    MarkConfigPanel(
+                        tool = activeTool!!,
+                        configText = configText,
+                        onConfigTextChange = { configText = it },
+                        configColorIdx = configColorIdx,
+                        onColorChange = { configColorIdx = it; updateSelectedMark() },
+                        textColors = textColors,
+                        configFontIdx = configFontIdx,
+                        onFontChange = { configFontIdx = it; updateSelectedMark() },
+                        fontOptions = fontOptions,
+                        configSizeFraction = configSizeFraction,
+                        onSizeChange = { configSizeFraction = it; updateSelectedMark() },
+                        configCheckStyle = configCheckStyle,
+                        onCheckStyleChange = { configCheckStyle = it; updateSelectedMark() },
+                        configSignatureName = configSignatureName,
+                        onSignatureChange = { configSignatureName = it; updateSelectedMark() },
+                        vm = vm,
+                        isPdf = isPdf,
+                        configApplyToAll = configApplyToAll,
+                        onApplyToAllChange = { configApplyToAll = it; updateSelectedMark() },
+                        selectedMark = selectedMark,
+                        onTextCommit = { updateSelectedMark() },
+                    )
+                }
                 if (selectedMark != null) {
                     TextButton(onClick = {
                         marks.removeIf { it.id == selectedMarkId }
@@ -495,7 +510,11 @@ private fun FillMarkEditorScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(if (selectedMark == null) "Place on document" else "Done")
+                    Text(
+                        if (activeTool == MarkType.Text && selectedMark == null) "Continue"
+                        else if (selectedMark == null) "Place on document"
+                        else "Done",
+                    )
                 }
             }
         }
@@ -555,7 +574,6 @@ private fun FillMarkEditorScreen(
                                         when {
                                             hit != null -> {
                                                 selectedMarkId = hit.id
-                                                showMarkOptions = true
                                             }
                                             activeTool != null -> {
                                                 val xFrac = (offset.x / w).coerceIn(0f, 0.85f)
@@ -587,6 +605,19 @@ private fun FillMarkEditorScreen(
                             visibleMarks.forEach { mark ->
                                 val isSelected = mark.id == selectedMarkId
                                 drawMarkOnCanvas(mark, w, h, isSelected, fontOptions, sigBitmapCache)
+                            }
+                        }
+                        if (selectedMark != null) {
+                            Row(
+                                Modifier.align(Alignment.TopEnd).padding(6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                TextButton(onClick = { showMarkOptions = true }) { Text("✎") }
+                                TextButton(onClick = {
+                                    marks.removeIf { it.id == selectedMarkId }
+                                    selectedMarkId = null
+                                    activeTool = null
+                                }) { Text("×") }
                             }
                         }
                     }
@@ -761,21 +792,6 @@ private fun MarkConfigPanel(
                         }
                     },
                 )
-                // Quick marks presets
-                Text("Quick marks", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    QUICK_MARK_PRESETS.forEach { preset ->
-                        OutlinedButton(onClick = {
-                            onConfigTextChange(preset)
-                            onTextCommit()
-                        }) { Text(preset, style = MaterialTheme.typography.labelSmall) }
-                    }
-                }
                 TextMarkStyleControls(
                     configColorIdx, onColorChange, textColors,
                     configFontIdx, onFontChange, fontOptions,
@@ -843,17 +859,23 @@ private fun TextMarkStyleControls(
     sizeFraction: Float, onSizeChange: (Float) -> Unit,
 ) {
     Row(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        colors.forEachIndexed { idx, (name, _) ->
-            if (idx == colorIdx) {
-                Button(onClick = {}) { Text(name) }
-            } else {
-                OutlinedButton(onClick = { onColorChange(idx) }) { Text(name) }
-            }
+        Text("Colour", style = MaterialTheme.typography.labelMedium)
+        colors.forEachIndexed { idx, (_, argb) ->
+            Box(
+                Modifier
+                    .size(28.dp)
+                    .background(ComposeColor(argb), CircleShape)
+                    .border(
+                        width = if (idx == colorIdx) 3.dp else 1.dp,
+                        color = if (idx == colorIdx) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                        shape = CircleShape,
+                    )
+                    .clickable { onColorChange(idx) },
+            )
         }
     }
     if (fontOptions.isNotEmpty()) {
@@ -945,6 +967,41 @@ private fun SignatureStampSelector(
                         signature = sig,
                     )
                     Text(sig.name, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TextEntryPanel(
+    mode: TextEntryMode,
+    onModeChange: (TextEntryMode) -> Unit,
+    text: String,
+    onTextChange: (String) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(selected = mode == TextEntryMode.Text, onClick = { onModeChange(TextEntryMode.Text) })
+        Text("Text", modifier = Modifier.clickable { onModeChange(TextEntryMode.Text) })
+        RadioButton(selected = mode == TextEntryMode.QuickMark, onClick = { onModeChange(TextEntryMode.QuickMark) })
+        Text("Quick mark", modifier = Modifier.clickable { onModeChange(TextEntryMode.QuickMark) })
+    }
+    if (mode == TextEntryMode.Text) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = onTextChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Type text to add") },
+            singleLine = true,
+        )
+    } else {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            QUICK_MARK_PRESETS.forEach { preset ->
+                OutlinedButton(onClick = { onTextChange(preset) }) {
+                    Text(preset, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
