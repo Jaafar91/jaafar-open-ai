@@ -31,6 +31,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -41,6 +43,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -258,6 +261,7 @@ private fun FillMarkLandingScreen(
 // ---------------------------------------------------------------------------
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun FillMarkEditorScreen(
     vm: FontCreatorViewModel,
     documentUri: Uri,
@@ -285,6 +289,7 @@ private fun FillMarkEditorScreen(
     val marks = remember { mutableStateListOf<DocumentMark>() }
     var selectedMarkId by remember { mutableStateOf<Long?>(null) }
     var activeTool by remember { mutableStateOf<MarkType?>(null) }
+    var showMarkOptions by remember { mutableStateOf(false) }
 
     // Per-tool config state (shared across marks for ergonomics)
     var configText by remember { mutableStateOf(initialText ?: "") }
@@ -389,7 +394,9 @@ private fun FillMarkEditorScreen(
             targetPage = currentPage,
         )
         marks.add(newMark)
-        selectedMarkId = newMark.id
+        // A mark is placed in one deliberate action; tap it again later to edit it.
+        selectedMarkId = null
+        activeTool = null
     }
 
     fun updateSelectedMark() {
@@ -436,6 +443,63 @@ private fun FillMarkEditorScreen(
         }
     }
 
+    if (showMarkOptions && activeTool != null) {
+        ModalBottomSheet(onDismissRequest = { showMarkOptions = false }) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    if (selectedMark == null) "Add ${activeTool!!.label}" else "Edit ${activeTool!!.label}",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                MarkConfigPanel(
+                    tool = activeTool!!,
+                    configText = configText,
+                    onConfigTextChange = { configText = it },
+                    configColorIdx = configColorIdx,
+                    onColorChange = { configColorIdx = it; updateSelectedMark() },
+                    textColors = textColors,
+                    configFontIdx = configFontIdx,
+                    onFontChange = { configFontIdx = it; updateSelectedMark() },
+                    fontOptions = fontOptions,
+                    configSizeFraction = configSizeFraction,
+                    onSizeChange = { configSizeFraction = it; updateSelectedMark() },
+                    configCheckStyle = configCheckStyle,
+                    onCheckStyleChange = { configCheckStyle = it; updateSelectedMark() },
+                    configSignatureName = configSignatureName,
+                    onSignatureChange = { configSignatureName = it; updateSelectedMark() },
+                    vm = vm,
+                    isPdf = isPdf,
+                    configApplyToAll = configApplyToAll,
+                    onApplyToAllChange = { configApplyToAll = it; updateSelectedMark() },
+                    selectedMark = selectedMark,
+                    onTextCommit = { updateSelectedMark() },
+                )
+                if (selectedMark != null) {
+                    TextButton(onClick = {
+                        marks.removeIf { it.id == selectedMarkId }
+                        selectedMarkId = null
+                        activeTool = null
+                        showMarkOptions = false
+                    }) { Text("Delete mark") }
+                }
+                Button(
+                    onClick = {
+                        updateSelectedMark()
+                        showMarkOptions = false
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (selectedMark == null) "Place on document" else "Done")
+                }
+            }
+        }
+    }
+
     Page(
         title = "Fill & Mark Document",
         back = back,
@@ -452,110 +516,7 @@ private fun FillMarkEditorScreen(
         // The outer Column does NOT scroll — only the document area scrolls.
         Column(Modifier.fillMaxSize()) {
 
-            // ── FIXED CONTROLS (top) ────────────────────────────────────────────
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                // PDF page navigation
-                if (isPdf && pageCount > 0) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OutlinedButton(
-                            onClick = { if (currentPage > 0) currentPage-- },
-                            enabled = currentPage > 0,
-                        ) { Text("\u2190") }
-                        Text(
-                            "Page ${currentPage + 1} of $pageCount",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        OutlinedButton(
-                            onClick = { if (currentPage < pageCount - 1) currentPage++ },
-                            enabled = currentPage < pageCount - 1,
-                        ) { Text("\u2192") }
-                    }
-                }
-
-                // Tool selector toolbar
-                HorizontalDivider()
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    MarkType.entries.forEach { tool ->
-                        val isActive = activeTool == tool
-                        if (isActive) {
-                            Button(onClick = { activeTool = null; selectedMarkId = null }) { Text(tool.label) }
-                        } else {
-                            OutlinedButton(onClick = {
-                                activeTool = tool
-                                selectedMarkId = null
-                            }) { Text(tool.label) }
-                        }
-                    }
-                }
-
-                // Per-tool configuration panel
-                if (activeTool != null) {
-                    Text(
-                        "Tap on the document to place a ${activeTool!!.label.lowercase()}.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    MarkConfigPanel(
-                        tool = activeTool!!,
-                        configText = configText,
-                        onConfigTextChange = { configText = it },
-                        configColorIdx = configColorIdx,
-                        onColorChange = { configColorIdx = it; updateSelectedMark() },
-                        textColors = textColors,
-                        configFontIdx = configFontIdx,
-                        onFontChange = { configFontIdx = it; updateSelectedMark() },
-                        fontOptions = fontOptions,
-                        configSizeFraction = configSizeFraction,
-                        onSizeChange = { configSizeFraction = it; updateSelectedMark() },
-                        configCheckStyle = configCheckStyle,
-                        onCheckStyleChange = { configCheckStyle = it; updateSelectedMark() },
-                        configSignatureName = configSignatureName,
-                        onSignatureChange = { configSignatureName = it; updateSelectedMark() },
-                        vm = vm,
-                        isPdf = isPdf,
-                        configApplyToAll = configApplyToAll,
-                        onApplyToAllChange = { configApplyToAll = it; updateSelectedMark() },
-                        selectedMark = selectedMark,
-                        onTextCommit = { updateSelectedMark() },
-                    )
-                }
-
-                // Selected-mark actions
-                if (selectedMark != null) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = {
-                                marks.removeIf { it.id == selectedMarkId }
-                                selectedMarkId = null
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("Delete mark") }
-                        OutlinedButton(
-                            onClick = { selectedMarkId = null; activeTool = null },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("Deselect") }
-                    }
-                }
-
-                HorizontalDivider()
-            }
-
-            // ── SCROLLABLE DOCUMENT AREA ─────────────────────────────────────────
+            // ── DOCUMENT WORKSPACE ───────────────────────────────────────────── ─────────────────────────────────────────
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -591,7 +552,10 @@ private fun FillMarkEditorScreen(
                                             markContainsPoint(mark, offset, w, h)
                                         }
                                         when {
-                                            hit != null -> selectedMarkId = hit.id
+                                            hit != null -> {
+                                                selectedMarkId = hit.id
+                                                showMarkOptions = true
+                                            }
                                             activeTool != null -> {
                                                 val xFrac = (offset.x / w).coerceIn(0f, 0.85f)
                                                 val yFrac = (offset.y / h).coerceIn(0f, 0.85f)
@@ -631,6 +595,76 @@ private fun FillMarkEditorScreen(
                         Text("Loading document\u2026", style = MaterialTheme.typography.bodySmall)
                     }
                 }
+            }
+
+            // ── COMPACT MARK BAR ─────────────────────────────────────────────── ────────────────────────────────────────────
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                // PDF page navigation
+                if (isPdf && pageCount > 0) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedButton(
+                            onClick = { if (currentPage > 0) currentPage-- },
+                            enabled = currentPage > 0,
+                        ) { Text("\u2190") }
+                        Text(
+                            "Page ${currentPage + 1} of $pageCount",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        OutlinedButton(
+                            onClick = { if (currentPage < pageCount - 1) currentPage++ },
+                            enabled = currentPage < pageCount - 1,
+                        ) { Text("\u2192") }
+                    }
+                }
+
+                // Tool selector toolbar
+                HorizontalDivider()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    MarkType.entries.forEach { tool ->
+                        val compactLabel = when (tool) {
+                            MarkType.Text -> "Text"
+                            MarkType.Date -> "Date"
+                            MarkType.Check -> "✓"
+                            MarkType.Signature -> "Sign"
+                            MarkType.Stamp -> "Stamp"
+                        }
+                        val isActive = activeTool == tool
+                        if (isActive) {
+                            Button(onClick = { activeTool = null; selectedMarkId = null }) { Text(compactLabel) }
+                        } else {
+                            TextButton(onClick = {
+                                activeTool = tool
+                                selectedMarkId = null
+                                showMarkOptions = true
+                            }) { Text(compactLabel) }
+                        }
+                    }
+                }
+
+                if (activeTool != null) {
+                    Text(
+                        "Tap the document to place ${activeTool!!.label.lowercase()}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                HorizontalDivider()
             }
 
             // ── FIXED BOTTOM (export status) ─────────────────────────────────────
