@@ -702,7 +702,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(14.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("$drawn of $total letters", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            if (total > 0) LinearProgressIndicator(progress = drawn.toFloat() / total, modifier = Modifier.fillMaxWidth())
+            if (total > 0) LinearProgressIndicator(progress = (drawn.toFloat() / total).coerceIn(0f, 1f), modifier = Modifier.fillMaxWidth())
         }
     }
 
