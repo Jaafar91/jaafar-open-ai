@@ -219,10 +219,10 @@ private fun FillMarkLandingScreen(
         onDocumentChosen(uri)
     }
 
-    Page("Fill & Mark Document", back) {
-        Text("Prepare a document", style = MaterialTheme.typography.headlineSmall)
+    Page("Complete a document", back) {
+        Text("Start with a document", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "Open a PDF or image, then add text, dates, checks, signatures, or stamps.",
+            "Open a PDF or scanned document, then add names, dates, notes, signatures, or stamps.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -230,7 +230,7 @@ private fun FillMarkLandingScreen(
             onClick = { picker.launch(arrayOf("application/pdf", "image/*")) },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Choose a PDF or image")
+            Text("Choose a PDF or scanned image")
         }
 
         Text(
