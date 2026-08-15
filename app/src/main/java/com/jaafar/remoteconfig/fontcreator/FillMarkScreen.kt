@@ -41,6 +41,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -272,6 +273,7 @@ private fun FillMarkLandingScreen(
 // ---------------------------------------------------------------------------
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun FillMarkEditorScreen(
     vm: FontCreatorViewModel,
     documentUri: Uri,
@@ -494,7 +496,7 @@ private fun FillMarkEditorScreen(
         topBar = {
             TopAppBar(
                 title = { Text(pageLabel, style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = { IconButton(onClick = back) { BackIcon() } },
+                navigationIcon = { IconButton(onClick = back) { FillMarkBackIcon() } },
                 actions = {
                     IconButton(
                         onClick = ::triggerExport,
@@ -779,6 +781,20 @@ private fun FillMarkEditorScreen(
  * Draws a three-node share/network graph icon (three dots connected by two lines)
  * without requiring the material-icons-extended library.
  */
+@Composable
+private fun FillMarkBackIcon() {
+    val color = LocalContentColor.current
+    Canvas(
+        Modifier
+            .size(24.dp)
+            .semantics { contentDescription = "Back" },
+    ) {
+        val stroke = 2.dp.toPx()
+        drawLine(color, Offset(size.width * 0.72f, size.height * 0.18f), Offset(size.width * 0.28f, size.height * 0.5f), stroke)
+        drawLine(color, Offset(size.width * 0.28f, size.height * 0.5f), Offset(size.width * 0.72f, size.height * 0.82f), stroke)
+    }
+}
+
 @Composable
 private fun FillMarkShareIcon() {
     val color = LocalContentColor.current
