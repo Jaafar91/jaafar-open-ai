@@ -310,7 +310,7 @@ private fun ImportStampFromImageScreen(
         onDispose { processedPreview?.recycle() }
     }
 
-    Page("Import Stamp", back) {
+    Page("Import Stamp", back, scrollable = true) {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
@@ -388,7 +388,7 @@ private fun SignatureEditorScreen(
     var canvasSize by remember { mutableStateOf(1f to 1f) }
     var status by remember { mutableStateOf("") }
 
-    Page("New Signature", back) {
+    Page("New Signature", back, scrollable = true) {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
