@@ -216,10 +216,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                         Text("Aa", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                     }
                 }
-                Column {
-                    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text("FONT & MARK STUDIO", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Text("Font Creator", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
         },
         navigationIcon = {
@@ -271,9 +268,6 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     scrollable = true,
     actions = { TextButton(onClick = { go(Screen.Settings) }) { Text("Settings") } },
 ) {
-    Text("What do you want to do?", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-    Text("Choose a task to begin.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
     HomeTaskCard(
         label = "DOCUMENT",
         title = "Complete a document",
@@ -717,7 +711,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     } else if (nextCode != null) {
         Text("Next letter", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         Text(nextCode.toChar().toString(), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
-        Button(onClick = { vm.edit(nextCode) }, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = { vm.startPaging() }, modifier = Modifier.fillMaxWidth()) {
             Text("Draw ${nextCode.toChar()}")
         }
         TextButton(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) {
@@ -933,27 +927,56 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     Scaffold(topBar = { AppTopBar(title, handleBack) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Gray: ascender/descender · Red: baseline", style = MaterialTheme.typography.bodySmall)
-            Row(Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(
-                    Modifier.weight(.3f).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, MaterialTheme.colorScheme.outline),
-                    contentAlignment = Alignment.Center
-                ) { Text(char, style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Bold) }
-                Canvas(Modifier.weight(.7f).fillMaxHeight().background(Color.White).border(1.dp, Color.Gray).pointerInput(codePoint, strokes) { detectDragGestures(onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) }, onDrag = { change, _ -> change.consume(); val next = GlyphPoint(change.position.x, change.position.y); if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) active = active + next }, onDragEnd = { if (active.size > 1) strokes = strokes + GlyphStroke(active); active = emptyList() }, onDragCancel = { active = emptyList() }) }) {
-                    canvasSize = size.width to size.height
-                    if (referenceTypeface != null) {
-                        drawIntoCanvas { canvas ->
-                            val refPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                                typeface = referenceTypeface
-                                textSize = size.height * 0.72f
-                                color = android.graphics.Color.argb(40, 0, 0, 0)
-                                textAlign = android.graphics.Paint.Align.CENTER
-                            }
-                            canvas.nativeCanvas.drawText(char, size.width / 2, size.height * 0.82f, refPaint)
+            Canvas(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(vertical = 12.dp)
+                    .background(Color.White)
+                    .border(1.dp, Color.Gray)
+                    .pointerInput(codePoint, strokes) {
+                        detectDragGestures(
+                            onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                val next = GlyphPoint(change.position.x, change.position.y)
+                                if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) active = active + next
+                            },
+                            onDragEnd = {
+                                if (active.size > 1) strokes = strokes + GlyphStroke(active)
+                                active = emptyList()
+                            },
+                            onDragCancel = { active = emptyList() },
+                        )
+                    },
+            ) {
+                canvasSize = size.width to size.height
+                if (referenceTypeface != null) {
+                    drawIntoCanvas { canvas ->
+                        val refPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                            typeface = referenceTypeface
+                            textSize = size.height * 0.72f
+                            color = android.graphics.Color.argb(34, 0, 0, 0)
+                            textAlign = android.graphics.Paint.Align.CENTER
                         }
+                        canvas.nativeCanvas.drawText(char, size.width / 2, size.height * 0.82f, refPaint)
                     }
-                    drawCoordinateRulers()
-                    drawLine(Color.LightGray, Offset(0f, size.height * .1f), Offset(size.width, size.height * .1f), 2f); drawLine(Color.Red, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f), 3f); drawLine(Color.LightGray, Offset(0f, size.height * .94f), Offset(size.width, size.height * .94f), 2f)
-                    (strokes.map { it.points } + listOf(active)).forEach { points -> if (points.size > 1) drawPath(Path().apply { moveTo(points[0].x, points[0].y); points.drop(1).forEach { lineTo(it.x, it.y) } }, Color.Black, style = Stroke(8f, cap = StrokeCap.Round, join = StrokeJoin.Round)) }
+                }
+                drawCoordinateRulers()
+                drawLine(Color.LightGray, Offset(0f, size.height * .1f), Offset(size.width, size.height * .1f), 2f)
+                drawLine(Color.Red, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f), 3f)
+                drawLine(Color.LightGray, Offset(0f, size.height * .94f), Offset(size.width, size.height * .94f), 2f)
+                (strokes.map { it.points } + listOf(active)).forEach { points ->
+                    if (points.size > 1) {
+                        drawPath(
+                            Path().apply {
+                                moveTo(points[0].x, points[0].y)
+                                points.drop(1).forEach { lineTo(it.x, it.y) }
+                            },
+                            Color.Black,
+                            style = Stroke(8f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                        )
+                    }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
