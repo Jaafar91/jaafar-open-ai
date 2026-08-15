@@ -211,19 +211,24 @@ private fun FillMarkLandingScreen(
     }
 
     Page("Fill & Mark Document", back) {
+        Text("Prepare a document", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "Open a PDF or image and add visual marks: text, date, check, signature, or stamp. " +
-                "This is visual document marking — it does not create a certified digital signature " +
-                "or preserve editable PDF form fields.",
-            style = MaterialTheme.typography.bodySmall,
+            "Open a PDF or image, then add text, dates, checks, signatures, or stamps.",
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Button(
             onClick = { picker.launch(arrayOf("application/pdf", "image/*")) },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Open document\u2026")
+            Text("Choose a PDF or image")
         }
+
+        Text(
+            "Visual marks are added to the exported copy.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         if (recentDocs.isNotEmpty()) {
             HorizontalDivider()
@@ -506,6 +511,11 @@ private fun FillMarkEditorScreen(
 
                 // Per-tool configuration panel
                 if (activeTool != null) {
+                    Text(
+                        "Tap on the document to place a ${activeTool!!.label.lowercase()}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                     MarkConfigPanel(
                         tool = activeTool!!,
                         configText = configText,
@@ -628,6 +638,14 @@ private fun FillMarkEditorScreen(
             }
 
             // ── FIXED BOTTOM (export status) ─────────────────────────────────────
+            if (marks.isNotEmpty() && !isProcessing) {
+                Button(
+                    onClick = ::triggerExport,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                ) {
+                    Text("Export & Share")
+                }
+            }
             if (isProcessing) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (status.isNotBlank()) Text(
                 status,
