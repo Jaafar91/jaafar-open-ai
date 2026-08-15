@@ -709,10 +709,9 @@ private enum class ActionIconType { Add, Edit, Share, Import }
             Text("Start with the alphabet")
         }
     } else if (nextCode != null) {
-        Text("Next letter", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-        Text(nextCode.toChar().toString(), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
+        Text("Keep building your font.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Button(onClick = { vm.startPaging() }, modifier = Modifier.fillMaxWidth()) {
-            Text("Draw ${nextCode.toChar()}")
+            Text("Continue drawing")
         }
         TextButton(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) {
             Text("Draw letters from a phrase instead")
@@ -917,7 +916,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     val handleBack = { if (isDirty) showDiscardDialog = true else onCancel() }
     BackHandler(onBack = handleBack)
     val char = codePoint.toChar().toString()
-    val title = if (pagingProgress != null) "Draw $char · ${pagingProgress.first} of ${pagingProgress.second}" else "Draw $char"
+    val title = if (pagingProgress != null) "Continue drawing · ${pagingProgress.first} of ${pagingProgress.second}" else "Draw a character"
     val isLastInQueue = pagingProgress != null && pagingProgress.first == pagingProgress.second
     val saveLabel = when {
         isLastInQueue -> "Save & Finish"
@@ -926,6 +925,25 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     }
     Scaffold(topBar = { AppTopBar(title, handleBack) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Copy the reference character into the canvas.", style = MaterialTheme.typography.bodySmall)
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text("REFERENCE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        char,
+                        style = MaterialTheme.typography.displayLarge,
+                        fontFamily = referenceTypeface?.let(::FontFamily),
+                    )
+                }
+            }
             Text("Gray: ascender/descender · Red: baseline", style = MaterialTheme.typography.bodySmall)
             Canvas(
                 Modifier
