@@ -24,13 +24,16 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -50,6 +53,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -59,6 +63,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -407,201 +413,253 @@ private fun FillMarkEditorScreen(
         )
     }
 
-    Page("Fill & Mark Document", back) {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            // PDF page navigation
-            if (isPdf && pageCount > 0) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    OutlinedButton(
-                        onClick = { if (currentPage > 0) currentPage-- },
-                        enabled = currentPage > 0,
-                    ) { Text("\u2190") }
-                    Text(
-                        "Page ${currentPage + 1} of $pageCount",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    OutlinedButton(
-                        onClick = { if (currentPage < pageCount - 1) currentPage++ },
-                        enabled = currentPage < pageCount - 1,
-                    ) { Text("\u2192") }
-                }
-            }
-
-            // Document preview + mark overlay
-            val bitmap = previewBitmap
-            if (bitmap != null) {
-                val previewAspect = bitmap.width.toFloat() / bitmap.height.toFloat()
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(previewAspect)
-                        .border(1.dp, ComposeColor.Gray)
-                        .onSizeChanged { canvasDisplaySize = it },
-                ) {
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                    )
-                    Canvas(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(activeTool) {
-                                detectTapGestures { offset ->
-                                    val w = canvasDisplaySize.width.toFloat().coerceAtLeast(1f)
-                                    val h = canvasDisplaySize.height.toFloat().coerceAtLeast(1f)
-                                    val hit = marks.lastOrNull { mark ->
-                                        markContainsPoint(mark, offset, w, h)
-                                    }
-                                    when {
-                                        hit != null -> selectedMarkId = hit.id
-                                        activeTool != null -> {
-                                            val xFrac = (offset.x / w).coerceIn(0f, 0.85f)
-                                            val yFrac = (offset.y / h).coerceIn(0f, 0.85f)
-                                            addOrUpdateMark(xFrac, yFrac)
-                                        }
-                                        else -> selectedMarkId = null
-                                    }
-                                }
-                            }
-                            .pointerInput(selectedMarkId) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    val w = canvasDisplaySize.width.toFloat().coerceAtLeast(1f)
-                                    val h = canvasDisplaySize.height.toFloat().coerceAtLeast(1f)
-                                    val idx = marks.indexOfFirst { it.id == selectedMarkId }
-                                    if (idx >= 0) {
-                                        val m = marks[idx]
-                                        marks[idx] = m.copy(
-                                            offsetX = (m.offsetX + dragAmount.x / w).coerceIn(0f, 1f),
-                                            offsetY = (m.offsetY + dragAmount.y / h).coerceIn(0f, 1f),
-                                        )
-                                    }
-                                }
-                            },
-                    ) {
-                        val w = size.width
-                        val h = size.height
-                        marks.forEach { mark ->
-                            val isSelected = mark.id == selectedMarkId
-                            drawMarkOnCanvas(mark, w, h, isSelected, fontOptions, sigBitmapCache)
-                        }
-                    }
-                }
-            } else {
-                LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text("Loading document\u2026", style = MaterialTheme.typography.bodySmall)
-            }
-
-            // Tool selector toolbar
-            HorizontalDivider()
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                MarkType.entries.forEach { tool ->
-                    val isActive = activeTool == tool
-                    if (isActive) {
-                        Button(onClick = { activeTool = null; selectedMarkId = null }) { Text(tool.label) }
-                    } else {
-                        OutlinedButton(onClick = {
-                            activeTool = tool
-                            selectedMarkId = null
-                        }) { Text(tool.label) }
-                    }
-                }
-            }
-
-            // Per-tool configuration + Quick marks for Text
-            if (activeTool != null) {
-                MarkConfigPanel(
-                    tool = activeTool!!,
-                    configText = configText,
-                    onConfigTextChange = { configText = it },
-                    configColorIdx = configColorIdx,
-                    onColorChange = { configColorIdx = it; updateSelectedMark() },
-                    textColors = textColors,
-                    configFontIdx = configFontIdx,
-                    onFontChange = { configFontIdx = it; updateSelectedMark() },
-                    fontOptions = fontOptions,
-                    configSizeFraction = configSizeFraction,
-                    onSizeChange = { configSizeFraction = it; updateSelectedMark() },
-                    configCheckStyle = configCheckStyle,
-                    onCheckStyleChange = { configCheckStyle = it; updateSelectedMark() },
-                    configSignatureName = configSignatureName,
-                    onSignatureChange = { configSignatureName = it; updateSelectedMark() },
-                    vm = vm,
-                    isPdf = isPdf,
-                    configApplyToAll = configApplyToAll,
-                    onApplyToAllChange = { configApplyToAll = it; updateSelectedMark() },
-                    selectedMark = selectedMark,
-                    onTextCommit = { updateSelectedMark() },
+    // Export action – captured in a lambda so the icon button in the top bar can trigger it.
+    fun triggerExport() {
+        val fontOptionsSnapshot = vm.allFontOptions()
+        val signaturesSnapshot = vm.signatures.toList()
+        scope.launch {
+            isProcessing = true
+            status = "Exporting\u2026"
+            val result = withContext(Dispatchers.IO) {
+                exportDocument(
+                    context, documentUri, marks.toList(), isPdf,
+                    fontOptionsSnapshot, signaturesSnapshot,
                 )
             }
+            isProcessing = false
+            if (result != null) {
+                saveRecentDoc(context, documentUri.toString(), displayNameForUri(context, documentUri) ?: "Document")
+                shareDocument(context, result.file, result.mimeType)
+                status = "Export ready to share."
+            } else {
+                status = "Export failed."
+            }
+        }
+    }
 
-            // Selected-mark actions
-            if (selectedMark != null) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = {
-                            marks.removeIf { it.id == selectedMarkId }
-                            selectedMarkId = null
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) { Text("Delete mark") }
-                    OutlinedButton(
-                        onClick = { selectedMarkId = null; activeTool = null },
-                        modifier = Modifier.weight(1f),
-                    ) { Text("Deselect") }
+    Page(
+        title = "Fill & Mark Document",
+        back = back,
+        actions = {
+            // Share / Export icon button fixed in the top app bar.
+            IconButton(
+                onClick = ::triggerExport,
+                enabled = !isProcessing && marks.isNotEmpty() && previewBitmap != null,
+            ) {
+                FillMarkShareIcon()
+            }
+        },
+    ) {
+        // The outer Column does NOT scroll — only the document area scrolls.
+        Column(Modifier.fillMaxSize()) {
+
+            // ── FIXED CONTROLS (top) ────────────────────────────────────────────
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                // PDF page navigation
+                if (isPdf && pageCount > 0) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedButton(
+                            onClick = { if (currentPage > 0) currentPage-- },
+                            enabled = currentPage > 0,
+                        ) { Text("\u2190") }
+                        Text(
+                            "Page ${currentPage + 1} of $pageCount",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        OutlinedButton(
+                            onClick = { if (currentPage < pageCount - 1) currentPage++ },
+                            enabled = currentPage < pageCount - 1,
+                        ) { Text("\u2192") }
+                    }
+                }
+
+                // Tool selector toolbar
+                HorizontalDivider()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    MarkType.entries.forEach { tool ->
+                        val isActive = activeTool == tool
+                        if (isActive) {
+                            Button(onClick = { activeTool = null; selectedMarkId = null }) { Text(tool.label) }
+                        } else {
+                            OutlinedButton(onClick = {
+                                activeTool = tool
+                                selectedMarkId = null
+                            }) { Text(tool.label) }
+                        }
+                    }
+                }
+
+                // Per-tool configuration panel
+                if (activeTool != null) {
+                    MarkConfigPanel(
+                        tool = activeTool!!,
+                        configText = configText,
+                        onConfigTextChange = { configText = it },
+                        configColorIdx = configColorIdx,
+                        onColorChange = { configColorIdx = it; updateSelectedMark() },
+                        textColors = textColors,
+                        configFontIdx = configFontIdx,
+                        onFontChange = { configFontIdx = it; updateSelectedMark() },
+                        fontOptions = fontOptions,
+                        configSizeFraction = configSizeFraction,
+                        onSizeChange = { configSizeFraction = it; updateSelectedMark() },
+                        configCheckStyle = configCheckStyle,
+                        onCheckStyleChange = { configCheckStyle = it; updateSelectedMark() },
+                        configSignatureName = configSignatureName,
+                        onSignatureChange = { configSignatureName = it; updateSelectedMark() },
+                        vm = vm,
+                        isPdf = isPdf,
+                        configApplyToAll = configApplyToAll,
+                        onApplyToAllChange = { configApplyToAll = it; updateSelectedMark() },
+                        selectedMark = selectedMark,
+                        onTextCommit = { updateSelectedMark() },
+                    )
+                }
+
+                // Selected-mark actions
+                if (selectedMark != null) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                marks.removeIf { it.id == selectedMarkId }
+                                selectedMarkId = null
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Delete mark") }
+                        OutlinedButton(
+                            onClick = { selectedMarkId = null; activeTool = null },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Deselect") }
+                    }
+                }
+
+                HorizontalDivider()
+            }
+
+            // ── SCROLLABLE DOCUMENT AREA ─────────────────────────────────────────
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                val bitmap = previewBitmap
+                if (bitmap != null) {
+                    val previewAspect = bitmap.width.toFloat() / bitmap.height.toFloat()
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(previewAspect)
+                            .border(1.dp, ComposeColor.Gray)
+                            .onSizeChanged { canvasDisplaySize = it },
+                    ) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
+                        )
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(activeTool) {
+                                    detectTapGestures { offset ->
+                                        val w = canvasDisplaySize.width.toFloat().coerceAtLeast(1f)
+                                        val h = canvasDisplaySize.height.toFloat().coerceAtLeast(1f)
+                                        val hit = marks.lastOrNull { mark ->
+                                            markContainsPoint(mark, offset, w, h)
+                                        }
+                                        when {
+                                            hit != null -> selectedMarkId = hit.id
+                                            activeTool != null -> {
+                                                val xFrac = (offset.x / w).coerceIn(0f, 0.85f)
+                                                val yFrac = (offset.y / h).coerceIn(0f, 0.85f)
+                                                addOrUpdateMark(xFrac, yFrac)
+                                            }
+                                            else -> selectedMarkId = null
+                                        }
+                                    }
+                                }
+                                .pointerInput(selectedMarkId) {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        val w = canvasDisplaySize.width.toFloat().coerceAtLeast(1f)
+                                        val h = canvasDisplaySize.height.toFloat().coerceAtLeast(1f)
+                                        val idx = marks.indexOfFirst { it.id == selectedMarkId }
+                                        if (idx >= 0) {
+                                            val m = marks[idx]
+                                            marks[idx] = m.copy(
+                                                offsetX = (m.offsetX + dragAmount.x / w).coerceIn(0f, 1f),
+                                                offsetY = (m.offsetY + dragAmount.y / h).coerceIn(0f, 1f),
+                                            )
+                                        }
+                                    }
+                                },
+                        ) {
+                            val w = size.width
+                            val h = size.height
+                            marks.forEach { mark ->
+                                val isSelected = mark.id == selectedMarkId
+                                drawMarkOnCanvas(mark, w, h, isSelected, fontOptions, sigBitmapCache)
+                            }
+                        }
+                    }
+                } else {
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text("Loading document\u2026", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
 
-            HorizontalDivider()
-
-            // Export
-            Button(
-                onClick = {
-                    // Capture ViewModel-derived data on the main thread before switching to IO.
-                    val fontOptionsSnapshot = vm.allFontOptions()
-                    val signaturesSnapshot = vm.signatures.toList()
-                    scope.launch {
-                        isProcessing = true
-                        status = "Exporting\u2026"
-                        val result = withContext(Dispatchers.IO) {
-                            exportDocument(
-                                context, documentUri, marks.toList(), isPdf,
-                                fontOptionsSnapshot, signaturesSnapshot,
-                            )
-                        }
-                        isProcessing = false
-                        if (result != null) {
-                            saveRecentDoc(context, documentUri.toString(), displayNameForUri(context, documentUri) ?: "Document")
-                            shareDocument(context, result.file, result.mimeType)
-                            status = "Export ready to share."
-                        } else {
-                            status = "Export failed."
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isProcessing && marks.isNotEmpty(),
-            ) {
-                Text("Export & Share")
-            }
+            // ── FIXED BOTTOM (export status) ─────────────────────────────────────
             if (isProcessing) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall)
+            if (status.isNotBlank()) Text(
+                status,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
+    }
+}
+
+/**
+ * Draws a three-node share/network graph icon (three dots connected by two lines)
+ * without requiring the material-icons-extended library.
+ */
+@Composable
+private fun FillMarkShareIcon() {
+    val color = LocalContentColor.current
+    Canvas(
+        Modifier
+            .size(24.dp)
+            .semantics { contentDescription = "Export & Share" },
+    ) {
+        val stroke = 2.dp.toPx()
+        val radius = size.minDimension * 0.11f
+        val left = Offset(size.width * 0.25f, size.height * 0.5f)
+        val top = Offset(size.width * 0.72f, size.height * 0.25f)
+        val bottom = Offset(size.width * 0.72f, size.height * 0.75f)
+        drawLine(color, left, top, stroke)
+        drawLine(color, left, bottom, stroke)
+        drawCircle(color, radius, left)
+        drawCircle(color, radius, top)
+        drawCircle(color, radius, bottom)
     }
 }
 
