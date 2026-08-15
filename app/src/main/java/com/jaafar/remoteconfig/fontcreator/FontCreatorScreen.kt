@@ -10,6 +10,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -46,6 +47,40 @@ import androidx.core.content.FileProvider
 private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
 private const val USE_SELECTED_FONT_KEY = "use_selected_font_for_app"
 
+private val ModernLightColors = lightColorScheme(
+    primary = Color(0xFF3859C7),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFE2E8FF),
+    onPrimaryContainer = Color(0xFF10205B),
+    secondary = Color(0xFF59627A),
+    secondaryContainer = Color(0xFFE1E7F9),
+    onSecondaryContainer = Color(0xFF151B2C),
+    background = Color(0xFFF9F9FF),
+    onBackground = Color(0xFF191B22),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF191B22),
+    surfaceVariant = Color(0xFFE1E2EC),
+    onSurfaceVariant = Color(0xFF45464F),
+    outlineVariant = Color(0xFFC5C6D0),
+)
+
+private val ModernDarkColors = darkColorScheme(
+    primary = Color(0xFFBBC6FF),
+    onPrimary = Color(0xFF09206D),
+    primaryContainer = Color(0xFF243E9F),
+    onPrimaryContainer = Color(0xFFE2E8FF),
+    secondary = Color(0xFFC1C6DC),
+    secondaryContainer = Color(0xFF41475A),
+    onSecondaryContainer = Color(0xFFE1E7F9),
+    background = Color(0xFF11131A),
+    onBackground = Color(0xFFE2E2EA),
+    surface = Color(0xFF191B22),
+    onSurface = Color(0xFFE2E2EA),
+    surfaceVariant = Color(0xFF45464F),
+    onSurfaceVariant = Color(0xFFC5C6D0),
+    outlineVariant = Color(0xFF45464F),
+)
+
 private enum class Screen { Home, Library, Fonts, Letters, Spacing, Image, PdfFont, Signature, FillMark, Settings }
 private enum class LibraryTab(val label: String) { Fonts("Fonts"), Signatures("Signatures & Stamps") }
 
@@ -62,8 +97,15 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var imageTypeface by remember { mutableStateOf<Typeface?>(null) }
     MaterialTheme(
-        colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme(),
+        colorScheme = if (darkTheme) ModernDarkColors else ModernLightColors,
         typography = appTypography(viewModel.previewTypeface?.takeIf { useSelectedFont }?.let(::FontFamily)),
+        shapes = Shapes(
+            extraSmall = RoundedCornerShape(10.dp),
+            small = RoundedCornerShape(14.dp),
+            medium = RoundedCornerShape(20.dp),
+            large = RoundedCornerShape(28.dp),
+            extraLarge = RoundedCornerShape(32.dp),
+        ),
     ) {
         val referenceTypeface = remember(viewModel.referenceFontKey, viewModel.projects.size, viewModel.importedFonts.size) {
             viewModel.referenceTypeface()
@@ -169,41 +211,93 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     )
 }
 
-@Composable private fun HomeScreen(vm: FontCreatorViewModel, go: (Screen) -> Unit) = Page("Home", scrollable = true, actions = {
-    TextButton(onClick = { go(Screen.Settings) }) { Text("Settings") }
-}) {
-    Text("What would you like to do?", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+@Composable private fun HomeScreen(vm: FontCreatorViewModel, go: (Screen) -> Unit) = Page(
+    "Studio",
+    scrollable = true,
+    actions = { TextButton(onClick = { go(Screen.Settings) }) { Text("Settings") } },
+) {
+    Text("Make every file feel finished.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
     Text(
-        "Start with your document, then add the text, signature, or stamp you need.",
+        "Choose a task to start. Your fonts, signatures, and stamps stay on this device.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    PrimaryHomeButton(
-        "Fill & Mark Document",
-        "Open a PDF or image, add marks, then export or share it",
+
+    HomeTaskCard(
+        label = "DOCUMENT",
+        title = "Complete a document",
+        detail = "Add names, dates, notes, signatures, and quick marks to a PDF or scanned document.",
+        featured = true,
     ) { go(Screen.FillMark) }
 
-    Text("Create & personalise", style = MaterialTheme.typography.titleSmall)
-    HomeButton("Create a Font", "Create, import, or continue a handwriting font") { go(Screen.Fonts) }
-    HomeButton("Add Text to an Image", "Place your saved font on an image") { go(Screen.Image) }
-    HomeButton("Convert Document Text", "Experimental: rebuild recognised document text using a font") { go(Screen.PdfFont) }
+    Text("Create", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+    HomeTaskCard(
+        label = "IMAGE",
+        title = "Edit an image",
+        detail = "Add styled text, your fonts, signatures, or stamps to a photo or image.",
+    ) { go(Screen.Image) }
+    HomeTaskCard(
+        label = "FONT",
+        title = "Create a font",
+        detail = "Draw a handwriting font or import a font you already use.",
+    ) { go(Screen.Fonts) }
 
-    Text("Your assets", style = MaterialTheme.typography.titleSmall)
-    HomeButton("My Library", "Manage fonts, signatures, and stamps") { go(Screen.Library) }
-    vm.activeProject?.let { Text("Open font: ${it.name}", style = MaterialTheme.typography.titleMedium) }
-}
+    Text("Your workspace", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+    HomeTaskCard(
+        label = "LIBRARY",
+        title = "My library",
+        detail = "Manage saved fonts, signatures, and stamps.",
+    ) { go(Screen.Library) }
+    HomeTaskCard(
+        label = "BETA",
+        title = "Convert document text",
+        detail = "Experimental: rebuild recognised document text using a font.",
+    ) { go(Screen.PdfFont) }
 
-@Composable private fun PrimaryHomeButton(title: String, detail: String, click: () -> Unit) {
-    Button(onClick = click, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-            Text(title, fontWeight = FontWeight.Bold)
-            Text(detail, style = MaterialTheme.typography.bodySmall)
-        }
+    vm.activeProject?.let { project ->
+        Text("Current font: ${project.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-@Composable private fun HomeButton(title: String, detail: String, enabled: Boolean = true, click: () -> Unit) {
-    OutlinedButton(onClick = click, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Column(Modifier.fillMaxWidth()) { Text(title, fontWeight = FontWeight.Bold); Text(detail, style = MaterialTheme.typography.bodySmall) } }
+@Composable private fun HomeTaskCard(
+    label: String,
+    title: String,
+    detail: String,
+    featured: Boolean = false,
+    click: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = click),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = if (featured) colors.primaryContainer else colors.surface,
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (featured) colors.primaryContainer else colors.outlineVariant,
+        ),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Surface(
+                color = if (featured) colors.primary else colors.secondaryContainer,
+                contentColor = if (featured) colors.onPrimary else colors.onSecondaryContainer,
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text(
+                    label,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(detail, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+        }
+    }
 }
 
 @Composable
@@ -606,8 +700,8 @@ private enum class ActionIconType { Add, Edit, Share, Import }
             selected(tf, uri)
         }
     }
-    Page("Write on image", back, scrollable = true) {
-        Text("Choose a font, then choose an image to write on.")
+    Page("Edit an image", back, scrollable = true) {
+        Text("Choose a font and add styled text, a signature, or a stamp to an image.")
         Box {
             OutlinedButton({ expanded = true }, Modifier.fillMaxWidth()) { Text("Font: $selectedFontLabel") }
             DropdownMenu(expanded, { expanded = false }) {
