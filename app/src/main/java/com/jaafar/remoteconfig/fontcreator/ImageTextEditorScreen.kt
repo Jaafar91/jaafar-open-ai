@@ -2,13 +2,10 @@ package com.jaafar.remoteconfig.fontcreator
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
-import android.graphics.ImageDecoder
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
-import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.Canvas as ComposeCanvas
 import androidx.compose.foundation.background
@@ -144,12 +141,6 @@ fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, onBack: () -> Unit)
         }
     }
 }
-
-private fun loadBitmap(resolver: android.content.ContentResolver, uri: Uri): Bitmap? = runCatching {
-    if (Build.VERSION.SDK_INT >= 28) ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, uri)) { decoder, _, _ ->
-        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-    } else resolver.openInputStream(uri).use { input -> BitmapFactory.decodeStream(input) }
-}.getOrNull()
 
 private fun overlayPaint(typeface: Typeface, textSize: Float, textColor: Int) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     this.typeface = typeface
