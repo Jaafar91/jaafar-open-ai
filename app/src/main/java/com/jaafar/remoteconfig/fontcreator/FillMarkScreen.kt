@@ -68,6 +68,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.heightIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -284,7 +285,7 @@ private fun FillMarkEditorScreen(
     var configText by remember { mutableStateOf(initialText ?: "") }
     var configColorIdx by remember { mutableIntStateOf(0) }
     var configFontIdx by remember { mutableIntStateOf(-1) }
-    var configSizeFraction by remember { mutableFloatStateOf(0.15f) }
+    var configSizeFraction by remember { mutableFloatStateOf(0.20f) }
     var configCheckStyle by remember { mutableStateOf(CheckStyle.Check) }
     var configSignatureName by remember { mutableStateOf<String?>(null) }
     var configApplyToAll by remember { mutableStateOf(false) }
@@ -327,18 +328,22 @@ private fun FillMarkEditorScreen(
         onDispose { sigBitmapCache.values.forEach { it.recycle() } }
     }
 
-    // Load document
-    LaunchedEffect(documentUri) {
+    // Load document or change PDF page. A single effect keyed on both uri and page
+    // avoids the race where LaunchedEffect(currentPage) fires before isPdf is set.
+    LaunchedEffect(documentUri, currentPage) {
         val mimeType = withContext(Dispatchers.IO) { context.contentResolver.getType(documentUri) }
         val looksLikePdf = withContext(Dispatchers.IO) {
             displayNameForUri(context, documentUri)?.endsWith(".pdf", true) == true
         }
         if (mimeType == "application/pdf" || looksLikePdf) {
-            val count = withContext(Dispatchers.IO) { getPdfPageCount(context, documentUri) }
-            val bmp = withContext(Dispatchers.IO) { renderPdfPage(context, documentUri, 0) }
-            isPdf = true
-            pageCount = count
-            currentPage = 0
+            if (!isPdf) {
+                // First load: read page count and reset to page 0.
+                val count = withContext(Dispatchers.IO) { getPdfPageCount(context, documentUri) }
+                isPdf = true
+                pageCount = count
+            }
+            val safePage = currentPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+            val bmp = withContext(Dispatchers.IO) { renderPdfPage(context, documentUri, safePage) }
             previewBitmap = bmp
         } else {
             val bmp = withContext(Dispatchers.IO) { loadBitmap(context.contentResolver, documentUri) }
@@ -346,13 +351,6 @@ private fun FillMarkEditorScreen(
             pageCount = 0
             previewBitmap = bmp
         }
-    }
-
-    // Reload PDF page when page changes
-    LaunchedEffect(currentPage) {
-        if (!isPdf) return@LaunchedEffect
-        val bmp = withContext(Dispatchers.IO) { renderPdfPage(context, documentUri, currentPage) }
-        previewBitmap = bmp
     }
 
     // Sync selected-mark config into edit fields whenever selection changes
@@ -556,11 +554,14 @@ private fun FillMarkEditorScreen(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .heightIn(min = 200.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
                 val bitmap = previewBitmap
                 if (bitmap != null) {
                     val previewAspect = bitmap.width.toFloat() / bitmap.height.toFloat()
+                    // Only show marks for the current page (or marks applied to all pages).
+                    val visibleMarks = marks.filter { it.applyToAllPages || it.targetPage == currentPage }
                     Box(
                         Modifier
                             .fillMaxWidth()
@@ -577,11 +578,11 @@ private fun FillMarkEditorScreen(
                         Canvas(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .pointerInput(activeTool) {
+                                .pointerInput(activeTool, currentPage) {
                                     detectTapGestures { offset ->
                                         val w = canvasDisplaySize.width.toFloat().coerceAtLeast(1f)
                                         val h = canvasDisplaySize.height.toFloat().coerceAtLeast(1f)
-                                        val hit = marks.lastOrNull { mark ->
+                                        val hit = visibleMarks.lastOrNull { mark ->
                                             markContainsPoint(mark, offset, w, h)
                                         }
                                         when {
@@ -613,7 +614,7 @@ private fun FillMarkEditorScreen(
                         ) {
                             val w = size.width
                             val h = size.height
-                            marks.forEach { mark ->
+                            visibleMarks.forEach { mark ->
                                 val isSelected = mark.id == selectedMarkId
                                 drawMarkOnCanvas(mark, w, h, isSelected, fontOptions, sigBitmapCache)
                             }
@@ -915,8 +916,8 @@ private fun markContainsPoint(mark: DocumentMark, point: androidx.compose.ui.geo
     val top = mark.offsetY * h
     val width = mark.sizeFraction * w
     val height = when (mark.type) {
-        MarkType.Text, MarkType.Date, MarkType.Check -> width * 0.3f
-        MarkType.Signature, MarkType.Stamp -> width * 0.5f
+        MarkType.Text, MarkType.Date, MarkType.Check -> width * 0.5f
+        MarkType.Signature, MarkType.Stamp -> width * 0.7f
     }
     return point.x in left..(left + width) && point.y in top..(top + height)
 }
