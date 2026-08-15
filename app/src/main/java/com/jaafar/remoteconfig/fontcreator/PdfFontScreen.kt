@@ -93,25 +93,25 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
         }
     }
 
-    Page("PDF Font Converter", back) {
+    Page("Restyle scanned text", back) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                "Select an image or rasterized PDF, recognize its text on-device, then rebuild a fresh PDF using your chosen output font.",
+                "Create a new visual PDF from a clear scan using a different font. Logos and images are kept, but clean white backgrounds work best.",
                 style = MaterialTheme.typography.bodyMedium
             )
 
-            SectionLabel("Step 1 – Select an image or PDF")
+            SectionLabel("Choose a scan or PDF")
             OutlinedButton(
                 onClick = { sourcePickerLauncher.launch(arrayOf("application/pdf", "image/*")) },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (sourceName.isNotEmpty()) "📄 $sourceName" else "Choose image or PDF")
+                Text(if (sourceName.isNotEmpty()) "📄 $sourceName" else "Choose scan or PDF")
             }
 
-            SectionLabel("Step 2 – Select the output font")
+            SectionLabel("Choose the new font")
             Box(Modifier.fillMaxWidth()) {
                 OutlinedButton(
                     onClick = { expanded = true },
@@ -137,7 +137,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                 }
             }
 
-            SectionLabel("Step 3 – Recognize text")
+            SectionLabel("Read the text")
             Button(
                 onClick = {
                     val uri = sourceUri ?: return@Button
@@ -155,7 +155,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                             isError = false
                         } else {
                             recognizedDocument = null
-                            status = "No text could be recognized. Try a cleaner scan or choose a font closer to the source."
+                            status = "No text could be recognized. Try a sharper scan with clear Latin-script text."
                             extractionNotice = OCR_NOTICE
                             isError = true
                         }
@@ -172,13 +172,13 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                     value = document.extractedText,
                     onValueChange = {},
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Recognized text preview") },
+                    label = { Text("Detected text") },
                     minLines = 5,
                     readOnly = true,
                 )
             }
 
-            SectionLabel("Step 4 – Generate rebuilt PDF")
+            SectionLabel("Create the restyled copy")
             Button(
                 onClick = {
                     val document = recognizedDocument ?: return@Button
@@ -186,11 +186,11 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                     status = "Generating PDF…"
                     outputFile = null
                     scope.launch {
-                        val result = rebuildPdf(context, document, selectedTypeface)
+                        val result = rebuildPdf(context, uri, document, selectedTypeface)
                         isProcessing = false
                         if (result != null) {
                             outputFile = result
-                            status = "PDF generated successfully."
+                            status = "Restyled PDF created. Your original is unchanged."
                             isError = false
                         } else {
                             status = "Failed to generate the PDF."
@@ -201,7 +201,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                 enabled = recognizedDocument != null && !isProcessing,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (isProcessing) "Generating…" else "Generate PDF")
+                Text(if (isProcessing) "Creating…" else "Create restyled PDF")
             }
 
             if (isProcessing) {
@@ -235,7 +235,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Open Generated PDF")
+                    Text("Open restyled PDF")
                 }
                 OutlinedButton(
                     onClick = {
@@ -249,7 +249,7 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Share Generated PDF")
+                    Text("Share restyled copy")
                 }
             }
         }
@@ -331,6 +331,7 @@ private suspend fun <T> Task<T>.awaitResult(): T = suspendCancellableCoroutine {
 
 private suspend fun rebuildPdf(
     context: android.content.Context,
+    sourceUri: Uri,
     document: RecognizedDocument,
     typeface: Typeface
 ): File? = withContext(Dispatchers.IO) {
@@ -344,9 +345,24 @@ private suspend fun rebuildPdf(
             val pageInfo = PdfDocument.PageInfo.Builder(page.width.coerceAtLeast(1), page.height.coerceAtLeast(1), index + 1).create()
             val outputPage = outputDoc.startPage(pageInfo)
             val canvas = outputPage.canvas
-            canvas.drawColor(Color.WHITE)
+            val background = loadSourcePageBitmap(context, sourceUri, index)
+            if (background != null) {
+                canvas.drawBitmap(background, 0f, 0f, null)
+            } else {
+                canvas.drawColor(Color.WHITE)
+            }
+            val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
             page.lines.forEach { line ->
                 if (line.text.isBlank()) return@forEach
+                // Mask the original recognised line before drawing the replacement.
+                // This preserves surrounding images, logos, and page layout on clean backgrounds.
+                canvas.drawRect(
+                    (line.left - TEXT_MASK_PADDING).coerceAtLeast(0).toFloat(),
+                    (line.top - TEXT_MASK_PADDING).coerceAtLeast(0).toFloat(),
+                    (line.right + TEXT_MASK_PADDING).coerceAtMost(page.width).toFloat(),
+                    (line.bottom + TEXT_MASK_PADDING).coerceAtMost(page.height).toFloat(),
+                    maskPaint,
+                )
                 val baseTextSize = line.height * BASE_TEXT_SIZE_RATIO
                 textPaint.textSize = baseTextSize
                 val measuredWidth = textPaint.measureText(line.text)
@@ -358,6 +374,7 @@ private suspend fun rebuildPdf(
                 canvas.drawText(line.text, line.left.toFloat(), baseline, textPaint)
             }
             outputDoc.finishPage(outputPage)
+            background?.recycle()
         }
         val outputFile = File(context.filesDir, "rebuild-${System.currentTimeMillis()}.pdf")
         FileOutputStream(outputFile).use { outputDoc.writeTo(it) }
@@ -366,12 +383,32 @@ private suspend fun rebuildPdf(
     }.getOrNull()
 }
 
+private fun loadSourcePageBitmap(context: android.content.Context, sourceUri: Uri, pageIndex: Int): Bitmap? {
+    val mimeType = context.contentResolver.getType(sourceUri)
+    val looksLikePdf = displayNameForUri(context, sourceUri)?.endsWith(".pdf", true) == true
+    return if (mimeType == "application/pdf" || looksLikePdf) {
+        context.contentResolver.openFileDescriptor(sourceUri, "r")?.use { pfd ->
+            PdfRenderer(pfd).use { renderer ->
+                if (pageIndex !in 0 until renderer.pageCount) return@use null
+                renderer.openPage(pageIndex).use { sourcePage ->
+                    Bitmap.createBitmap(sourcePage.width, sourcePage.height, Bitmap.Config.ARGB_8888).also { bitmap ->
+                        sourcePage.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    }
+                }
+            }
+        }
+    } else if (pageIndex == 0) {
+        loadBitmap(context.contentResolver, sourceUri)
+    } else null
+}
+
 private const val DEFAULT_NOTICE =
-    "Recognition runs privately on this device. Review the extracted text before generating the new PDF."
+    "Recognition runs privately on this device. The restyled copy keeps the original page image and replaces recognised text visually."
 
 private const val OCR_NOTICE =
-    "ML Kit OCR recognizes Latin-script text and returns line positions. The app then rebuilds a fresh PDF using the selected output font."
+    "Beta: Latin-script OCR only. Clear black text on a plain, light background gives the best result; complex backgrounds may show white masks."
 
+private const val TEXT_MASK_PADDING = 3
 private const val BASE_TEXT_SIZE_RATIO = 0.82f
 private const val TEXT_WIDTH_PADDING_RATIO = 1.04f
 private const val MAX_TEXT_UPSCALE_RATIO = 1.15f
