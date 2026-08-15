@@ -469,8 +469,9 @@ private fun LibraryScreen(
         Text("Build a handwriting font or keep the fonts you already use in one place.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         featuredProject?.let { project ->
-            val total = project.selectedLanguages.flatMap { it.codePoints }.distinct().count { it != 0x20 }
-            val drawn = project.drawings.size
+            val selectedCharacters = project.selectedLanguages.flatMap { it.codePoints }.filter { it != 0x20 }.toSet()
+            val total = selectedCharacters.size
+            val drawn = project.drawings.count { it.codePoint in selectedCharacters }
             val ready = vm.hasGeneratedFont(project.name)
             Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -611,9 +612,11 @@ private fun LibraryScreen(
         Page("Font preview", back) { Text("Choose a handwriting font first.") }
         return
     }
-    val total = vm.activeCharacterOrder.size
-    val drawn = project.drawings.size
-    val complete = total > 0 && drawn >= total
+    val requiredCharacters = vm.activeCharacterOrder.toSet()
+    val total = requiredCharacters.size
+    val drawnCodePoints = project.drawings.map { it.codePoint }.toSet()
+    val drawn = drawnCodePoints.intersect(requiredCharacters).size
+    val complete = requiredCharacters.isNotEmpty() && requiredCharacters.all { it in drawnCodePoints }
     Page(if (complete) "Your font" else "Try your font", back, scrollable = true) {
         Text(project.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         if (vm.previewTypeface == null) {
