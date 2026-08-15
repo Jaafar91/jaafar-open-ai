@@ -172,14 +172,34 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
 @Composable private fun HomeScreen(vm: FontCreatorViewModel, go: (Screen) -> Unit) = Page("Home", scrollable = true, actions = {
     TextButton(onClick = { go(Screen.Settings) }) { Text("Settings") }
 }) {
-    Text("Choose an action", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-    HomeButton("Fill & Mark Document", "Add text, date, check, signature, or stamp marks to a PDF or image") { go(Screen.FillMark) }
-    HomeButton("Create a Font", "Start or continue your generated font workflow") { go(Screen.Fonts) }
-    HomeButton("Add Text to an Image", "Use the existing write-on-image workflow") { go(Screen.Image) }
-    HomeButton("Change Text in a Document", "Use PDF Font Converter (includes OCR inside this flow)") { go(Screen.PdfFont) }
-    HomeButton("Sign or Stamp a Document", "Open your signature and stamp workflow for images and PDFs") { go(Screen.Signature) }
-    HomeButton("My Library", "Browse and manage your fonts and signatures") { go(Screen.Library) }
+    Text("What would you like to do?", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+    Text(
+        "Start with your document, then add the text, signature, or stamp you need.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    PrimaryHomeButton(
+        "Fill & Mark Document",
+        "Open a PDF or image, add marks, then export or share it",
+    ) { go(Screen.FillMark) }
+
+    Text("Create & personalise", style = MaterialTheme.typography.titleSmall)
+    HomeButton("Create a Font", "Create, import, or continue a handwriting font") { go(Screen.Fonts) }
+    HomeButton("Add Text to an Image", "Place your saved font on an image") { go(Screen.Image) }
+    HomeButton("Convert Document Text", "Experimental: rebuild recognised document text using a font") { go(Screen.PdfFont) }
+
+    Text("Your assets", style = MaterialTheme.typography.titleSmall)
+    HomeButton("My Library", "Manage fonts, signatures, and stamps") { go(Screen.Library) }
     vm.activeProject?.let { Text("Open font: ${it.name}", style = MaterialTheme.typography.titleMedium) }
+}
+
+@Composable private fun PrimaryHomeButton(title: String, detail: String, click: () -> Unit) {
+    Button(onClick = click, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            Text(title, fontWeight = FontWeight.Bold)
+            Text(detail, style = MaterialTheme.typography.bodySmall)
+        }
+    }
 }
 
 @Composable private fun HomeButton(title: String, detail: String, enabled: Boolean = true, click: () -> Unit) {
