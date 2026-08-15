@@ -615,7 +615,7 @@ private fun LibraryScreen(
     val requiredCharacters = vm.activeCharacterOrder.toSet()
     val total = requiredCharacters.size
     val drawnCodePoints = project.drawings.map { it.codePoint }.toSet()
-    val drawn = drawnCodePoints.count { it in requiredCharacters }
+    val drawn = drawnCodePoints.intersect(requiredCharacters).size
     val complete = requiredCharacters.isNotEmpty() && requiredCharacters.all { it in drawnCodePoints }
     Page(if (complete) "Your font" else "Try your font", back, scrollable = true) {
         Text(project.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
