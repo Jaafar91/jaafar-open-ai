@@ -270,8 +270,8 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     ) { go(Screen.Library) }
     HomeTaskCard(
         label = "BETA",
-        title = "Convert document text",
-        detail = "Experimental: rebuild recognised document text using a font.",
+        title = "Restyle scanned text",
+        detail = "Beta: create a new visual PDF using a font while keeping page images.",
     ) { go(Screen.PdfFont) }
 
     vm.activeProject?.let { project ->
@@ -658,7 +658,6 @@ private enum class ActionIconType { Add, Edit, Share, Import }
 }
 
 @Composable private fun LettersScreen(vm: FontCreatorViewModel, back: () -> Unit, preview: () -> Unit) = Page("Draw letters · ${vm.activeProject?.name.orEmpty()}", back) {
-    var showFonts by remember { mutableStateOf(false) }
     var showLanguages by remember { mutableStateOf(false) }
     var showAddCharsDialog by remember { mutableStateOf(false) }
     var addCharsText by remember { mutableStateOf("") }
@@ -671,15 +670,9 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(12.dp)) {
         Text("$drawn of $total letters drawn", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
     }
-    Box {
-        OutlinedButton({ showFonts = true }, Modifier.fillMaxWidth()) { Text("Font: ${vm.activeProject?.name.orEmpty()}") }
-        DropdownMenu(showFonts, { showFonts = false }) {
-            vm.projects.forEachIndexed { index, project ->
-                DropdownMenuItem(text = { Text(project.name) }, onClick = { vm.openProject(index); showFonts = false }, trailingIcon = { if (index == vm.activeProjectIndex) Text("✓") })
-            }
-        }
+    TextButton(onClick = { pendingLanguages = selectedLanguages; showLanguages = true }) {
+        Text("Change languages")
     }
-    OutlinedButton({ pendingLanguages = selectedLanguages; showLanguages = true }, Modifier.fillMaxWidth()) { Text("Languages: ${selectedLanguages.joinToString(", ") { it.displayName }}") }
     if (showLanguages) {
         AlertDialog(
             onDismissRequest = { showLanguages = false },
@@ -706,9 +699,17 @@ private enum class ActionIconType { Add, Edit, Share, Import }
         )
     }
 
-    Button({ addCharsText = ""; showAddCharsDialog = true }, Modifier.fillMaxWidth()) { Text("Draw letters from a phrase") }
-    OutlinedButton(vm::startPaging, Modifier.fillMaxWidth()) { Text("Continue with the alphabet") }
-    OutlinedButton(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth(), enabled = drawn > 0) { Text("Create a test preview") }
+    Button(onClick = { addCharsText = ""; showAddCharsDialog = true }, modifier = Modifier.fillMaxWidth()) {
+        Text("Draw letters from a phrase")
+    }
+    TextButton(onClick = vm::startPaging, modifier = Modifier.fillMaxWidth()) {
+        Text("or continue with the alphabet")
+    }
+    if (drawn > 0) {
+        OutlinedButton(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) {
+            Text("Create a test preview")
+        }
+    }
 
     if (showAddCharsDialog) AlertDialog(
         onDismissRequest = { showAddCharsDialog = false },
