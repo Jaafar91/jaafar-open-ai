@@ -271,17 +271,13 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     scrollable = true,
     actions = { TextButton(onClick = { go(Screen.Settings) }) { Text("Settings") } },
 ) {
-    Text("Make every file feel finished.", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-    Text(
-        "Choose a task to start. Your fonts, signatures, and stamps stay on this device.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    Text("What do you want to do?", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+    Text("Choose a task to begin.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
     HomeTaskCard(
         label = "DOCUMENT",
         title = "Complete a document",
-        detail = "Add names, dates, notes, signatures, and quick marks to a PDF or scanned document.",
+        detail = "Add text, dates, signatures, or stamps.",
         featured = true,
     ) { go(Screen.FillMark) }
 
@@ -289,24 +285,24 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     HomeTaskCard(
         label = "IMAGE",
         title = "Edit an image",
-        detail = "Add styled text, your fonts, signatures, or stamps to a photo or image.",
+        detail = "Add text, fonts, or stamps to an image.",
     ) { go(Screen.Image) }
     HomeTaskCard(
         label = "FONT",
         title = "Create a font",
-        detail = "Draw a handwriting font or import a font you already use.",
+        detail = "Make a font or import one.",
     ) { go(Screen.Fonts) }
 
     Text("Your workspace", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
     HomeTaskCard(
         label = "LIBRARY",
         title = "My library",
-        detail = "Manage saved fonts, signatures, and stamps.",
+        detail = "Your fonts, signatures, and stamps.",
     ) { go(Screen.Library) }
     HomeTaskCard(
         label = "BETA",
         title = "Restyle scanned text",
-        detail = "Beta: create a new visual PDF using a font while keeping page images.",
+        detail = "Beta: make a new PDF with a different font.",
     ) { go(Screen.PdfFont) }
 
     vm.activeProject?.let { project ->
@@ -692,79 +688,96 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     }
 }
 
-@Composable private fun LettersScreen(vm: FontCreatorViewModel, back: () -> Unit, preview: () -> Unit) = Page("Draw letters · ${vm.activeProject?.name.orEmpty()}", back) {
+@Composable private fun LettersScreen(vm: FontCreatorViewModel, back: () -> Unit, preview: () -> Unit) = Page("Build ${vm.activeProject?.name.orEmpty()}", back) {
     var showLanguages by remember { mutableStateOf(false) }
-    var showAddCharsDialog by remember { mutableStateOf(false) }
-    var addCharsText by remember { mutableStateOf("") }
+    var showPhraseDialog by remember { mutableStateOf(false) }
+    var phrase by remember { mutableStateOf("") }
     val selectedLanguages = vm.activeProject?.selectedLanguages ?: setOf(LanguageScript.BASIC_LATIN)
     var pendingLanguages by remember(selectedLanguages) { mutableStateOf(selectedLanguages) }
     val total = vm.activeCharacterOrder.size
     val drawn = vm.drawings.size
+    val nextCode = vm.activeCharacterOrder.firstOrNull { it !in vm.drawings }
 
-    Text("Your font can use the letters you draw. Add more whenever you need them.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(12.dp)) {
-        Text("$drawn of $total letters drawn", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge)
+    Text("Draw one letter at a time.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("$drawn of $total letters", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (total > 0) LinearProgressIndicator(progress = drawn.toFloat() / total, modifier = Modifier.fillMaxWidth())
+        }
     }
-    TextButton(onClick = { pendingLanguages = selectedLanguages; showLanguages = true }) {
-        Text("Change languages")
+
+    if (drawn == 0) {
+        Text("Start your font", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Button(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Use a phrase")
+        }
+        TextButton(onClick = vm::startPaging, modifier = Modifier.fillMaxWidth()) {
+            Text("Start with the alphabet")
+        }
+    } else if (nextCode != null) {
+        Text("Next letter", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        Text(nextCode.toChar().toString(), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold)
+        Button(onClick = { vm.edit(nextCode) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Draw ${nextCode.toChar()}")
+        }
+        TextButton(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Draw letters from a phrase instead")
+        }
+        OutlinedButton(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) {
+            Text("Try your font")
+        }
+    } else {
+        Text("Your letter set is complete.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Button(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) { Text("Try your font") }
+        TextButton(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Add letters from a phrase") }
     }
-    if (showLanguages) {
-        AlertDialog(
-            onDismissRequest = { showLanguages = false },
-            title = { Text("Select languages") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    LanguageScript.entries.forEach { script ->
-                        Row(Modifier.fillMaxWidth().clickable {
-                            pendingLanguages = pendingLanguages.toMutableSet().apply { if (contains(script)) remove(script) else add(script) }
-                        }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Checkbox(checked = pendingLanguages.contains(script), onCheckedChange = { checked ->
-                                pendingLanguages = pendingLanguages.toMutableSet().apply { if (checked) add(script) else remove(script) }
-                            })
-                            Column {
-                                Text(script.displayName)
-                                Text("${script.codePoints.size} characters", style = MaterialTheme.typography.bodySmall)
-                            }
+
+    TextButton(onClick = { pendingLanguages = selectedLanguages; showLanguages = true }, modifier = Modifier.fillMaxWidth()) {
+        Text("Letter options")
+    }
+
+    if (showPhraseDialog) AlertDialog(
+        onDismissRequest = { showPhraseDialog = false },
+        title = { Text("Use a phrase") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Type a phrase. You will draw its missing letters first.")
+                OutlinedTextField(phrase, { phrase = it }, Modifier.fillMaxWidth(), label = { Text("Phrase") }, minLines = 3)
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                vm.drawMissingCharacters(phrase)
+                showPhraseDialog = false
+            }, enabled = phrase.isNotBlank()) { Text("Start drawing") }
+        },
+        dismissButton = { TextButton(onClick = { showPhraseDialog = false }) { Text("Cancel") } },
+    )
+
+    if (showLanguages) AlertDialog(
+        onDismissRequest = { showLanguages = false },
+        title = { Text("Letter options") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Choose the languages for this font.", style = MaterialTheme.typography.bodySmall)
+                LanguageScript.entries.forEach { script ->
+                    Row(Modifier.fillMaxWidth().clickable {
+                        pendingLanguages = pendingLanguages.toMutableSet().apply { if (contains(script)) remove(script) else add(script) }
+                    }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Checkbox(checked = pendingLanguages.contains(script), onCheckedChange = { checked ->
+                            pendingLanguages = pendingLanguages.toMutableSet().apply { if (checked) add(script) else remove(script) }
+                        })
+                        Column {
+                            Text(script.displayName)
+                            Text("${script.codePoints.size} letters", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
-            },
-            confirmButton = { Button(onClick = { if (vm.setLanguages(pendingLanguages)) showLanguages = false }) { Text("Save") } },
-            dismissButton = { OutlinedButton(onClick = { showLanguages = false }) { Text("Cancel") } },
-        )
-    }
-
-    Button(onClick = { addCharsText = ""; showAddCharsDialog = true }, modifier = Modifier.fillMaxWidth()) {
-        Text("Draw letters from a phrase")
-    }
-    TextButton(onClick = vm::startPaging, modifier = Modifier.fillMaxWidth()) {
-        Text("or continue with the alphabet")
-    }
-    if (drawn > 0) {
-        OutlinedButton(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) {
-            Text("Create a test preview")
-        }
-    }
-
-    if (showAddCharsDialog) AlertDialog(
-        onDismissRequest = { showAddCharsDialog = false },
-        title = { Text("Draw letters from a phrase") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Paste a useful phrase. We will take you to its undrawn letters first.")
-                OutlinedTextField(addCharsText, { addCharsText = it }, Modifier.fillMaxWidth(), label = { Text("Useful phrase") }, minLines = 3)
             }
         },
-        confirmButton = { Button(onClick = { vm.drawMissingCharacters(addCharsText); showAddCharsDialog = false }, enabled = addCharsText.isNotBlank()) { Text("Start drawing") } },
-        dismissButton = { TextButton(onClick = { showAddCharsDialog = false }) { Text("Cancel") } },
+        confirmButton = { Button(onClick = { if (vm.setLanguages(pendingLanguages)) showLanguages = false }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = { showLanguages = false }) { Text("Cancel") } },
     )
-    LazyVerticalGrid(GridCells.Adaptive(52.dp), Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        items(vm.activeCharacterOrder, key = { it }) { code ->
-            val completeGlyph = code in vm.drawings
-            Box(Modifier.aspectRatio(1f).background(if (completeGlyph) MaterialTheme.colorScheme.primaryContainer else Color.Transparent).border(1.dp, MaterialTheme.colorScheme.outline).clickable { vm.edit(code) }, contentAlignment = Alignment.Center) { Text(code.toChar().toString()) }
-        }
-    }
-    if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable private fun SpacingScreen(vm: FontCreatorViewModel, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit) = Page("Letter spacing", back, scrollable = true) {
