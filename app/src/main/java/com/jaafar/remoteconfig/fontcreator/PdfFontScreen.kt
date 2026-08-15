@@ -189,14 +189,14 @@ internal fun PdfFontScreen(vm: FontCreatorViewModel, back: () -> Unit) {
                     scope.launch {
                         val result = rebuildPdf(context, uri, document, selectedTypeface)
                         isProcessing = false
-                        if (result != null) {
-                            outputFile = result
-                            status = "Restyled PDF created. Your original is unchanged."
-                            isError = false
-                        } else {
-                            status = "Failed to generate the PDF."
+                        val file = result.getOrElse { error ->
+                            status = restyleFailureMessage(error)
                             isError = true
+                            return@launch
                         }
+                        outputFile = file
+                        status = "Restyled PDF created. Your original is unchanged."
+                        isError = false
                     }
                 },
                 enabled = recognizedDocument != null && !isProcessing,
@@ -335,7 +335,7 @@ private suspend fun rebuildPdf(
     sourceUri: Uri,
     document: RecognizedDocument,
     typeface: Typeface
-): File? = withContext(Dispatchers.IO) {
+): Result<File> = withContext(Dispatchers.IO) {
     runCatching {
         val outputDoc = PdfDocument()
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -381,7 +381,13 @@ private suspend fun rebuildPdf(
         FileOutputStream(outputFile).use { outputDoc.writeTo(it) }
         outputDoc.close()
         outputFile
-    }.getOrNull()
+    }
+}
+
+private fun restyleFailureMessage(error: Throwable): String = when (error) {
+    is SecurityException -> "The document can no longer be accessed. Choose it again and retry."
+    is OutOfMemoryError -> "This document is too large to process on this device. Try a smaller file or fewer pages."
+    else -> "Could not create the restyled PDF: ${error.message?.take(120) ?: "an unexpected error occurred"}"
 }
 
 private fun loadSourcePageBitmap(context: android.content.Context, sourceUri: Uri, pageIndex: Int): Bitmap? {
