@@ -1,17 +1,8 @@
 package com.jaafar.remoteconfig.fontcreator
 
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.ImageDecoder
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.pdf.PdfDocument
-import android.graphics.pdf.PdfRenderer
 import android.net.Uri
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -72,19 +63,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
-import kotlin.math.max
 
 private enum class SignaturePage { Library, Editor, ImportStamp, Apply }
 
+/** Preset text labels available as Quick marks in the library. */
+internal val QUICK_MARK_PRESETS = listOf("Approved", "Paid", "Received", "Confidential")
+
 @Composable
-internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
+internal fun SignatureScreen(
+    vm: FontCreatorViewModel,
+    onQuickMark: (String) -> Unit = {},
+    back: () -> Unit,
+) {
     var page by remember { mutableStateOf(SignaturePage.Apply) }
     var selectedSignatureName by remember { mutableStateOf<String?>(null) }
 
@@ -96,6 +91,7 @@ internal fun SignatureScreen(vm: FontCreatorViewModel, back: () -> Unit) {
             onCreateNew = { page = SignaturePage.Editor },
             onImportStamp = { page = SignaturePage.ImportStamp },
             onUseSelected = { page = SignaturePage.Apply },
+            onQuickMark = onQuickMark,
             back = { page = SignaturePage.Apply },
         )
         SignaturePage.Editor -> SignatureEditorScreen(
@@ -134,6 +130,7 @@ private fun SignatureLibraryScreen(
     onCreateNew: () -> Unit,
     onImportStamp: () -> Unit,
     onUseSelected: () -> Unit,
+    onQuickMark: (String) -> Unit,
     back: () -> Unit,
 ) {
     val signatures = vm.signatures.filter { it.imageFileName == null }
@@ -182,6 +179,9 @@ private fun SignatureLibraryScreen(
                         )
                     }
                 }
+                item {
+                    QuickMarksSection(onQuickMark = onQuickMark)
+                }
             }
             HorizontalDivider()
             OutlinedButton(onClick = onCreateNew, modifier = Modifier.fillMaxWidth()) { Text("Draw a new signature") }
@@ -194,7 +194,34 @@ private fun SignatureLibraryScreen(
                 Text("Use selected mark")
             }
         }
+    }
+}
 
+@Composable
+private fun QuickMarksSection(onQuickMark: (String) -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(top = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("Quick marks", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Tap a preset to add it as a text mark in Fill & Mark Document.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            QUICK_MARK_PRESETS.forEach { label ->
+                OutlinedButton(
+                    onClick = { onQuickMark(label) },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                }
+            }
+        }
     }
 }
 
@@ -328,7 +355,7 @@ private fun ImportStampFromImageScreen(
                 val uri = selectedUri ?: return@Button
                 scope.launch {
                     saving = true
-                    status = "Saving stamp…"
+                    status = "Saving stamp\u2026"
                     val savedName = withContext(Dispatchers.IO) {
                         runCatching { vm.saveSignatureFromImage(context.contentResolver, uri, name, removeWhiteBackground) }.getOrNull()
                     }
@@ -450,7 +477,6 @@ private fun ApplySignatureScreen(
         onDispose { bitmapToRecycle?.recycle() }
     }
 
-    // Reload PDF preview when the page changes
     LaunchedEffect(selectedFileUri, currentPage) {
         val uri = selectedFileUri ?: return@LaunchedEffect
         if (!isPdf) return@LaunchedEffect
@@ -492,7 +518,6 @@ private fun ApplySignatureScreen(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // Show active mark info or "add mark" prompt
             OutlinedCard(Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (signature != null) {
@@ -518,7 +543,6 @@ private fun ApplySignatureScreen(
                 HorizontalDivider()
             }
 
-            // File picker button
             OutlinedButton(
                 onClick = { picker.launch(arrayOf("application/pdf", "image/*")) },
                 modifier = Modifier.fillMaxWidth(),
@@ -534,26 +558,23 @@ private fun ApplySignatureScreen(
                 )
             }
 
-            // Preview + signature placement
             if (selectedFileUri != null) {
                 val bitmap = previewBitmap
                 if (bitmap != null) {
                     Text("Mark placement", style = MaterialTheme.typography.titleMedium)
                     Text("Drag the mark to position it.", style = MaterialTheme.typography.bodySmall)
 
-                    // PDF page navigation
                     if (isPdf && pageCount > 0) {
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            OutlinedButton(onClick = { if (currentPage > 0) currentPage-- }, enabled = currentPage > 0) { Text("← Previous") }
+                            OutlinedButton(onClick = { if (currentPage > 0) currentPage-- }, enabled = currentPage > 0) { Text("\u2190 Previous") }
                             Text("Page ${currentPage + 1} of $pageCount", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                            OutlinedButton(onClick = { if (currentPage < pageCount - 1) currentPage++ }, enabled = currentPage < pageCount - 1) { Text("Next →") }
+                            OutlinedButton(onClick = { if (currentPage < pageCount - 1) currentPage++ }, enabled = currentPage < pageCount - 1) { Text("Next \u2192") }
                         }
 
-                        // Apply scope toggle
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (!applyToAll) {
                                 Button(onClick = { applyToAll = false }, modifier = Modifier.weight(1f)) { Text("Apply to this page") }
@@ -565,7 +586,6 @@ private fun ApplySignatureScreen(
                         }
                     }
 
-                    // Preview canvas: real image/PDF page behind, signature draggable on top
                     val previewAspect = bitmap.width.toFloat() / bitmap.height.toFloat()
                     Box(
                         Modifier.fillMaxWidth().aspectRatio(previewAspect).border(1.dp, ComposeColor.Gray),
@@ -641,14 +661,13 @@ private fun ApplySignatureScreen(
                         }
                     }
 
-                    // Apply mark and share button
                     Button(
                         onClick = {
                             val uri = selectedFileUri ?: return@Button
                             val sig = signature ?: return@Button
                             scope.launch {
                                 isProcessing = true
-                                status = "Applying mark…"
+                                status = "Applying mark\u2026"
                                 val result = withContext(Dispatchers.IO) {
                                     signDocumentWithPage(
                                         context, uri, sig,
@@ -659,7 +678,7 @@ private fun ApplySignatureScreen(
                                 }
                                 isProcessing = false
                                 if (result != null) {
-                                    shareSignedDocument(context, result)
+                                    shareDocument(context, result.file, result.mimeType)
                                     status = "Signed ${if (result.mimeType == "application/pdf") "PDF" else "image"} ready to share."
                                 } else {
                                     status = "Unable to sign the selected file."
@@ -673,7 +692,7 @@ private fun ApplySignatureScreen(
                     }
                 } else {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text("Loading preview…", style = MaterialTheme.typography.bodySmall)
+                    Text("Loading preview\u2026", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
@@ -684,7 +703,7 @@ private fun ApplySignatureScreen(
 }
 
 @Composable
-private fun SignaturePreview(modifier: Modifier, signature: SavedSignature) {
+internal fun SignaturePreview(modifier: Modifier, signature: SavedSignature) {
     val context = LocalContext.current
     val imageBitmap = rememberImageBitmap(
         signature.imageFileName?.let { fileName -> File(context.filesDir, fileName).takeIf { it.exists() } }
@@ -729,7 +748,7 @@ private fun SignaturePreview(modifier: Modifier, signature: SavedSignature) {
 }
 
 @Composable
-private fun rememberImageBitmap(file: File?): Bitmap? {
+internal fun rememberImageBitmap(file: File?): Bitmap? {
     val path = file?.absolutePath
     val bitmapState = produceState<Bitmap?>(initialValue = null, path) {
         value = null
@@ -742,217 +761,4 @@ private fun rememberImageBitmap(file: File?): Bitmap? {
         }
     }
     return bitmapState.value
-}
-
-private data class SignedDocument(val file: File, val mimeType: String)
-
-private suspend fun signDocumentWithPage(
-    context: android.content.Context,
-    sourceUri: Uri,
-    signature: SavedSignature,
-    widthFraction: Float,
-    offsetXFraction: Float,
-    offsetYFraction: Float,
-    targetPage: Int,
-    applyToAll: Boolean,
-): SignedDocument? = withContext(Dispatchers.IO) {
-    runCatching {
-        val mimeType = context.contentResolver.getType(sourceUri)
-        val looksLikePdf = displayNameForUri(context, sourceUri)?.endsWith(".pdf", true) == true
-        if (mimeType == "application/pdf" || looksLikePdf) {
-            SignedDocument(signPdf(context, sourceUri, signature, widthFraction, offsetXFraction, offsetYFraction, targetPage, applyToAll) ?: return@runCatching null, "application/pdf")
-        } else {
-            SignedDocument(signImage(context, sourceUri, signature, widthFraction, offsetXFraction, offsetYFraction) ?: return@runCatching null, "image/png")
-        }
-    }.getOrNull()
-}
-
-private fun signImage(
-    context: android.content.Context,
-    sourceUri: Uri,
-    signature: SavedSignature,
-    widthFraction: Float,
-    offsetXFraction: Float,
-    offsetYFraction: Float,
-): File? {
-    val source = loadBitmap(context.contentResolver, sourceUri) ?: return null
-    val signatureBitmap = loadSignatureBitmap(context, signature)
-    try {
-        val output = source.copy(Bitmap.Config.ARGB_8888, true) ?: return null
-        return try {
-            drawSignature(Canvas(output), signature, output.width, output.height, widthFraction, offsetXFraction, offsetYFraction, signatureBitmap)
-            deleteOldSignedFiles(context.cacheDir, "signed-image-", ".png")
-            File(context.cacheDir, "signed-image-${System.currentTimeMillis()}.png").also { file ->
-                FileOutputStream(file).use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            }
-        } finally {
-            output.recycle()
-        }
-    } finally {
-        signatureBitmap?.recycle()
-        source.recycle()
-    }
-}
-
-private fun signPdf(
-    context: android.content.Context,
-    sourceUri: Uri,
-    signature: SavedSignature,
-    widthFraction: Float,
-    offsetXFraction: Float,
-    offsetYFraction: Float,
-    targetPage: Int,
-    applyToAll: Boolean,
-): File? {
-    val descriptor = context.contentResolver.openFileDescriptor(sourceUri, "r") ?: return null
-    val signatureBitmap = loadSignatureBitmap(context, signature)
-    descriptor.use { pfd ->
-        PdfRenderer(pfd).use { renderer ->
-            val outputDocument = PdfDocument()
-            try {
-                for (index in 0 until renderer.pageCount) {
-                    val page = renderer.openPage(index)
-                    val bitmap = Bitmap.createBitmap(page.width.coerceAtLeast(1), page.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-                    try {
-                        bitmap.eraseColor(Color.WHITE)
-                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                        val shouldSign = applyToAll || index == targetPage
-                        if (shouldSign) {
-                            drawSignature(Canvas(bitmap), signature, bitmap.width, bitmap.height, widthFraction, offsetXFraction, offsetYFraction, signatureBitmap)
-                        }
-                        val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, index + 1).create()
-                        val outputPage = outputDocument.startPage(pageInfo)
-                        outputPage.canvas.drawColor(Color.WHITE)
-                        outputPage.canvas.drawBitmap(bitmap, 0f, 0f, null)
-                        outputDocument.finishPage(outputPage)
-                    } finally {
-                        bitmap.recycle()
-                        page.close()
-                    }
-                }
-                deleteOldSignedFiles(context.cacheDir, "signed-pdf-", ".pdf")
-                return File(context.cacheDir, "signed-pdf-${System.currentTimeMillis()}.pdf").also { file ->
-                    FileOutputStream(file).use { outputDocument.writeTo(it) }
-                }
-            } finally {
-                outputDocument.close()
-                signatureBitmap?.recycle()
-            }
-        }
-    }
-}
-
-private fun getPdfPageCount(context: android.content.Context, uri: Uri): Int {
-    val descriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: return 0
-    return descriptor.use { pfd -> PdfRenderer(pfd).use { it.pageCount } }
-}
-
-private fun renderPdfPage(context: android.content.Context, uri: Uri, pageIndex: Int): Bitmap? {
-    val descriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: return null
-    return descriptor.use { pfd ->
-        PdfRenderer(pfd).use { renderer ->
-            val safeIndex = pageIndex.coerceIn(0, renderer.pageCount - 1)
-            val page = renderer.openPage(safeIndex)
-            try {
-                val bitmap = Bitmap.createBitmap(page.width.coerceAtLeast(1), page.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-                bitmap.eraseColor(Color.WHITE)
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                bitmap
-            } finally {
-                page.close()
-            }
-        }
-    }
-}
-
-private fun deleteOldSignedFiles(directory: File, prefix: String, suffix: String) {
-    directory.listFiles()?.filter { it.name.startsWith(prefix) && it.name.endsWith(suffix) }?.forEach { it.delete() }
-}
-
-private fun drawSignature(
-    canvas: Canvas,
-    signature: SavedSignature,
-    pageWidth: Int,
-    pageHeight: Int,
-    widthFraction: Float,
-    offsetXFraction: Float,
-    offsetYFraction: Float,
-    signatureBitmap: Bitmap? = null,
-) {
-    if (signatureBitmap != null) {
-        val signatureWidth = signatureBitmap.width.coerceAtLeast(1).toFloat()
-        val signatureHeight = signatureBitmap.height.coerceAtLeast(1).toFloat()
-        val targetWidth = pageWidth * widthFraction.coerceIn(.12f, .35f)
-        val scale = targetWidth / signatureWidth
-        val left = (offsetXFraction * pageWidth).coerceIn(0f, (pageWidth - signatureWidth * scale).coerceAtLeast(0f))
-        val top = (offsetYFraction * pageHeight).coerceIn(0f, (pageHeight - signatureHeight * scale).coerceAtLeast(0f))
-        val destination = android.graphics.RectF(left, top, left + signatureWidth * scale, top + signatureHeight * scale)
-        canvas.drawBitmap(signatureBitmap, null, destination, Paint(Paint.ANTI_ALIAS_FLAG))
-        return
-    }
-    val points = signature.strokes.flatMap { it.points }
-    if (points.isEmpty()) return
-    val minX = points.minOf { it.x }
-    val minY = points.minOf { it.y }
-    val maxX = points.maxOf { it.x }
-    val maxY = points.maxOf { it.y }
-    val signatureWidth = (maxX - minX).coerceAtLeast(1f)
-    val signatureHeight = (maxY - minY).coerceAtLeast(1f)
-    val targetWidth = pageWidth * widthFraction.coerceIn(.12f, .35f)
-    val scale = targetWidth / signatureWidth
-    val left = (offsetXFraction * pageWidth).coerceIn(0f, (pageWidth - signatureWidth * scale).coerceAtLeast(0f))
-    val top = (offsetYFraction * pageHeight).coerceIn(0f, (pageHeight - signatureHeight * scale).coerceAtLeast(0f))
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.BLACK
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-        strokeWidth = max(2f, targetWidth * .03f)
-    }
-    signature.strokes.forEach { stroke ->
-        val first = stroke.points.firstOrNull() ?: return@forEach
-        val path = Path().apply {
-            moveTo(left + (first.x - minX) * scale, top + (first.y - minY) * scale)
-            stroke.points.drop(1).forEach { point ->
-                lineTo(left + (point.x - minX) * scale, top + (point.y - minY) * scale)
-            }
-        }
-        canvas.drawPath(path, paint)
-    }
-}
-
-private fun loadSignatureBitmap(context: android.content.Context, signature: SavedSignature): Bitmap? {
-    val fileName = signature.imageFileName ?: return null
-    val file = File(context.filesDir, fileName)
-    if (!file.exists()) return null
-    return BitmapFactory.decodeFile(file.absolutePath)
-}
-
-private fun shareSignedDocument(context: android.content.Context, document: SignedDocument) {
-    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", document.file)
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = document.mimeType
-        putExtra(Intent.EXTRA_STREAM, uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(Intent.createChooser(intent, "Share signed file").apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    })
-}
-
-private fun loadBitmap(resolver: android.content.ContentResolver, uri: Uri): Bitmap? = runCatching {
-    if (Build.VERSION.SDK_INT >= 28) {
-        ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, uri)) { decoder, _, _ ->
-            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-        }
-    } else {
-        resolver.openInputStream(uri).use { input -> BitmapFactory.decodeStream(input) }
-    }
-}.getOrNull()
-
-private fun displayNameForUri(context: android.content.Context, uri: Uri): String? {
-    return context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-        val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-        if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
-    } ?: uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')
 }

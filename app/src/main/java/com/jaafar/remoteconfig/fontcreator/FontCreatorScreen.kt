@@ -44,17 +44,19 @@ import androidx.core.content.FileProvider
 private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
 private const val USE_SELECTED_FONT_KEY = "use_selected_font_for_app"
 
-private enum class Screen { Home, Library, Fonts, Letters, Spacing, Image, PdfFont, Signature, Settings }
+private enum class Screen { Home, Library, Fonts, Letters, Spacing, Image, PdfFont, Signature, FillMark, Settings }
 private enum class LibraryTab(val label: String) { Fonts("Fonts"), Signatures("Signatures & Stamps") }
 
 @Composable
-fun FontCreatorApp(viewModel: FontCreatorViewModel) {
+fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("appearance", 0) }
     var darkTheme by remember { mutableStateOf(preferences.getBoolean("dark_theme", false)) }
     var useSelectedFont by remember { mutableStateOf(preferences.getBoolean(USE_SELECTED_FONT_KEY, false)) }
     var previewText by remember { mutableStateOf(preferences.getString("preview_text", DEFAULT_PREVIEW_TEXT) ?: DEFAULT_PREVIEW_TEXT) }
-    var screen by remember { mutableStateOf(Screen.Home) }
+    var screen by remember { mutableStateOf(if (sharedUri != null) Screen.FillMark else Screen.Home) }
+    var fillMarkUri by remember { mutableStateOf<Uri?>(sharedUri) }
+    var fillMarkInitialText by remember { mutableStateOf<String?>(null) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var imageTypeface by remember { mutableStateOf<Typeface?>(null) }
     MaterialTheme(
@@ -90,7 +92,25 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel) {
                 Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Fonts }
                 Screen.Image -> ImageScreen(viewModel, { screen = Screen.Home }) { tf, uri -> imageTypeface = tf; imageUri = uri }
                 Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Home }
-                Screen.Signature -> SignatureScreen(viewModel) { screen = Screen.Home }
+                Screen.Signature -> SignatureScreen(
+                    vm = viewModel,
+                    onQuickMark = { text ->
+                        fillMarkUri = null
+                        fillMarkInitialText = text
+                        screen = Screen.FillMark
+                    },
+                    back = { screen = Screen.Home },
+                )
+                Screen.FillMark -> FillMarkScreen(
+                    vm = viewModel,
+                    initialUri = fillMarkUri,
+                    initialText = fillMarkInitialText,
+                    back = {
+                        fillMarkUri = null
+                        fillMarkInitialText = null
+                        screen = Screen.Home
+                    },
+                )
                 Screen.Settings -> SettingsScreen(
                     vm = viewModel,
                     dark = darkTheme,
@@ -146,6 +166,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     TextButton(onClick = { go(Screen.Settings) }) { Text("Settings") }
 }) {
     Text("Choose an action", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+    HomeButton("Fill & Mark Document", "Add text, date, check, signature, or stamp marks to a PDF or image") { go(Screen.FillMark) }
     HomeButton("Create a Font", "Start or continue your generated font workflow") { go(Screen.Fonts) }
     HomeButton("Add Text to an Image", "Use the existing write-on-image workflow") { go(Screen.Image) }
     HomeButton("Change Text in a Document", "Use PDF Font Converter (includes OCR inside this flow)") { go(Screen.PdfFont) }
