@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -68,7 +69,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.heightIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -336,13 +336,12 @@ private fun FillMarkEditorScreen(
             displayNameForUri(context, documentUri)?.endsWith(".pdf", true) == true
         }
         if (mimeType == "application/pdf" || looksLikePdf) {
-            if (!isPdf) {
-                // First load: read page count and reset to page 0.
-                val count = withContext(Dispatchers.IO) { getPdfPageCount(context, documentUri) }
-                isPdf = true
-                pageCount = count
-            }
-            val safePage = currentPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+            // Always read the page count so that switching to a different PDF
+            // never carries over the previous document's page count.
+            val count = withContext(Dispatchers.IO) { getPdfPageCount(context, documentUri) }
+            isPdf = true
+            pageCount = count
+            val safePage = currentPage.coerceIn(0, (count - 1).coerceAtLeast(0))
             val bmp = withContext(Dispatchers.IO) { renderPdfPage(context, documentUri, safePage) }
             previewBitmap = bmp
         } else {
