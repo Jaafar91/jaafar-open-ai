@@ -527,7 +527,6 @@ private fun FillMarkEditorScreen(
                         configApplyToAll = configApplyToAll,
                         onApplyToAllChange = { configApplyToAll = it; updateSelectedMark() },
                         selectedMark = selectedMark,
-                        onTextCommit = { updateSelectedMark() },
                     )
                 if (selectedMark != null) {
                     TextButton(onClick = {
@@ -817,7 +816,6 @@ private fun MarkConfigPanel(
     configApplyToAll: Boolean,
     onApplyToAllChange: (Boolean) -> Unit,
     selectedMark: DocumentMark?,
-    onTextCommit: () -> Unit,
 ) {
     Column(
         Modifier
@@ -834,11 +832,6 @@ private fun MarkConfigPanel(
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Text") },
                     singleLine = true,
-                    trailingIcon = {
-                        if (selectedMark != null) {
-                            OutlinedButton(onClick = onTextCommit) { Text("Apply") }
-                        }
-                    },
                 )
                 TextMarkStyleControls(
                     configColorIdx, onColorChange, textColors,
