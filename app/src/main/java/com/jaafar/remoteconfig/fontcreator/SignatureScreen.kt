@@ -71,13 +71,9 @@ import java.io.File
 
 private enum class SignaturePage { Library, Editor, ImportStamp, Apply }
 
-/** Preset text labels available as Quick marks in the library. */
-internal val QUICK_MARK_PRESETS = listOf("Approved", "Paid", "Received", "Confidential")
-
 @Composable
 internal fun SignatureScreen(
     vm: FontCreatorViewModel,
-    onQuickMark: (String) -> Unit = {},
     back: () -> Unit,
 ) {
     // The library is the asset-management destination. Applying a mark starts only after one is selected.
@@ -92,7 +88,6 @@ internal fun SignatureScreen(
             onCreateNew = { page = SignaturePage.Editor },
             onImportStamp = { page = SignaturePage.ImportStamp },
             onUseSelected = { page = SignaturePage.Apply },
-            onQuickMark = onQuickMark,
             back = back,
         )
         SignaturePage.Editor -> SignatureEditorScreen(
@@ -131,7 +126,6 @@ private fun SignatureLibraryScreen(
     onCreateNew: () -> Unit,
     onImportStamp: () -> Unit,
     onUseSelected: () -> Unit,
-    onQuickMark: (String) -> Unit,
     back: () -> Unit,
 ) {
     val signatures = vm.signatures.filter { it.imageFileName == null }
@@ -180,9 +174,6 @@ private fun SignatureLibraryScreen(
                         )
                     }
                 }
-                item {
-                    QuickMarksSection(onQuickMark = onQuickMark)
-                }
             }
             HorizontalDivider()
             OutlinedButton(onClick = onCreateNew, modifier = Modifier.fillMaxWidth()) { Text("Draw a new signature") }
@@ -193,34 +184,6 @@ private fun SignatureLibraryScreen(
                 enabled = selectedSignatureName != null && vm.signatures.any { it.name == selectedSignatureName },
             ) {
                 Text("Use selected mark")
-            }
-        }
-    }
-}
-
-@Composable
-private fun QuickMarksSection(onQuickMark: (String) -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().padding(top = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text("Quick marks", style = MaterialTheme.typography.titleSmall)
-        Text(
-            "Tap a preset to add it as a text mark in Fill & Mark Document.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            QUICK_MARK_PRESETS.forEach { label ->
-                OutlinedButton(
-                    onClick = { onQuickMark(label) },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                }
             }
         }
     }

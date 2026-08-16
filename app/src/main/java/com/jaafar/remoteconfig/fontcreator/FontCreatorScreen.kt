@@ -96,7 +96,6 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
     var previewText by remember { mutableStateOf(preferences.getString("preview_text", DEFAULT_PREVIEW_TEXT) ?: DEFAULT_PREVIEW_TEXT) }
     var screen by remember { mutableStateOf(if (sharedUri != null) Screen.FillMark else Screen.Home) }
     var fillMarkUri by remember { mutableStateOf<Uri?>(sharedUri) }
-    var fillMarkInitialText by remember { mutableStateOf<String?>(null) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var imageTypeface by remember { mutableStateOf<Typeface?>(null) }
     var preferredImageFontName by remember { mutableStateOf<String?>(null) }
@@ -167,20 +166,13 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                 Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Home }
                 Screen.Signature -> SignatureScreen(
                     vm = viewModel,
-                    onQuickMark = { text ->
-                        fillMarkUri = null
-                        fillMarkInitialText = text
-                        screen = Screen.FillMark
-                    },
                     back = { screen = Screen.Home },
                 )
                 Screen.FillMark -> FillMarkScreen(
                     vm = viewModel,
                     initialUri = fillMarkUri,
-                    initialText = fillMarkInitialText,
                     back = {
                         fillMarkUri = null
-                        fillMarkInitialText = null
                         screen = Screen.Home
                     },
                 )

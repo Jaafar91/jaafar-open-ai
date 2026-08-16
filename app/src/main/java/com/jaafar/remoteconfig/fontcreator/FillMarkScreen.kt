@@ -184,14 +184,11 @@ private fun removeRecentDoc(context: android.content.Context, uriString: String)
  *
  * @param initialUri  URI passed in via the Android Share sheet (ACTION_SEND).
  *                    When non-null the editor opens immediately with this document.
- * @param initialText Optional preset text to pre-populate when the editor opens
- *                    (used by Quick marks from the Signatures & Stamps screen).
  */
 @Composable
 internal fun FillMarkScreen(
     vm: FontCreatorViewModel,
     initialUri: Uri? = null,
-    initialText: String? = null,
     back: () -> Unit,
 ) {
     var documentUri by remember { mutableStateOf(initialUri) }
@@ -205,7 +202,6 @@ internal fun FillMarkScreen(
         FillMarkEditorScreen(
             vm = vm,
             documentUri = documentUri!!,
-            initialText = initialText,
             back = { documentUri = null },
         )
     }
@@ -322,7 +318,6 @@ private fun FillMarkEditorScreen(
     var configSignatureName by remember { mutableStateOf<String?>(null) }
     var configApplyToAll by remember { mutableStateOf(false) }
     var showTextEntry by remember { mutableStateOf(false) }
-    var showQuickMarks by remember { mutableStateOf(false) }
 
     val textColors = remember {
         listOf(
@@ -468,18 +463,6 @@ private fun FillMarkEditorScreen(
                 status = "Export ready to share."
             } else {
                 status = "Export failed."
-            }
-        }
-    }
-
-    if (showQuickMarks) {
-        ModalBottomSheet(onDismissRequest = { showQuickMarks = false }) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Quick mark", style = MaterialTheme.typography.titleLarge)
-                Text("Choose a label, then tap where it belongs.", style = MaterialTheme.typography.bodyMedium)
-                QUICK_MARK_PRESETS.forEach { preset ->
-                    OutlinedButton(onClick = { configText = preset; activeTool = MarkType.Text; selectedMarkId = null; showQuickMarks = false }, modifier = Modifier.fillMaxWidth()) { Text(preset) }
-                }
             }
         }
     }
@@ -702,7 +685,6 @@ private fun FillMarkEditorScreen(
                             showTextEntry = true
                         }) { Text("Text") }
                     }
-                    TextButton(onClick = { activeTool = null; selectedMarkId = null; showQuickMarks = true }) { Text("Quick") }
                     availableTools.filter { it != MarkType.Text }.forEach { tool ->
                         val compactLabel = when (tool) {
                             MarkType.Date -> "Date"
