@@ -155,6 +155,20 @@ private fun saveRecentDoc(context: android.content.Context, uriString: String, d
         .edit().putString(PREFS_KEY_LIST, arr.toString()).apply()
 }
 
+private fun removeRecentDoc(context: android.content.Context, uriString: String) {
+    val updated = loadRecentDocs(context).filter { it.uriString != uriString }
+    val arr = JSONArray()
+    updated.forEach { doc ->
+        arr.put(JSONObject().apply {
+            put("uri", doc.uriString)
+            put("name", doc.displayName)
+            put("lastUsed", doc.lastUsed)
+        })
+    }
+    context.getSharedPreferences(PREFS_RECENT_DOCS, 0)
+        .edit().putString(PREFS_KEY_LIST, arr.toString()).apply()
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -211,6 +225,13 @@ private fun FillMarkLandingScreen(
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
+        // Persist read access so the document can be re-opened from the recent list.
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
         val name = displayNameForUri(context, uri) ?: uri.lastPathSegment ?: "Document"
         saveRecentDoc(context, uri.toString(), name)
         recentDocs = loadRecentDocs(context)
@@ -233,9 +254,19 @@ private fun FillMarkLandingScreen(
                     OutlinedButton(
                         onClick = {
                             val uri = Uri.parse(doc.uriString)
-                            saveRecentDoc(context, doc.uriString, doc.displayName)
-                            recentDocs = loadRecentDocs(context)
-                            onDocumentChosen(uri)
+                            // Check that we still have read access before opening.
+                            val canOpen = runCatching {
+                                context.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
+                            }.getOrDefault(false)
+                            if (canOpen) {
+                                saveRecentDoc(context, doc.uriString, doc.displayName)
+                                recentDocs = loadRecentDocs(context)
+                                onDocumentChosen(uri)
+                            } else {
+                                // URI no longer accessible – remove it from the list.
+                                removeRecentDoc(context, doc.uriString)
+                                recentDocs = loadRecentDocs(context)
+                            }
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
@@ -293,6 +324,12 @@ private fun FillMarkEditorScreen(
     var pendingTextPosition by remember { mutableStateOf<Offset?>(null) }
     var showTextEntry by remember { mutableStateOf(false) }
     var showQuickMarks by remember { mutableStateOf(false) }
+    // True when the active Text tool was triggered by a Quick Mark preset (text already set).
+    var isQuickMarkActive by remember { mutableStateOf(false) }
+    // Reset the quick-mark flag whenever the user switches away from the Text tool.
+    LaunchedEffect(activeTool) {
+        if (activeTool != MarkType.Text) isQuickMarkActive = false
+    }
 
     val textColors = remember {
         listOf(
@@ -448,7 +485,7 @@ private fun FillMarkEditorScreen(
                 Text("Quick mark", style = MaterialTheme.typography.titleLarge)
                 Text("Choose a label, then tap where it belongs.", style = MaterialTheme.typography.bodyMedium)
                 QUICK_MARK_PRESETS.forEach { preset ->
-                    OutlinedButton(onClick = { configText = preset; activeTool = MarkType.Text; selectedMarkId = null; showQuickMarks = false }, modifier = Modifier.fillMaxWidth()) { Text(preset) }
+                    OutlinedButton(onClick = { configText = preset; activeTool = MarkType.Text; selectedMarkId = null; isQuickMarkActive = true; showQuickMarks = false }, modifier = Modifier.fillMaxWidth()) { Text(preset) }
                 }
             }
         }
@@ -592,11 +629,12 @@ private fun FillMarkEditorScreen(
                                             activeTool != null -> {
                                                 val xFrac = (offset.x / w).coerceIn(0f, 0.85f)
                                                 val yFrac = (offset.y / h).coerceIn(0f, 0.85f)
-                                                if (activeTool == MarkType.Text) {
+                                                if (activeTool == MarkType.Text && !isQuickMarkActive) {
                                                     pendingTextPosition = Offset(xFrac, yFrac)
                                                     activeTool = null
                                                     showTextEntry = true
                                                 } else {
+                                                    isQuickMarkActive = false
                                                     addOrUpdateMark(xFrac, yFrac)
                                                 }
                                             }
