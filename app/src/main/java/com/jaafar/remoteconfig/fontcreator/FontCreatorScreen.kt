@@ -138,6 +138,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     editLetters = { screen = Screen.Letters },
                     showReady = { screen = Screen.FontReady },
                     useOnImage = { fontName -> preferredImageFontName = fontName; screen = Screen.Image },
+                    setPreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
                 )
                 Screen.FontReady -> FontReadyScreen(
                     vm = viewModel,
@@ -148,7 +149,12 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     adjustSpacing = { screen = Screen.Spacing },
                     useOnImage = { fontName -> preferredImageFontName = fontName; screen = Screen.Image },
                 )
-                Screen.Letters -> LettersScreen(viewModel, { screen = Screen.Home }, { screen = Screen.FontReady })
+                Screen.Letters -> LettersScreen(
+                    vm = viewModel,
+                    back = { screen = Screen.Home },
+                    preview = { screen = Screen.FontReady },
+                    setPreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
+                )
                 Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Fonts }
                 Screen.Image -> ImageScreen(
                     vm = viewModel,
@@ -181,8 +187,6 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     change = { value -> darkTheme = value; preferences.edit().putBoolean("dark_theme", value).apply() },
                     useSelectedFont = useSelectedFont,
                     changeUseSelectedFont = { value -> useSelectedFont = value; preferences.edit().putBoolean(USE_SELECTED_FONT_KEY, value).apply() },
-                    previewText = previewText,
-                    changePreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
                 ) { screen = Screen.Home }
             }
         }
@@ -277,15 +281,15 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
 
     Text("Create", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
     HomeTaskCard(
-        label = "IMAGE",
-        title = "Edit an image",
-        detail = "Add text, fonts, or stamps to an image.",
-    ) { go(Screen.Image) }
-    HomeTaskCard(
         label = "FONT",
         title = "Create a font",
         detail = "Make a font or import one.",
     ) { go(Screen.Fonts) }
+    HomeTaskCard(
+        label = "IMAGE",
+        title = "Edit an image",
+        detail = "Add text, fonts, or stamps to an image.",
+    ) { go(Screen.Image) }
 
     Text("Your workspace", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
     HomeTaskCard(
@@ -440,6 +444,7 @@ private fun LibraryScreen(
     editLetters: () -> Unit,
     showReady: () -> Unit,
     useOnImage: (String) -> Unit,
+    setPreviewText: (String) -> Unit,
 ) {
     val context = LocalContext.current
     var name by remember { mutableStateOf("") }
@@ -589,7 +594,10 @@ private fun LibraryScreen(
         },
         confirmButton = {
             Button(onClick = {
-                if (setupCharsText.isNotBlank()) vm.drawMissingCharacters(setupCharsText)
+                if (setupCharsText.isNotBlank()) {
+                    vm.drawMissingCharacters(setupCharsText)
+                    setPreviewText(setupCharsText)
+                }
                 showAddCharsSetupDialog = false
                 editLetters()
             }) { Text(if (setupCharsText.isBlank()) "Choose letters myself" else "Use this phrase") }
@@ -685,7 +693,12 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     }
 }
 
-@Composable private fun LettersScreen(vm: FontCreatorViewModel, back: () -> Unit, preview: () -> Unit) = Page("Build ${vm.activeProject?.name.orEmpty()}", back) {
+@Composable private fun LettersScreen(
+    vm: FontCreatorViewModel,
+    back: () -> Unit,
+    preview: () -> Unit,
+    setPreviewText: (String) -> Unit,
+) = Page("Build ${vm.activeProject?.name.orEmpty()}", back) {
     var showLanguages by remember { mutableStateOf(false) }
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phrase by remember { mutableStateOf("") }
@@ -744,6 +757,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
         confirmButton = {
             Button(onClick = {
                 vm.drawMissingCharacters(phrase)
+                setPreviewText(phrase)
                 showPhraseDialog = false
             }, enabled = phrase.isNotBlank()) { Text("Start drawing") }
         },
@@ -838,8 +852,6 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     change: (Boolean) -> Unit,
     useSelectedFont: Boolean,
     changeUseSelectedFont: (Boolean) -> Unit,
-    previewText: String,
-    changePreviewText: (String) -> Unit,
     back: () -> Unit,
 ) = Page("Settings", back, scrollable = true) {
     Text("Appearance", style = MaterialTheme.typography.titleMedium)
@@ -884,17 +896,6 @@ private enum class ActionIconType { Add, Edit, Share, Import }
             }
         }
     }
-    HorizontalDivider()
-    Text("Default preview text", style = MaterialTheme.typography.titleMedium)
-    OutlinedTextField(
-        previewText,
-        changePreviewText,
-        Modifier.fillMaxWidth(),
-        label = { Text("Preview characters") },
-        supportingText = { Text("Shown in the preview box on My fonts") },
-        minLines = 3
-    )
-    TextButton(onClick = { changePreviewText(DEFAULT_PREVIEW_TEXT) }, enabled = previewText != DEFAULT_PREVIEW_TEXT) { Text("Restore default") }
     HorizontalDivider()
     Text("Privacy & storage", style = MaterialTheme.typography.titleMedium)
     Text(
@@ -1004,7 +1005,9 @@ private enum class ActionIconType { Add, Edit, Share, Import }
                 OutlinedButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }
                 OutlinedButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) { Text("Clear") }
                 if (pagingMode) TextButton(onSkip) { Text("Skip") }
-                Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) { Text(saveLabel) }
+                Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) {
+                    Text(saveLabel, maxLines = 1)
+                }
             }
         }
     }
