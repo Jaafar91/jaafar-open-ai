@@ -321,15 +321,8 @@ private fun FillMarkEditorScreen(
     var configCheckStyle by remember { mutableStateOf(CheckStyle.Check) }
     var configSignatureName by remember { mutableStateOf<String?>(null) }
     var configApplyToAll by remember { mutableStateOf(false) }
-    var pendingTextPosition by remember { mutableStateOf<Offset?>(null) }
     var showTextEntry by remember { mutableStateOf(false) }
     var showQuickMarks by remember { mutableStateOf(false) }
-    // True when the active Text tool was triggered by a Quick Mark preset (text already set).
-    var isQuickMarkActive by remember { mutableStateOf(false) }
-    // Reset the quick-mark flag whenever the user switches away from the Text tool.
-    LaunchedEffect(activeTool) {
-        if (activeTool != MarkType.Text) isQuickMarkActive = false
-    }
 
     val textColors = remember {
         listOf(
@@ -485,28 +478,17 @@ private fun FillMarkEditorScreen(
                 Text("Quick mark", style = MaterialTheme.typography.titleLarge)
                 Text("Choose a label, then tap where it belongs.", style = MaterialTheme.typography.bodyMedium)
                 QUICK_MARK_PRESETS.forEach { preset ->
-                    OutlinedButton(onClick = { configText = preset; activeTool = MarkType.Text; selectedMarkId = null; isQuickMarkActive = true; showQuickMarks = false }, modifier = Modifier.fillMaxWidth()) { Text(preset) }
+                    OutlinedButton(onClick = { configText = preset; activeTool = MarkType.Text; selectedMarkId = null; showQuickMarks = false }, modifier = Modifier.fillMaxWidth()) { Text(preset) }
                 }
             }
         }
     }
 
-    if (showTextEntry && pendingTextPosition != null) {
-        ModalBottomSheet(onDismissRequest = { showTextEntry = false; pendingTextPosition = null }) {
+    if (showTextEntry) {
+        ModalBottomSheet(onDismissRequest = { showTextEntry = false; activeTool = null }) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(value = configText, onValueChange = { configText = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Type text") }, singleLine = true)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { showTextEntry = false; pendingTextPosition = null }, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                    Button(onClick = {
-                        val position = pendingTextPosition ?: return@Button
-                        val newMark = DocumentMark(type = MarkType.Text, offsetX = position.x, offsetY = position.y, sizeFraction = configSizeFraction, text = configText.ifBlank { "Text" }, colorArgb = textColors.getOrNull(configColorIdx)?.second ?: Color.BLACK, fontKey = fontOptions.getOrNull(configFontIdx)?.first, targetPage = currentPage)
-                        marks.add(newMark)
-                        selectedMarkId = newMark.id
-                        activeTool = null
-                        showTextEntry = false
-                        pendingTextPosition = null
-                    }, modifier = Modifier.weight(1f)) { Text("Add text") }
-                }
+                Button(onClick = { showTextEntry = false }, modifier = Modifier.fillMaxWidth()) { Text("Place on document") }
             }
         }
     }
@@ -629,14 +611,7 @@ private fun FillMarkEditorScreen(
                                             activeTool != null -> {
                                                 val xFrac = (offset.x / w).coerceIn(0f, 0.85f)
                                                 val yFrac = (offset.y / h).coerceIn(0f, 0.85f)
-                                                if (activeTool == MarkType.Text && !isQuickMarkActive) {
-                                                    pendingTextPosition = Offset(xFrac, yFrac)
-                                                    activeTool = null
-                                                    showTextEntry = true
-                                                } else {
-                                                    isQuickMarkActive = false
-                                                    addOrUpdateMark(xFrac, yFrac)
-                                                }
+                                                addOrUpdateMark(xFrac, yFrac)
                                             }
                                             else -> selectedMarkId = null
                                         }
@@ -713,12 +688,21 @@ private fun FillMarkEditorScreen(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     val isTextMode = activeTool == MarkType.Text
-                    OutlinedButton(onClick = {
-                        activeTool = if (isTextMode) null else MarkType.Text
-                        configText = ""
-                        selectedMarkId = null
-                        showMarkOptions = false
-                    }) { Text("Text") }
+                    if (isTextMode) {
+                        OutlinedButton(onClick = {
+                            activeTool = null
+                            selectedMarkId = null
+                            showTextEntry = false
+                        }) { Text("Text") }
+                    } else {
+                        TextButton(onClick = {
+                            configText = ""
+                            selectedMarkId = null
+                            showMarkOptions = false
+                            activeTool = MarkType.Text
+                            showTextEntry = true
+                        }) { Text("Text") }
+                    }
                     TextButton(onClick = { activeTool = null; selectedMarkId = null; showQuickMarks = true }) { Text("Quick") }
                     availableTools.filter { it != MarkType.Text }.forEach { tool ->
                         val compactLabel = when (tool) {
@@ -746,7 +730,7 @@ private fun FillMarkEditorScreen(
                     }
                 }
 
-                if (activeTool != null) {
+                if (activeTool != null && activeTool != MarkType.Text) {
                     Text(
                         "Tap the document to place ${activeTool!!.label.lowercase()}.",
                         style = MaterialTheme.typography.bodySmall,
