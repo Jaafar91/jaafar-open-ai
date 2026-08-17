@@ -315,7 +315,11 @@ private fun FillMarkEditorScreen(
     var configFontIdx by remember { mutableIntStateOf(-1) }
     var configSizeFraction by remember { mutableFloatStateOf(0.20f) }
     var configCheckStyle by remember { mutableStateOf(CheckStyle.Check) }
-    var configSignatureName by remember { mutableStateOf<String?>(null) }
+    val defaultSignatureName = vm.signatures.firstOrNull { it.imageFileName == null && it.name == vm.defaultSignatureName }?.name
+        ?: vm.signatures.firstOrNull { it.imageFileName == null }?.name
+    val defaultStampName = vm.signatures.firstOrNull { it.imageFileName != null && it.name == vm.defaultStampName }?.name
+        ?: vm.signatures.firstOrNull { it.imageFileName != null }?.name
+    var configSignatureName by remember { mutableStateOf<String?>(defaultSignatureName) }
     var configApplyToAll by remember { mutableStateOf(false) }
     var showTextEntry by remember { mutableStateOf(false) }
 
@@ -399,6 +403,15 @@ private fun FillMarkEditorScreen(
 
     fun addOrUpdateMark(offsetX: Float, offsetY: Float) {
         val tool = activeTool ?: return
+        val selectedAssetName = when (tool) {
+            MarkType.Signature -> configSignatureName?.takeIf { name ->
+                vm.signatures.any { it.imageFileName == null && it.name == name }
+            }
+            MarkType.Stamp -> configSignatureName?.takeIf { name ->
+                vm.signatures.any { it.imageFileName != null && it.name == name }
+            }
+            else -> null
+        }
         val todayText = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
         val newMark = DocumentMark(
             type = tool,
@@ -414,11 +427,16 @@ private fun FillMarkEditorScreen(
             colorArgb = textColors.getOrNull(configColorIdx)?.second ?: Color.BLACK,
             fontKey = fontOptions.getOrNull(configFontIdx)?.first,
             checkStyle = configCheckStyle,
-            signatureName = configSignatureName,
+            signatureName = selectedAssetName,
             applyToAllPages = configApplyToAll,
             targetPage = currentPage,
         )
         marks.add(newMark)
+        when (tool) {
+            MarkType.Signature -> selectedAssetName?.let(vm::setDefaultSignature)
+            MarkType.Stamp -> selectedAssetName?.let(vm::setDefaultStamp)
+            else -> Unit
+        }
         selectedMarkId = newMark.id
         activeTool = null
     }
@@ -427,6 +445,15 @@ private fun FillMarkEditorScreen(
         val idx = marks.indexOfFirst { it.id == selectedMarkId }
         if (idx < 0) return
         val m = marks[idx]
+        val selectedAssetName = when (m.type) {
+            MarkType.Signature -> configSignatureName?.takeIf { name ->
+                vm.signatures.any { it.imageFileName == null && it.name == name }
+            }
+            MarkType.Stamp -> configSignatureName?.takeIf { name ->
+                vm.signatures.any { it.imageFileName != null && it.name == name }
+            }
+            else -> null
+        }
         marks[idx] = m.copy(
             text = when (m.type) {
                 MarkType.Text -> configText.ifBlank { "Text" }
@@ -438,9 +465,14 @@ private fun FillMarkEditorScreen(
             fontKey = fontOptions.getOrNull(configFontIdx)?.first,
             sizeFraction = configSizeFraction,
             checkStyle = configCheckStyle,
-            signatureName = configSignatureName,
+            signatureName = selectedAssetName,
             applyToAllPages = configApplyToAll,
         )
+        when (m.type) {
+            MarkType.Signature -> selectedAssetName?.let(vm::setDefaultSignature)
+            MarkType.Stamp -> selectedAssetName?.let(vm::setDefaultStamp)
+            else -> Unit
+        }
     }
 
     // Export action – captured in a lambda so the icon button in the top bar can trigger it.
@@ -504,7 +536,19 @@ private fun FillMarkEditorScreen(
                         configCheckStyle = configCheckStyle,
                         onCheckStyleChange = { configCheckStyle = it; updateSelectedMark() },
                         configSignatureName = configSignatureName,
-                        onSignatureChange = { configSignatureName = it; updateSelectedMark() },
+                        onSignatureChange = {
+                            configSignatureName = it
+                            when (activeTool) {
+                                MarkType.Signature -> it?.takeIf { name ->
+                                    vm.signatures.any { signature -> signature.imageFileName == null && signature.name == name }
+                                }?.let(vm::setDefaultSignature)
+                                MarkType.Stamp -> it?.takeIf { name ->
+                                    vm.signatures.any { signature -> signature.imageFileName != null && signature.name == name }
+                                }?.let(vm::setDefaultStamp)
+                                else -> Unit
+                            }
+                            updateSelectedMark()
+                        },
                         vm = vm,
                         isPdf = isPdf,
                         configApplyToAll = configApplyToAll,
@@ -700,8 +744,8 @@ private fun FillMarkEditorScreen(
                             TextButton(onClick = {
                                 activeTool = tool
                                 configSignatureName = when (tool) {
-                                    MarkType.Signature -> vm.signatures.firstOrNull { it.imageFileName == null }?.name
-                                    MarkType.Stamp -> vm.signatures.firstOrNull { it.imageFileName != null }?.name
+                                    MarkType.Signature -> defaultSignatureName
+                                    MarkType.Stamp -> defaultStampName
                                     else -> configSignatureName
                                 }
                                 selectedMarkId = null
@@ -963,7 +1007,7 @@ private fun SignatureStampSelector(
     Text(label, style = MaterialTheme.typography.labelMedium)
     if (items.isEmpty()) {
         Text(
-            "No items saved yet. Create one in Signatures & Stamps.",
+            "No items saved yet. Create one in My Library > Signatures & Stamps.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

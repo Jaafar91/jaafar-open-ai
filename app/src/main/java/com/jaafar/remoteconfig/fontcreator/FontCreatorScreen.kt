@@ -86,6 +86,7 @@ private val ModernDarkColors = darkColorScheme(
 
 private enum class Screen { Home, Library, Fonts, FontReady, Letters, Spacing, Image, PdfFont, Signature, FillMark, Settings }
 private enum class LibraryTab(val label: String) { Fonts("Fonts"), Signatures("Signatures & Stamps") }
+private enum class LibrarySignaturePage { Hub, Draw, ImportStamp }
 
 @Composable
 fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
@@ -131,7 +132,6 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     vm = viewModel,
                     back = { screen = Screen.Home },
                     openFontManager = { screen = Screen.Fonts },
-                    openSignatureManager = { screen = Screen.Signature },
                     openLetterEditor = { screen = Screen.Letters },
                 )
                 Screen.Fonts -> FontsScreen(
@@ -344,15 +344,46 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LibraryScreen(
     vm: FontCreatorViewModel,
     back: () -> Unit,
     openFontManager: () -> Unit,
-    openSignatureManager: () -> Unit,
     openLetterEditor: () -> Unit,
-) = Page("My Library", back) {
+) {
     var tab by remember { mutableStateOf(LibraryTab.Fonts) }
+    var signaturePage by remember { mutableStateOf(LibrarySignaturePage.Hub) }
+    var selectedLibraryMark by remember { mutableStateOf<SavedSignature?>(null) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameValue by remember { mutableStateOf("") }
+    var libraryStatus by remember { mutableStateOf("") }
+    when (signaturePage) {
+        LibrarySignaturePage.Draw -> {
+            SignatureEditorScreen(
+                vm = vm,
+                onSaved = {
+                    signaturePage = LibrarySignaturePage.Hub
+                    libraryStatus = "Signature saved."
+                },
+                back = { signaturePage = LibrarySignaturePage.Hub },
+            )
+            return
+        }
+        LibrarySignaturePage.ImportStamp -> {
+            ImportStampFromImageScreen(
+                vm = vm,
+                onSaved = {
+                    signaturePage = LibrarySignaturePage.Hub
+                    libraryStatus = "Stamp saved."
+                },
+                back = { signaturePage = LibrarySignaturePage.Hub },
+            )
+            return
+        }
+        LibrarySignaturePage.Hub -> Unit
+    }
+    Page("My Library", back) {
     TabRow(selectedTabIndex = tab.ordinal) {
         LibraryTab.entries.forEach { section ->
             Tab(
@@ -412,25 +443,150 @@ private fun LibraryScreen(
             val stampCount = vm.signatures.count { it.imageFileName != null }
             Text("$sigCount signature${if (sigCount == 1) "" else "s"} · $stampCount stamp${if (stampCount == 1) "" else "s"}")
             if (vm.signatures.isEmpty()) {
-                Text("No signatures or stamps in your library yet.")
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("No signatures yet.", style = MaterialTheme.typography.titleMedium)
+                        Text("Create your first signature. Draw it once and reuse it whenever you sign a document.")
+                        Button(onClick = { signaturePage = LibrarySignaturePage.Draw }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Create signature")
+                        }
+                    }
+                }
             } else {
+                val signatures = vm.signatures.filter { it.imageFileName == null }
+                val stamps = vm.signatures.filter { it.imageFileName != null }
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(vm.signatures) { signature ->
-                        OutlinedCard(Modifier.fillMaxWidth()) {
-                            Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                                Text(signature.name, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    if (signature.imageFileName != null) "Stamp" else "Signature",
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
+                    item { Text("SIGNATURES · ${signatures.size}", style = MaterialTheme.typography.titleSmall) }
+                    items(signatures, key = { it.name }) { signature ->
+                        OutlinedCard(
+                            modifier = Modifier.fillMaxWidth().clickable { selectedLibraryMark = signature },
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                SignaturePreview(Modifier.size(88.dp, 56.dp), signature)
+                                Column(Modifier.weight(1f)) {
+                                    Text(signature.name, style = MaterialTheme.typography.titleMedium)
+                                    if (vm.defaultSignatureName == signature.name) {
+                                        Text("Default", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
                             }
+                        }
+                    }
+                    item {
+                        OutlinedButton(onClick = { signaturePage = LibrarySignaturePage.Draw }, modifier = Modifier.fillMaxWidth()) {
+                            Text("+ Add signature")
+                        }
+                    }
+                    item { Text("STAMPS · ${stamps.size}", style = MaterialTheme.typography.titleSmall) }
+                    items(stamps, key = { it.name }) { stamp ->
+                        OutlinedCard(
+                            modifier = Modifier.fillMaxWidth().clickable { selectedLibraryMark = stamp },
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                SignaturePreview(Modifier.size(88.dp, 56.dp), stamp)
+                                Column(Modifier.weight(1f)) {
+                                    Text(stamp.name, style = MaterialTheme.typography.titleMedium)
+                                    if (vm.defaultStampName == stamp.name) {
+                                        Text("Default", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    item {
+                        OutlinedButton(onClick = { signaturePage = LibrarySignaturePage.ImportStamp }, modifier = Modifier.fillMaxWidth()) {
+                            Text("+ Add stamp")
                         }
                     }
                 }
             }
-            OutlinedButton(openSignatureManager, Modifier.fillMaxWidth()) { Text("Open Signatures & Stamps") }
+            if (libraryStatus.isNotBlank()) {
+                Text(libraryStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
         }
     }
+    if (selectedLibraryMark != null) {
+        ModalBottomSheet(onDismissRequest = { selectedLibraryMark = null; showRenameDialog = false }) {
+            val mark = selectedLibraryMark ?: return@ModalBottomSheet
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                SignaturePreview(Modifier.fillMaxWidth().height(140.dp).border(1.dp, MaterialTheme.colorScheme.outlineVariant), mark)
+                Text(mark.name, style = MaterialTheme.typography.titleMedium)
+                Button(
+                    onClick = {
+                        if (mark.imageFileName == null) vm.setDefaultSignature(mark.name) else vm.setDefaultStamp(mark.name)
+                        libraryStatus = "${mark.name} will be used by default in Complete a document."
+                        selectedLibraryMark = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Use in a document") }
+                OutlinedButton(
+                    onClick = {
+                        renameValue = mark.name
+                        showRenameDialog = true
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Rename") }
+                TextButton(
+                    onClick = {
+                        vm.deleteSignature(mark.name)
+                        libraryStatus = "Deleted ${mark.name}."
+                        selectedLibraryMark = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Delete") }
+            }
+        }
+    }
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename asset") },
+            text = {
+                OutlinedTextField(
+                    value = renameValue,
+                    onValueChange = { renameValue = it },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Name") },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val mark = selectedLibraryMark
+                    if (mark == null) {
+                        libraryStatus = "Rename failed: asset no longer available."
+                        showRenameDialog = false
+                        return@TextButton
+                    }
+                    if (vm.renameSignature(mark.name, renameValue)) {
+                        libraryStatus = "Renamed to ${renameValue.trim()}."
+                        selectedLibraryMark = vm.signatures.firstOrNull { it.name == renameValue.trim() }
+                        showRenameDialog = false
+                    } else {
+                        libraryStatus = "Name unavailable. Try a different one."
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+}
 }
 
 @Composable private fun FontsScreen(
