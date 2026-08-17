@@ -11,7 +11,7 @@ android {
     val ciBuildNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
 
     defaultConfig {
-        applicationId = "com.jaafar.remoteconfig"
+        applicationId = "com.mjaafar.fontcreator"
         minSdk = 24
         targetSdk = 35
         versionCode = ciBuildNumber ?: 1
