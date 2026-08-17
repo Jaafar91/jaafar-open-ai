@@ -100,6 +100,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var imageTypeface by remember { mutableStateOf<Typeface?>(null) }
     var preferredImageFontName by remember { mutableStateOf<String?>(null) }
+    var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
     MaterialTheme(
         colorScheme = if (darkTheme) ModernDarkColors else ModernLightColors,
         typography = appTypography(viewModel.previewTypeface?.takeIf { useSelectedFont }?.let(::FontFamily)),
@@ -133,6 +134,10 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     back = { screen = Screen.Home },
                     openFontManager = { screen = Screen.Fonts },
                     openLetterEditor = { screen = Screen.Letters },
+                    openSignatureWithMark = { markName ->
+                        pendingSignatureMark = markName
+                        screen = Screen.Signature
+                    },
                 )
                 Screen.Fonts -> FontsScreen(
                     vm = viewModel,
@@ -166,7 +171,9 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                 Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Home }
                 Screen.Signature -> SignatureScreen(
                     vm = viewModel,
-                    back = { screen = Screen.Home },
+                    initialMarkName = pendingSignatureMark,
+                    onInitialMarkConsumed = { pendingSignatureMark = null },
+                    back = { pendingSignatureMark = null; screen = Screen.Home },
                 )
                 Screen.FillMark -> FillMarkScreen(
                     vm = viewModel,
@@ -351,6 +358,7 @@ private fun LibraryScreen(
     back: () -> Unit,
     openFontManager: () -> Unit,
     openLetterEditor: () -> Unit,
+    openSignatureWithMark: (String) -> Unit,
 ) {
     var tab by remember { mutableStateOf(LibraryTab.Fonts) }
     var signaturePage by remember { mutableStateOf(LibrarySignaturePage.Hub) }
@@ -528,8 +536,8 @@ private fun LibraryScreen(
                 Button(
                     onClick = {
                         if (mark.imageFileName == null) vm.setDefaultSignature(mark.name) else vm.setDefaultStamp(mark.name)
-                        libraryStatus = "${mark.name} will be used by default in Complete a document."
                         selectedLibraryMark = null
+                        openSignatureWithMark(mark.name)
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Use in a document") }
