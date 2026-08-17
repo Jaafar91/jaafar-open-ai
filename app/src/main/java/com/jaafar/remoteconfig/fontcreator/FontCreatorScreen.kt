@@ -344,6 +344,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LibraryScreen(
     vm: FontCreatorViewModel,
