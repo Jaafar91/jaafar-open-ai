@@ -586,6 +586,7 @@ private fun LibraryScreen(
         )
     }
 }
+}
 
 @Composable private fun FontsScreen(
     vm: FontCreatorViewModel,
