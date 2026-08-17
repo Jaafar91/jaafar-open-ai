@@ -516,7 +516,7 @@ private fun LibraryScreen(
         }
     }
     if (selectedLibraryMark != null) {
-        ModalBottomSheet(onDismissRequest = { selectedLibraryMark = null }) {
+        ModalBottomSheet(onDismissRequest = { selectedLibraryMark = null; showRenameDialog = false }) {
             val mark = selectedLibraryMark ?: return@ModalBottomSheet
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -566,8 +566,12 @@ private fun LibraryScreen(
             confirmButton = {
                 TextButton(onClick = {
                     val mark = selectedLibraryMark
-                    if (mark != null && vm.renameSignature(mark.name, renameValue)) {
-                        if (mark.imageFileName == null) vm.setDefaultSignature(renameValue.trim()) else vm.setDefaultStamp(renameValue.trim())
+                    if (mark == null) {
+                        libraryStatus = "Rename failed: asset no longer available."
+                        showRenameDialog = false
+                        return@TextButton
+                    }
+                    if (vm.renameSignature(mark.name, renameValue)) {
                         libraryStatus = "Renamed to ${renameValue.trim()}."
                         selectedLibraryMark = vm.signatures.firstOrNull { it.name == renameValue.trim() }
                         showRenameDialog = false
