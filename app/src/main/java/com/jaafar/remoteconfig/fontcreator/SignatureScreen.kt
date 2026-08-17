@@ -3,6 +3,7 @@ package com.jaafar.remoteconfig.fontcreator
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -75,10 +76,37 @@ private enum class SignaturePage { Library, Editor, ImportStamp, Apply }
 internal fun SignatureScreen(
     vm: FontCreatorViewModel,
     back: () -> Unit,
+    initialMarkName: String? = null,
+    onInitialMarkConsumed: () -> Unit = {},
 ) {
-    // The library is the asset-management destination. Applying a mark starts only after one is selected.
-    var page by remember { mutableStateOf(SignaturePage.Library) }
-    var selectedSignatureName by remember { mutableStateOf<String?>(null) }
+    // When launched from the library with a pre-selected mark, jump straight to Apply.
+    var page by remember {
+        mutableStateOf(
+            if (initialMarkName != null && vm.signatures.any { it.name == initialMarkName })
+                SignaturePage.Apply
+            else
+                SignaturePage.Library
+        )
+    }
+    // Auto-select the provided mark or, if none, the first available signature/stamp.
+    var selectedSignatureName by remember {
+        mutableStateOf(
+            initialMarkName?.takeIf { name -> vm.signatures.any { it.name == name } }
+                ?: vm.signatures.firstOrNull()?.name
+        )
+    }
+
+    // Consume the initial mark name immediately so it is not replayed on the next composition.
+    LaunchedEffect(Unit) { onInitialMarkConsumed() }
+
+    // Handle the device back button so it mirrors the in-screen back button behaviour.
+    BackHandler(enabled = page != SignaturePage.Library) {
+        when (page) {
+            SignaturePage.Editor, SignaturePage.ImportStamp -> page = SignaturePage.Library
+            SignaturePage.Apply -> back()
+            SignaturePage.Library -> Unit
+        }
+    }
 
     when (page) {
         SignaturePage.Library -> SignatureLibraryScreen(
