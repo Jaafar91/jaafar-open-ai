@@ -49,6 +49,7 @@ import androidx.core.content.FileProvider
 
 private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
 private const val USE_SELECTED_FONT_KEY = "use_selected_font_for_app"
+private const val PRIVACY_POLICY_URL = "https://mohamed-jaafar.com/privacy/"
 
 private val ModernLightColors = lightColorScheme(
     primary = Color(0xFF3859C7),
@@ -1012,7 +1013,9 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     useSelectedFont: Boolean,
     changeUseSelectedFont: (Boolean) -> Unit,
     back: () -> Unit,
-) = Page("Settings", back, scrollable = true) {
+) {
+    val context = LocalContext.current
+    Page("Settings", back, scrollable = true) {
     Text("Appearance", style = MaterialTheme.typography.titleMedium)
     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(!dark, { change(false) }); Text("Light") }
     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(dark, { change(true) }); Text("Dark") }
@@ -1062,10 +1065,14 @@ private enum class ActionIconType { Add, Edit, Share, Import }
         style = MaterialTheme.typography.bodySmall,
     )
     Text("You can remove imported fonts and signatures from their library screens at any time.", style = MaterialTheme.typography.bodySmall)
+    TextButton(onClick = {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL)))
+    }) { Text("Privacy policy") }
     HorizontalDivider()
     Text("Help & about", style = MaterialTheme.typography.titleMedium)
     Text("Use Home to start common tasks and My Library to manage saved assets.", style = MaterialTheme.typography.bodySmall)
     Text("App data stays on-device unless you explicitly share exported files.", style = MaterialTheme.typography.bodySmall)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
