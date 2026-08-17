@@ -3,6 +3,7 @@ package com.jaafar.remoteconfig.fontcreator
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -75,10 +76,22 @@ private enum class SignaturePage { Library, Editor, ImportStamp, Apply }
 internal fun SignatureScreen(
     vm: FontCreatorViewModel,
     back: () -> Unit,
+    initialSignatureName: String? = null,
 ) {
-    // The library is the asset-management destination. Applying a mark starts only after one is selected.
-    var page by remember { mutableStateOf(SignaturePage.Library) }
-    var selectedSignatureName by remember { mutableStateOf<String?>(null) }
+    // When launched from "Use in Document" in the library, jump straight to the Apply page.
+    val startPage = if (initialSignatureName != null) SignaturePage.Apply else SignaturePage.Library
+    var page by remember { mutableStateOf(startPage) }
+    var selectedSignatureName by remember { mutableStateOf(initialSignatureName) }
+
+    // Intercept the Android system back button for sub-pages within SignatureScreen.
+    // When on the Library page the BackHandler inside Page handles back navigation.
+    BackHandler(enabled = page != SignaturePage.Library) {
+        when (page) {
+            SignaturePage.Library -> back()
+            SignaturePage.Editor, SignaturePage.ImportStamp -> page = SignaturePage.Library
+            SignaturePage.Apply -> page = SignaturePage.Library
+        }
+    }
 
     when (page) {
         SignaturePage.Library -> SignatureLibraryScreen(
@@ -112,7 +125,7 @@ internal fun SignatureScreen(
                 vm = vm,
                 signature = sig,
                 onAddMark = { page = SignaturePage.Library },
-                back = back,
+                back = { page = SignaturePage.Library },
             )
         }
     }

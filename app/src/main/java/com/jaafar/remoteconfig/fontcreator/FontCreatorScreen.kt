@@ -98,6 +98,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
     var fillMarkUri by remember { mutableStateOf<Uri?>(sharedUri) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var imageTypeface by remember { mutableStateOf<Typeface?>(null) }
+    var signatureNameForDocument by remember { mutableStateOf<String?>(null) }
     var preferredImageFontName by remember { mutableStateOf<String?>(null) }
     MaterialTheme(
         colorScheme = if (darkTheme) ModernDarkColors else ModernLightColors,
@@ -133,6 +134,10 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     openFontManager = { screen = Screen.Fonts },
                     openSignatureManager = { screen = Screen.Signature },
                     openLetterEditor = { screen = Screen.Letters },
+                    useSignatureInDocument = { name ->
+                        signatureNameForDocument = name
+                        screen = Screen.Signature
+                    },
                 )
                 Screen.Fonts -> FontsScreen(
                     vm = viewModel,
@@ -166,7 +171,8 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                 Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Home }
                 Screen.Signature -> SignatureScreen(
                     vm = viewModel,
-                    back = { screen = Screen.Home },
+                    back = { signatureNameForDocument = null; screen = Screen.Home },
+                    initialSignatureName = signatureNameForDocument,
                 )
                 Screen.FillMark -> FillMarkScreen(
                     vm = viewModel,
@@ -190,6 +196,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun Page(title: String, back: (() -> Unit)? = null, scrollable: Boolean = false, actions: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
+    BackHandler(enabled = back != null, onBack = back ?: {})
     Scaffold(topBar = { AppTopBar(title, back, actions) }) { padding ->
         val scrollModifier = if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier
         Column(
@@ -351,6 +358,7 @@ private fun LibraryScreen(
     openFontManager: () -> Unit,
     openSignatureManager: () -> Unit,
     openLetterEditor: () -> Unit,
+    useSignatureInDocument: (String) -> Unit,
 ) = Page("My Library", back) {
     var tab by remember { mutableStateOf(LibraryTab.Fonts) }
     TabRow(selectedTabIndex = tab.ordinal) {
@@ -417,12 +425,20 @@ private fun LibraryScreen(
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(vm.signatures) { signature ->
                         OutlinedCard(Modifier.fillMaxWidth()) {
-                            Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                                Text(signature.name, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    if (signature.imageFileName != null) "Stamp" else "Signature",
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
+                            Row(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(signature.name, style = MaterialTheme.typography.titleMedium)
+                                    Text(
+                                        if (signature.imageFileName != null) "Stamp" else "Signature",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                                OutlinedButton(onClick = { useSignatureInDocument(signature.name) }) {
+                                    Text("Use in Document")
+                                }
                             }
                         }
                     }
