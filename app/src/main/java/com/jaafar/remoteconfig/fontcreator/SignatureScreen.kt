@@ -225,7 +225,7 @@ private fun MarkLibraryItem(
 }
 
 @Composable
-private fun ImportStampFromImageScreen(
+internal fun ImportStampFromImageScreen(
     vm: FontCreatorViewModel,
     onSaved: (String) -> Unit,
     back: () -> Unit,
@@ -341,7 +341,7 @@ private fun ImportStampFromImageScreen(
 }
 
 @Composable
-private fun SignatureEditorScreen(
+internal fun SignatureEditorScreen(
     vm: FontCreatorViewModel,
     onSaved: (String) -> Unit,
     back: () -> Unit,

@@ -315,7 +315,11 @@ private fun FillMarkEditorScreen(
     var configFontIdx by remember { mutableIntStateOf(-1) }
     var configSizeFraction by remember { mutableFloatStateOf(0.20f) }
     var configCheckStyle by remember { mutableStateOf(CheckStyle.Check) }
-    var configSignatureName by remember { mutableStateOf<String?>(null) }
+    val defaultSignatureName = vm.signatures.firstOrNull { it.imageFileName == null && it.name == vm.defaultSignatureName }?.name
+        ?: vm.signatures.firstOrNull { it.imageFileName == null }?.name
+    val defaultStampName = vm.signatures.firstOrNull { it.imageFileName != null && it.name == vm.defaultStampName }?.name
+        ?: vm.signatures.firstOrNull { it.imageFileName != null }?.name
+    var configSignatureName by remember(defaultSignatureName, defaultStampName) { mutableStateOf(defaultSignatureName ?: defaultStampName) }
     var configApplyToAll by remember { mutableStateOf(false) }
     var showTextEntry by remember { mutableStateOf(false) }
 
@@ -419,6 +423,11 @@ private fun FillMarkEditorScreen(
             targetPage = currentPage,
         )
         marks.add(newMark)
+        when (tool) {
+            MarkType.Signature -> configSignatureName?.let(vm::setDefaultSignature)
+            MarkType.Stamp -> configSignatureName?.let(vm::setDefaultStamp)
+            else -> Unit
+        }
         selectedMarkId = newMark.id
         activeTool = null
     }
@@ -441,6 +450,11 @@ private fun FillMarkEditorScreen(
             signatureName = configSignatureName,
             applyToAllPages = configApplyToAll,
         )
+        when (m.type) {
+            MarkType.Signature -> configSignatureName?.let(vm::setDefaultSignature)
+            MarkType.Stamp -> configSignatureName?.let(vm::setDefaultStamp)
+            else -> Unit
+        }
     }
 
     // Export action – captured in a lambda so the icon button in the top bar can trigger it.
@@ -504,7 +518,15 @@ private fun FillMarkEditorScreen(
                         configCheckStyle = configCheckStyle,
                         onCheckStyleChange = { configCheckStyle = it; updateSelectedMark() },
                         configSignatureName = configSignatureName,
-                        onSignatureChange = { configSignatureName = it; updateSelectedMark() },
+                        onSignatureChange = {
+                            configSignatureName = it
+                            when (activeTool) {
+                                MarkType.Signature -> it?.let(vm::setDefaultSignature)
+                                MarkType.Stamp -> it?.let(vm::setDefaultStamp)
+                                else -> Unit
+                            }
+                            updateSelectedMark()
+                        },
                         vm = vm,
                         isPdf = isPdf,
                         configApplyToAll = configApplyToAll,
@@ -700,8 +722,8 @@ private fun FillMarkEditorScreen(
                             TextButton(onClick = {
                                 activeTool = tool
                                 configSignatureName = when (tool) {
-                                    MarkType.Signature -> vm.signatures.firstOrNull { it.imageFileName == null }?.name
-                                    MarkType.Stamp -> vm.signatures.firstOrNull { it.imageFileName != null }?.name
+                                    MarkType.Signature -> defaultSignatureName
+                                    MarkType.Stamp -> defaultStampName
                                     else -> configSignatureName
                                 }
                                 selectedMarkId = null
@@ -963,7 +985,7 @@ private fun SignatureStampSelector(
     Text(label, style = MaterialTheme.typography.labelMedium)
     if (items.isEmpty()) {
         Text(
-            "No items saved yet. Create one in Signatures & Stamps.",
+            "No items saved yet. Create one in My Library > Signatures & Stamps.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

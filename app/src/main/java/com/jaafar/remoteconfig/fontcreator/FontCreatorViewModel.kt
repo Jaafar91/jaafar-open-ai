@@ -21,6 +21,8 @@ import java.util.concurrent.Executors
 
 class FontCreatorViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
+        private const val PREFS_DEFAULT_SIGNATURE = "default_signature_name"
+        private const val PREFS_DEFAULT_STAMP = "default_stamp_name"
         val CHARACTER_ORDER: List<Int> = buildList {
             addAll('A'.code..'Z'.code); addAll('a'.code..'z'.code); addAll('0'.code..'9'.code)
             " .,!?\'\"-:;()".forEach { add(it.code) }; addAll((33..126).filter { it !in this })
@@ -62,6 +64,8 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     var previewTypeface by mutableStateOf<Typeface?>(null); private set
     var referenceFontKey by mutableStateOf(prefs.getString("reference_font", "Default") ?: "Default"); private set
     var importStatus by mutableStateOf(""); private set
+    var defaultSignatureName by mutableStateOf(prefs.getString(PREFS_DEFAULT_SIGNATURE, null)); private set
+    var defaultStampName by mutableStateOf(prefs.getString(PREFS_DEFAULT_STAMP, null)); private set
 
     /** Returns all available typefaces (generated + imported) with their display labels. */
     fun hasGeneratedFont(name: String): Boolean = generatedFile(name).exists()
@@ -225,6 +229,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             imageFileName = null,
         )
         upsertSignature(signature)
+        setDefaultSignature(cleanName)
         return cleanName
     }
 
@@ -266,13 +271,47 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
                 imageFileName = fileName,
             )
         )
+        setDefaultStamp(cleanName)
         return cleanName
+    }
+
+    fun setDefaultSignature(name: String?) {
+        defaultSignatureName = name
+        prefs.edit().putString(PREFS_DEFAULT_SIGNATURE, name).apply()
+    }
+
+    fun setDefaultStamp(name: String?) {
+        defaultStampName = name
+        prefs.edit().putString(PREFS_DEFAULT_STAMP, name).apply()
+    }
+
+    fun renameSignature(currentName: String, newName: String): Boolean {
+        val index = signatures.indexOfFirst { it.name == currentName }
+        if (index < 0) return false
+        val clean = newName.trim()
+        if (clean.isBlank()) return false
+        val duplicate = signatures.withIndex().any { (idx, signature) ->
+            idx != index && signature.name.equals(clean, ignoreCase = true)
+        }
+        if (duplicate) return false
+        val existing = signatures[index]
+        signatures[index] = existing.copy(name = clean)
+        if (defaultSignatureName == currentName && existing.imageFileName == null) setDefaultSignature(clean)
+        if (defaultStampName == currentName && existing.imageFileName != null) setDefaultStamp(clean)
+        persistSignatures()
+        return true
     }
 
     fun deleteSignature(name: String) {
         val index = signatures.indexOfFirst { it.name == name }
         if (index >= 0) {
             val removed = signatures.removeAt(index)
+            if (removed.imageFileName == null && defaultSignatureName == removed.name) {
+                setDefaultSignature(signatures.firstOrNull { it.imageFileName == null }?.name)
+            }
+            if (removed.imageFileName != null && defaultStampName == removed.name) {
+                setDefaultStamp(signatures.firstOrNull { it.imageFileName != null }?.name)
+            }
             removed.imageFileName?.let { fileName ->
                 executor.execute { File(getApplication<Application>().filesDir, fileName).delete() }
             }
