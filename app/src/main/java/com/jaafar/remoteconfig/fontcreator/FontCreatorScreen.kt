@@ -214,11 +214,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.size(36.dp),
                 ) {
-                    Text(
-                        "FC",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
+                    Text("Aa", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 }
                 Text(if (title == "Studio") "Font Creator" else title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
