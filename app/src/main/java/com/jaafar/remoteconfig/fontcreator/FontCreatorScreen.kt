@@ -7,7 +7,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,8 +37,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -49,7 +46,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import com.jaafar.remoteconfig.R
 
 private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
 
@@ -218,11 +214,10 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.size(36.dp),
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.font_creator_app_icon),
-                        contentDescription = "Font Creator",
-                        modifier = Modifier.fillMaxSize().padding(2.dp),
-                        contentScale = ContentScale.Fit,
+                    Text(
+                        "FC",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
                 Text(if (title == "Studio") "Font Creator" else title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
