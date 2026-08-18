@@ -299,11 +299,6 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
         title = "My library",
         detail = "Your fonts, signatures, and stamps.",
     ) { go(Screen.Library) }
-    HomeTaskCard(
-        label = "BETA",
-        title = "Restyle scanned text",
-        detail = "Beta: make a new PDF with a different font.",
-    ) { go(Screen.PdfFont) }
 
     vm.activeProject?.let { project ->
         Text("Current font: ${project.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
