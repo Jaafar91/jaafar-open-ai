@@ -112,8 +112,14 @@ fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, onBack: () -> Unit)
                 }
                 Text("Drag on the image to move the text")
                 OutlinedTextField(
-                    value = text, onValueChange = { text = it }, label = { Text("Text") },
-                    modifier = Modifier.fillMaxWidth(), textStyle = MaterialTheme.typography.titleLarge.copy(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("Text") },
+                    supportingText = { Text("Use Enter to start a new line.") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 5,
+                    textStyle = MaterialTheme.typography.titleLarge.copy(
                         fontFamily = androidx.compose.ui.text.font.FontFamily(typeface),
                     ),
                 )
@@ -165,21 +171,38 @@ private fun displayedImageSize(canvasSize: IntSize, imageWidth: Int, imageHeight
 }
 
 private fun drawOverlayText(canvas: Canvas, text: String, centerX: Float, bottomBaseline: Float, maxWidth: Float, paint: Paint) {
-    val lines = wrapToTwoLines(text.trim(), maxWidth, paint)
+    val lines = wrapTextLines(text, maxWidth, paint)
     val lineHeight = paint.fontSpacing
     val firstBaseline = bottomBaseline - lineHeight * (lines.size - 1)
-    lines.forEachIndexed { index, line -> canvas.drawText(line, centerX, firstBaseline + index * lineHeight, paint) }
+    lines.forEachIndexed { index, line ->
+        canvas.drawText(line, centerX, firstBaseline + index * lineHeight, paint)
+    }
 }
 
-internal fun wrapToTwoLines(text: String, maxWidth: Float, paint: Paint): List<String> {
-    if (text.isEmpty() || paint.measureText(text) <= maxWidth) return listOf(text)
-    val preferredBreaks = text.indices.filter { text[it].isWhitespace() }
-    val candidates = if (preferredBreaks.isNotEmpty()) preferredBreaks else (1 until text.length).toList()
-    val split = candidates.minByOrNull { index ->
-        kotlin.math.abs(paint.measureText(text.substring(0, index).trim()) - paint.measureText(text.substring(index + if (text[index].isWhitespace()) 1 else 0).trim()))
-    } ?: text.length / 2
-    val secondStart = split + if (text[split].isWhitespace()) 1 else 0
-    return listOf(text.substring(0, split).trim(), text.substring(secondStart).trim()).filter { it.isNotEmpty() }
+internal fun wrapTextLines(text: String, maxWidth: Float, paint: Paint): List<String> {
+    if (text.isEmpty()) return listOf("")
+    return text.replace("\r\n", "\n").split("\n").flatMap { explicitLine ->
+        wrapSingleLine(explicitLine, maxWidth, paint)
+    }
+}
+
+private fun wrapSingleLine(line: String, maxWidth: Float, paint: Paint): List<String> {
+    if (line.isBlank()) return listOf("")
+    if (paint.measureText(line) <= maxWidth) return listOf(line)
+
+    val result = mutableListOf<String>()
+    var currentLine = ""
+    line.trim().split(Regex("\\s+")).forEach { word ->
+        val candidate = if (currentLine.isEmpty()) word else "$currentLine $word"
+        if (currentLine.isNotEmpty() && paint.measureText(candidate) > maxWidth) {
+            result += currentLine
+            currentLine = word
+        } else {
+            currentLine = candidate
+        }
+    }
+    if (currentLine.isNotEmpty()) result += currentLine
+    return result.ifEmpty { listOf("") }
 }
 
 private fun shareImage(context: android.content.Context, bitmap: Bitmap) {
