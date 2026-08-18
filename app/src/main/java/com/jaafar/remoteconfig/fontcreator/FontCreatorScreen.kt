@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,6 +38,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -46,9 +49,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import com.jaafar.remoteconfig.R
 
 private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
-private const val USE_SELECTED_FONT_KEY = "use_selected_font_for_app"
 
 private val ModernLightColors = lightColorScheme(
     primary = Color(0xFF3859C7),
@@ -93,7 +96,6 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("appearance", 0) }
     var darkTheme by remember { mutableStateOf(preferences.getBoolean("dark_theme", false)) }
-    var useSelectedFont by remember { mutableStateOf(preferences.getBoolean(USE_SELECTED_FONT_KEY, false)) }
     var previewText by remember { mutableStateOf(preferences.getString("preview_text", DEFAULT_PREVIEW_TEXT) ?: DEFAULT_PREVIEW_TEXT) }
     var screen by remember { mutableStateOf(if (sharedUri != null) Screen.FillMark else Screen.Home) }
     var fillMarkUri by remember { mutableStateOf<Uri?>(sharedUri) }
@@ -103,7 +105,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
     var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
     MaterialTheme(
         colorScheme = if (darkTheme) ModernDarkColors else ModernLightColors,
-        typography = appTypography(viewModel.previewTypeface?.takeIf { useSelectedFont }?.let(::FontFamily)),
+        typography = appTypography(null),
         shapes = Shapes(
             extraSmall = RoundedCornerShape(10.dp),
             small = RoundedCornerShape(14.dp),
@@ -187,8 +189,6 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     vm = viewModel,
                     dark = darkTheme,
                     change = { value -> darkTheme = value; preferences.edit().putBoolean("dark_theme", value).apply() },
-                    useSelectedFont = useSelectedFont,
-                    changeUseSelectedFont = { value -> useSelectedFont = value; preferences.edit().putBoolean(USE_SELECTED_FONT_KEY, value).apply() },
                 ) { screen = Screen.Home }
             }
         }
@@ -218,9 +218,12 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.size(36.dp),
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("Aa", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    }
+                    Image(
+                        painter = painterResource(R.drawable.font_creator_app_icon),
+                        contentDescription = "Font Creator",
+                        modifier = Modifier.fillMaxSize().padding(2.dp),
+                        contentScale = ContentScale.Fit,
+                    )
                 }
                 Text(if (title == "Studio") "Font Creator" else title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
@@ -853,11 +856,9 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     preview: () -> Unit,
     setPreviewText: (String) -> Unit,
 ) = Page("Build ${vm.activeProject?.name.orEmpty()}", back) {
-    var showLanguages by remember { mutableStateOf(false) }
+    var showEditDrawnLetters by remember { mutableStateOf(false) }
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phrase by remember { mutableStateOf("") }
-    val selectedLanguages = vm.activeProject?.selectedLanguages ?: setOf(LanguageScript.BASIC_LATIN)
-    var pendingLanguages by remember(selectedLanguages) { mutableStateOf(selectedLanguages) }
     val total = vm.activeCharacterOrder.size
     val drawn = vm.drawings.size
     val nextCode = vm.activeCharacterOrder.firstOrNull { it !in vm.drawings }
@@ -895,9 +896,38 @@ private enum class ActionIconType { Add, Edit, Share, Import }
         Text("You can start another font from Fonts whenever you are ready.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
-    TextButton(onClick = { pendingLanguages = selectedLanguages; showLanguages = true }, modifier = Modifier.fillMaxWidth()) {
-        Text("Letter options")
+    if (drawn > 0) {
+        OutlinedButton(onClick = { showEditDrawnLetters = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Edit drawn letters")
+        }
     }
+
+    if (showEditDrawnLetters) AlertDialog(
+        onDismissRequest = { showEditDrawnLetters = false },
+        title = { Text("Edit drawn letters") },
+        text = {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(5),
+                modifier = Modifier.heightIn(max = 280.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(vm.drawings.keys.sorted()) { codePoint ->
+                    OutlinedButton(
+                        onClick = {
+                            showEditDrawnLetters = false
+                            vm.edit(codePoint)
+                        },
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(codePoint.toChar().toString())
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { showEditDrawnLetters = false }) { Text("Done") } },
+    )
 
     if (showPhraseDialog) AlertDialog(
         onDismissRequest = { showPhraseDialog = false },
@@ -918,30 +948,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
         dismissButton = { TextButton(onClick = { showPhraseDialog = false }) { Text("Cancel") } },
     )
 
-    if (showLanguages) AlertDialog(
-        onDismissRequest = { showLanguages = false },
-        title = { Text("Letter options") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Choose the languages for this font.", style = MaterialTheme.typography.bodySmall)
-                LanguageScript.entries.forEach { script ->
-                    Row(Modifier.fillMaxWidth().clickable {
-                        pendingLanguages = pendingLanguages.toMutableSet().apply { if (contains(script)) remove(script) else add(script) }
-                    }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Checkbox(checked = pendingLanguages.contains(script), onCheckedChange = { checked ->
-                            pendingLanguages = pendingLanguages.toMutableSet().apply { if (checked) add(script) else remove(script) }
-                        })
-                        Column {
-                            Text(script.displayName)
-                            Text("${script.codePoints.size} letters", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { Button(onClick = { if (vm.setLanguages(pendingLanguages)) showLanguages = false }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = { showLanguages = false }) { Text("Cancel") } },
-    )
+
 }
 
 @Composable private fun SpacingScreen(vm: FontCreatorViewModel, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit) = Page("Letter spacing", back, scrollable = true) {
@@ -1004,26 +1011,21 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     vm: FontCreatorViewModel,
     dark: Boolean,
     change: (Boolean) -> Unit,
-    useSelectedFont: Boolean,
-    changeUseSelectedFont: (Boolean) -> Unit,
     back: () -> Unit,
 ) = Page("Settings", back, scrollable = true) {
     Text("Appearance", style = MaterialTheme.typography.titleMedium)
-    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(!dark, { change(false) }); Text("Light") }
-    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(dark, { change(true) }); Text("Dark") }
     Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            Text("Use selected font on all screens")
-            Text(
-                "Applies the open generated font to app controls and labels.",
-                style = MaterialTheme.typography.bodySmall,
-            )
+        Row(Modifier.clickable { change(false) }, verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = !dark, onClick = { change(false) })
+            Text("Light")
         }
-        Switch(checked = useSelectedFont, onCheckedChange = changeUseSelectedFont)
+        Row(Modifier.clickable { change(true) }, verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = dark, onClick = { change(true) })
+            Text("Dark")
+        }
     }
     HorizontalDivider()
     // Letter reference font picker
