@@ -46,6 +46,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import com.jaafar.remoteconfig.R
 
 private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
 
@@ -214,11 +215,9 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.size(36.dp),
                 ) {
-                    Text(
-                        "FC",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("Aa", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
                 }
                 Text(if (title == "Studio") "Font Creator" else title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
