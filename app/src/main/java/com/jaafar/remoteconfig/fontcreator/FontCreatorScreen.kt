@@ -152,6 +152,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     changePreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
                     back = { screen = Screen.Fonts },
                     editLetters = { screen = Screen.Letters },
+                    startDrawing = viewModel::startPaging,
                     adjustSpacing = { screen = Screen.Spacing },
                     useOnImage = { fontName -> preferredImageFontName = fontName; screen = Screen.Image },
                 )
@@ -763,6 +764,7 @@ private fun LibraryScreen(
     changePreviewText: (String) -> Unit,
     back: () -> Unit,
     editLetters: () -> Unit,
+    startDrawing: () -> Unit,
     adjustSpacing: () -> Unit,
     useOnImage: (String) -> Unit,
 ) {
@@ -789,7 +791,7 @@ private fun LibraryScreen(
             Text(if (complete) "Your font is ready to use." else "Your preview uses the letters you have drawn so far.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(value = previewText, onValueChange = changePreviewText, modifier = Modifier.fillMaxWidth(), label = { Text("Try typing with your font") }, minLines = 3, textStyle = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(vm.previewTypeface!!)))
             Button(onClick = { useOnImage(project.name) }, modifier = Modifier.fillMaxWidth()) { Text("Use on an image") }
-            if (!complete) OutlinedButton(onClick = editLetters, modifier = Modifier.fillMaxWidth()) { Text("Continue drawing") }
+            if (!complete) OutlinedButton(onClick = startDrawing, modifier = Modifier.fillMaxWidth()) { Text("Continue drawing") }
             TextButton(onClick = adjustSpacing, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Adjust spacing") }
             vm.generatedFont?.let { file ->
                 Row(Modifier.align(Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
