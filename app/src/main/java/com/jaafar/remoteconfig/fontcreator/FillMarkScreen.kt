@@ -867,7 +867,7 @@ private fun MarkConfigPanel(
             }
             MarkType.Date -> {
                 val today = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()) }
-                Text("Date: $today (tap on the document to place)", style = MaterialTheme.typography.bodySmall)
+                Text("Date: $today", style = MaterialTheme.typography.bodySmall)
                 TextMarkStyleControls(
                     configColorIdx, onColorChange, textColors,
                     configFontIdx, onFontChange, fontOptions,
