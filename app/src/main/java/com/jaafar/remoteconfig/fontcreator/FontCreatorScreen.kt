@@ -1064,7 +1064,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember(codePoint) { mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)) }
-    var strokeWidth by remember(codePoint) { mutableFloatStateOf(8f) }
+    var strokeWidth by remember { mutableFloatStateOf(initial?.strokeWidth ?: 8f) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     val initialStrokes = remember(codePoint) { initial?.strokes ?: emptyList<GlyphStroke>() }
     val isDirty = strokes != initialStrokes
@@ -1170,7 +1170,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
                     Icon(Icons.Default.Clear, contentDescription = "Clear")
                 }
                 if (pagingMode) TextButton(onSkip) { Text("Skip") }
-                Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) {
+                Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second, strokeWidth)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) {
                     Text(saveLabel, maxLines = 1)
                 }
             }

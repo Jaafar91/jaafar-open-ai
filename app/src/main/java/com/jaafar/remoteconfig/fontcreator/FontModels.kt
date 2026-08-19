@@ -49,11 +49,13 @@ data class GlyphDrawing(
     val strokes: List<GlyphStroke>,
     val canvasWidth: Float,
     val canvasHeight: Float,
+    val strokeWidth: Float = 8f,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("codePoint", codePoint)
         put("canvasWidth", canvasWidth.toDouble())
         put("canvasHeight", canvasHeight.toDouble())
+        put("strokeWidth", strokeWidth.toDouble())
         put("bounds", boundsJson())
         put("strokes", JSONArray().apply {
             strokes.forEach { stroke ->
@@ -102,6 +104,7 @@ data class GlyphDrawing(
                 json.getInt("codePoint"), strokes,
                 json.getDouble("canvasWidth").toFloat(),
                 json.getDouble("canvasHeight").toFloat(),
+                json.optDouble("strokeWidth", 8.0).toFloat(),
             )
         }
     }
