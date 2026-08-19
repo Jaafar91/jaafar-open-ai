@@ -1064,7 +1064,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember(codePoint) { mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)) }
-    var strokeWidth by remember(codePoint) { mutableFloatStateOf(8f) }
+    var strokeWidth by remember { mutableFloatStateOf(8f) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     val initialStrokes = remember(codePoint) { initial?.strokes ?: emptyList<GlyphStroke>() }
     val isDirty = strokes != initialStrokes
