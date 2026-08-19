@@ -218,8 +218,13 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun nextAvailableSignatureName(baseName: String = "My signature"): String {
+        val cleanBaseName = baseName.trim().ifEmpty { "My signature" }
+        return uniqueSignatureName(cleanBaseName)
+    }
+
     fun saveSignature(name: String, strokes: List<GlyphStroke>, canvasWidth: Float, canvasHeight: Float): String {
-        val cleanName = name.trim().ifEmpty { "My signature" }
+        val cleanName = uniqueSignatureName(name.trim().ifEmpty { "My signature" })
         val signature = SavedSignature(
             name = cleanName,
             strokes = strokes,
@@ -228,13 +233,13 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             savedAt = System.currentTimeMillis(),
             imageFileName = null,
         )
-        upsertSignature(signature)
+        addSignature(signature)
         setDefaultSignature(cleanName)
         return cleanName
     }
 
     fun saveSignatureFromImage(contentResolver: ContentResolver, uri: Uri, name: String, removeWhiteBackground: Boolean = true): String {
-        val cleanName = name.trim().ifEmpty { "My stamp" }
+        val cleanName = uniqueSignatureName(name.trim().ifEmpty { "My stamp" })
         val fileName = "stamp-${System.currentTimeMillis()}.png"
         val outputFile = File(getApplication<Application>().filesDir, fileName)
         try {
@@ -261,7 +266,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             outputFile.delete()
             throw error
         }
-        upsertSignature(
+        addSignature(
             SavedSignature(
                 name = cleanName,
                 strokes = emptyList(),
@@ -322,14 +327,17 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun signatureImageFile(signature: SavedSignature): File? =
         signature.imageFileName?.let { File(getApplication<Application>().filesDir, it).takeIf(File::exists) }
 
-    private fun upsertSignature(signature: SavedSignature) {
-        val existingIndex = signatures.indexOfFirst { it.name.equals(signature.name, ignoreCase = true) }
-        if (existingIndex >= 0) {
-            val replaced = signatures.removeAt(existingIndex)
-            if (replaced.imageFileName != null && replaced.imageFileName != signature.imageFileName) {
-                executor.execute { File(getApplication<Application>().filesDir, replaced.imageFileName).delete() }
-            }
+    private fun uniqueSignatureName(baseName: String): String {
+        if (signatures.none { it.name.equals(baseName, ignoreCase = true) }) return baseName
+        var index = 1
+        while (true) {
+            val candidate = "$baseName ($index)"
+            if (signatures.none { it.name.equals(candidate, ignoreCase = true) }) return candidate
+            index++
         }
+    }
+
+    private fun addSignature(signature: SavedSignature) {
         signatures.add(0, signature)
         persistSignatures()
     }

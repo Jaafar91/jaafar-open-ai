@@ -260,7 +260,7 @@ internal fun ImportStampFromImageScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf("My stamp") }
+    var name by remember { mutableStateOf(vm.nextAvailableSignatureName("My stamp")) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var rawBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var removeWhiteBackground by remember { mutableStateOf(true) }
@@ -374,7 +374,7 @@ internal fun SignatureEditorScreen(
     onSaved: (String) -> Unit,
     back: () -> Unit,
 ) {
-    var name by remember { mutableStateOf("My signature") }
+    var name by remember { mutableStateOf(vm.nextAvailableSignatureName()) }
     var strokes by remember { mutableStateOf<List<GlyphStroke>>(emptyList()) }
     var active by remember { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember { mutableStateOf(1f to 1f) }
