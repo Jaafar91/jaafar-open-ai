@@ -218,8 +218,28 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun saveSignature(name: String, strokes: List<GlyphStroke>, canvasWidth: Float, canvasHeight: Float): String {
-        val cleanName = name.trim().ifEmpty { "My signature" }
+    fun suggestedSignatureName(baseName: String): String {
+        val cleanBaseName = baseName.trim()
+        if (signatures.none { it.name.equals(cleanBaseName, ignoreCase = true) }) return cleanBaseName
+        var suffix = 1
+        var candidate = "$cleanBaseName ($suffix)"
+        while (signatures.any { it.name.equals(candidate, ignoreCase = true) }) {
+            suffix += 1
+            candidate = "$cleanBaseName ($suffix)"
+        }
+        return candidate
+    }
+
+    fun hasSavedSignatureName(name: String): Boolean {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return false
+        return signatures.any { it.name.equals(cleanName, ignoreCase = true) }
+    }
+
+    fun saveSignature(name: String, strokes: List<GlyphStroke>, canvasWidth: Float, canvasHeight: Float): String? {
+        val cleanInputName = name.trim()
+        if (cleanInputName.isNotBlank() && hasSavedSignatureName(cleanInputName)) return null
+        val cleanName = cleanInputName.ifEmpty { suggestedSignatureName("My signature") }
         val signature = SavedSignature(
             name = cleanName,
             strokes = strokes,
@@ -233,8 +253,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return cleanName
     }
 
-    fun saveSignatureFromImage(contentResolver: ContentResolver, uri: Uri, name: String, removeWhiteBackground: Boolean = true): String {
-        val cleanName = name.trim().ifEmpty { "My stamp" }
+    fun saveSignatureFromImage(contentResolver: ContentResolver, uri: Uri, name: String, removeWhiteBackground: Boolean = true): String? {
+        val cleanInputName = name.trim()
+        if (cleanInputName.isNotBlank() && hasSavedSignatureName(cleanInputName)) return null
+        val cleanName = cleanInputName.ifEmpty { suggestedSignatureName("My stamp") }
         val fileName = "stamp-${System.currentTimeMillis()}.png"
         val outputFile = File(getApplication<Application>().filesDir, fileName)
         try {

@@ -260,12 +260,13 @@ internal fun ImportStampFromImageScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf("My stamp") }
+    var name by remember(vm.signatures.size) { mutableStateOf(vm.suggestedSignatureName("My stamp")) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var rawBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var removeWhiteBackground by remember { mutableStateOf(true) }
     var status by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
+    val duplicateName = name.trim().isNotEmpty() && vm.hasSavedSignatureName(name)
     DisposableEffect(rawBitmap) {
         val bitmapToRecycle = rawBitmap
         onDispose { bitmapToRecycle?.recycle() }
@@ -309,6 +310,10 @@ internal fun ImportStampFromImageScreen(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Stamp name") },
             singleLine = true,
+            isError = duplicateName,
+            supportingText = {
+                if (duplicateName) Text("A saved signature or stamp already uses that name.")
+            },
         )
         OutlinedButton(
             onClick = { picker.launch(arrayOf("image/*")) },
@@ -345,6 +350,10 @@ internal fun ImportStampFromImageScreen(
         Button(
             onClick = {
                 val uri = selectedUri ?: return@Button
+                if (duplicateName) {
+                    status = "A saved signature or stamp already uses that name."
+                    return@Button
+                }
                 scope.launch {
                     saving = true
                     status = "Saving stamp\u2026"
@@ -355,13 +364,15 @@ internal fun ImportStampFromImageScreen(
                     if (savedName != null) {
                         status = "Stamp saved."
                         onSaved(savedName)
+                    } else if (vm.hasSavedSignatureName(name)) {
+                        status = "A saved signature or stamp already uses that name."
                     } else {
                         status = "Could not save this stamp image."
                     }
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !saving && selectedUri != null,
+            enabled = !saving && selectedUri != null && !duplicateName,
         ) { Text("Save stamp") }
         if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall)
@@ -374,11 +385,12 @@ internal fun SignatureEditorScreen(
     onSaved: (String) -> Unit,
     back: () -> Unit,
 ) {
-    var name by remember { mutableStateOf("My signature") }
+    var name by remember(vm.signatures.size) { mutableStateOf(vm.suggestedSignatureName("My signature")) }
     var strokes by remember { mutableStateOf<List<GlyphStroke>>(emptyList()) }
     var active by remember { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember { mutableStateOf(1f to 1f) }
     var status by remember { mutableStateOf("") }
+    val duplicateName = name.trim().isNotEmpty() && vm.hasSavedSignatureName(name)
 
     Page("New Signature", back, scrollable = true) {
         OutlinedTextField(
@@ -387,6 +399,10 @@ internal fun SignatureEditorScreen(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Signature name") },
             singleLine = true,
+            isError = duplicateName,
+            supportingText = {
+                if (duplicateName) Text("A saved signature or stamp already uses that name.")
+            },
         )
         Canvas(
             Modifier.fillMaxWidth().height(220.dp)
@@ -429,11 +445,19 @@ internal fun SignatureEditorScreen(
             OutlinedButton(onClick = { strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }
             Button(
                 onClick = {
+                    if (duplicateName) {
+                        status = "A saved signature or stamp already uses that name."
+                        return@Button
+                    }
                     val savedName = vm.saveSignature(name, strokes, canvasSize.first, canvasSize.second)
-                    status = "Saved."
-                    onSaved(savedName)
+                    if (savedName != null) {
+                        status = "Saved."
+                        onSaved(savedName)
+                    } else {
+                        status = "A saved signature or stamp already uses that name."
+                    }
                 },
-                enabled = strokes.isNotEmpty(),
+                enabled = strokes.isNotEmpty() && !duplicateName,
                 modifier = Modifier.weight(1f),
             ) { Text("Save signature") }
         }
