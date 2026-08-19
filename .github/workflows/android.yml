@@ -30,6 +30,16 @@ jobs:
       - name: Verify the app
         run: gradle :app:testDebugUnitTest
 
+      - name: Build debug APK
+        run: gradle :app:assembleDebug
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: font-creator-pr-${{ github.event.pull_request.number || github.run_number }}-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
       - name: Restore release keystore
         if: env.PLAY_PUBLISH_ENABLED == 'true'
         env:
@@ -38,6 +48,7 @@ jobs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
 
       - name: Build release app bundle
+        if: env.PLAY_PUBLISH_ENABLED == 'true'
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -46,6 +57,7 @@ jobs:
         run: gradle :app:bundleRelease
 
       - name: Upload app bundle artifact
+        if: env.PLAY_PUBLISH_ENABLED == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: font-creator-pr-${{ github.event.pull_request.number || github.run_number }}-aab
