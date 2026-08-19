@@ -1064,6 +1064,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember(codePoint) { mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)) }
+    var strokeWidth by remember(codePoint) { mutableFloatStateOf(8f) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     val initialStrokes = remember(codePoint) { initial?.strokes ?: emptyList<GlyphStroke>() }
     val isDirty = strokes != initialStrokes
@@ -1146,10 +1147,20 @@ private enum class ActionIconType { Add, Edit, Share, Import }
                                 points.drop(1).forEach { lineTo(it.x, it.y) }
                             },
                             Color.Black,
-                            style = Stroke(8f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                            style = Stroke(strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
                         )
                     }
                 }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Thickness", style = MaterialTheme.typography.bodySmall)
+                Slider(
+                    value = strokeWidth,
+                    onValueChange = { strokeWidth = it },
+                    valueRange = 2f..24f,
+                    modifier = Modifier.weight(1f),
+                )
+                Text("${strokeWidth.toInt()}", style = MaterialTheme.typography.bodySmall)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) {
