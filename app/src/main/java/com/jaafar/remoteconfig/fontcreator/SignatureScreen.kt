@@ -260,7 +260,7 @@ internal fun ImportStampFromImageScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var name by remember(vm.signatures.size) { mutableStateOf(vm.suggestedSignatureName("My stamp")) }
+    var name by remember { mutableStateOf(vm.suggestedSignatureName("My stamp")) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var rawBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var removeWhiteBackground by remember { mutableStateOf(true) }
@@ -364,8 +364,6 @@ internal fun ImportStampFromImageScreen(
                     if (savedName != null) {
                         status = "Stamp saved."
                         onSaved(savedName)
-                    } else if (vm.hasSavedSignatureName(name)) {
-                        status = "A saved signature or stamp already uses that name."
                     } else {
                         status = "Could not save this stamp image."
                     }
@@ -385,7 +383,7 @@ internal fun SignatureEditorScreen(
     onSaved: (String) -> Unit,
     back: () -> Unit,
 ) {
-    var name by remember(vm.signatures.size) { mutableStateOf(vm.suggestedSignatureName("My signature")) }
+    var name by remember { mutableStateOf(vm.suggestedSignatureName("My signature")) }
     var strokes by remember { mutableStateOf<List<GlyphStroke>>(emptyList()) }
     var active by remember { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember { mutableStateOf(1f to 1f) }
