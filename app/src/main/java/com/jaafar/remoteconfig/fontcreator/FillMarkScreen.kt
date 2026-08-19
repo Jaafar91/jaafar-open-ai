@@ -169,6 +169,17 @@ private fun removeRecentDoc(context: android.content.Context, uriString: String)
         .edit().putString(PREFS_KEY_LIST, arr.toString()).apply()
 }
 
+private fun canOpenRecentDoc(context: android.content.Context, uri: Uri): Boolean {
+    return runCatching {
+        val hasPersistedRead = context.contentResolver.persistedUriPermissions.any {
+            it.uri == uri && it.isReadPermission
+        }
+        if (!hasPersistedRead) return@runCatching false
+        context.contentResolver.openFileDescriptor(uri, "r")?.use { }
+        true
+    }.getOrDefault(false)
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -251,9 +262,7 @@ private fun FillMarkLandingScreen(
                         onClick = {
                             val uri = Uri.parse(doc.uriString)
                             // Check that we still have read access before opening.
-                            val canOpen = runCatching {
-                                context.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
-                            }.getOrDefault(false)
+                            val canOpen = canOpenRecentDoc(context, uri)
                             if (canOpen) {
                                 saveRecentDoc(context, doc.uriString, doc.displayName)
                                 recentDocs = loadRecentDocs(context)
@@ -370,22 +379,30 @@ private fun FillMarkEditorScreen(
 
     // One effect owns document loading and PDF-page changes, avoiding a first-load race.
     LaunchedEffect(documentUri, currentPage) {
-        val mimeType = withContext(Dispatchers.IO) { context.contentResolver.getType(documentUri) }
-        val looksLikePdf = withContext(Dispatchers.IO) {
-            displayNameForUri(context, documentUri)?.endsWith(".pdf", true) == true
-        }
-        if (mimeType == "application/pdf" || looksLikePdf) {
-            val count = withContext(Dispatchers.IO) { getPdfPageCount(context, documentUri) }
-            isPdf = true
-            pageCount = count
-            val safePage = currentPage.coerceIn(0, (count - 1).coerceAtLeast(0))
-            val bmp = withContext(Dispatchers.IO) { renderPdfPage(context, documentUri, safePage) }
-            previewBitmap = bmp
-        } else {
-            val bmp = withContext(Dispatchers.IO) { loadBitmap(context.contentResolver, documentUri) }
+        runCatching {
+            val mimeType = withContext(Dispatchers.IO) { context.contentResolver.getType(documentUri) }
+            val looksLikePdf = withContext(Dispatchers.IO) {
+                displayNameForUri(context, documentUri)?.endsWith(".pdf", true) == true
+            }
+            if (mimeType == "application/pdf" || looksLikePdf) {
+                val count = withContext(Dispatchers.IO) { getPdfPageCount(context, documentUri) }
+                isPdf = true
+                pageCount = count
+                val safePage = currentPage.coerceIn(0, (count - 1).coerceAtLeast(0))
+                val bmp = withContext(Dispatchers.IO) { renderPdfPage(context, documentUri, safePage) }
+                previewBitmap = bmp
+            } else {
+                val bmp = withContext(Dispatchers.IO) { loadBitmap(context.contentResolver, documentUri) }
+                isPdf = false
+                pageCount = 0
+                previewBitmap = bmp
+            }
+        }.onFailure {
+            removeRecentDoc(context, documentUri.toString())
+            previewBitmap = null
             isPdf = false
             pageCount = 0
-            previewBitmap = bmp
+            status = "This document is no longer accessible. Please choose it again."
         }
     }
 
