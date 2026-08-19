@@ -1,22 +1,25 @@
-# Jaafar Remote Android App
+# Font Creator
 
-A Kotlin + Jetpack Compose Android client that reads remotely managed configuration from the Render FastAPI backend.
+A Kotlin + Jetpack Compose Android app for creating and importing fonts, writing on images, and filling, signing, or stamping documents.
 
-## Before building
+## Pull-request testing
 
-1. In `app/src/main/java/com/jaafar/remoteconfig/MainActivity.kt`, replace `BACKEND_URL` with the public Render URL for the backend.
-2. The backend must expose `GET /api/v1/mobile/config` and return `{"message":"Hello from Telegram","enabled":true}`.
-3. Build locally with Android Studio or `gradle :app:assembleDebug`.
+Every pull request runs tests and creates a release Android App Bundle (AAB) artifact.
 
-## Firebase distribution
+When the required repository secrets are configured, the same workflow also uploads the AAB to the **Google Play Internal testing** track. Install it through the Play Store testing link to test an update before merging the pull request—no APK download or uninstall is needed.
 
-The GitHub Action builds an APK on every push to `master` and keeps it as an Actions artifact. To distribute through Firebase App Distribution, add these GitHub repository secrets:
+The workflow uses GitHub's run number as Android's version code, so each PR test build is a valid upgrade.
 
-- `FIREBASE_APP_ID`
-- `FIREBASE_SERVICE_ACCOUNT_BASE64` — base64 of a Firebase service-account JSON file with App Distribution access.
+### Required GitHub secrets
 
-Create the Firebase tester group named `testers`, or change the group in `.github/workflows/android.yml`.
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+- `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` — the complete JSON of a Google Cloud service account that has Google Play Console release access.
+
+Configure the service account in Play Console under **Users and permissions**, then grant it release access for this app. The workflow only targets the **internal** track; it never publishes to closed testing or production.
 
 ## Important
 
-Telegram should control content/configuration through the backend. It must never install arbitrary APKs or execute code received from Telegram. New app code should continue through a pull request, test, merge, and signed release pipeline.
+Telegram should control content/configuration through the backend. It must never install arbitrary APKs or execute code received from Telegram. New app code should continue through pull requests, testing, merge, and a signed release pipeline.
