@@ -100,7 +100,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
     var imageTypeface by remember { mutableStateOf<Typeface?>(null) }
     var preferredImageFontName by remember { mutableStateOf<String?>(null) }
     var initialImageText by remember { mutableStateOf("") }
-    var openDrawnLetterPicker by remember { mutableStateOf(false) }
+    var fontEntryBack by remember { mutableStateOf(Screen.Home) }
     var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
     MaterialTheme(
         colorScheme = if (darkTheme) ModernDarkColors else ModernLightColors,
@@ -138,12 +138,12 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                 Screen.Home -> HomeScreen(viewModel, { screen = it })
                 Screen.Library -> LibraryScreen(
                     vm = viewModel,
-                    back = { screen = Screen.Home },
-                    openFontManager = { screen = Screen.Fonts },
-                    openLetterEditor = {
-                        openDrawnLetterPicker = true
-                        screen = Screen.Letters
+                    back = { screen = fontEntryBack },
+                    openFontManager = {
+                        fontEntryBack = Screen.Library
+                        screen = Screen.Fonts
                     },
+                    openLetterEditor = { screen = Screen.Letters },
                     openSignatureWithMark = { markName ->
                         pendingSignatureMark = markName
                         screen = Screen.Signature
@@ -165,7 +165,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     vm = viewModel,
                     previewText = previewText,
                     changePreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
-                    back = { screen = Screen.Fonts },
+                    back = { screen = Screen.Letters },
                     editLetters = { screen = Screen.Letters },
                     startDrawing = viewModel::startPaging,
                     adjustSpacing = { screen = Screen.Spacing },
@@ -177,13 +177,16 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                 )
                 Screen.Letters -> LettersScreen(
                     vm = viewModel,
-                    back = { screen = Screen.Home },
+                    back = { screen = Screen.Library },
                     preview = { screen = Screen.FontReady },
+                    adjustSpacing = { screen = Screen.Spacing },
+                    deleteFont = {
+                        viewModel.activeProject?.name?.let(viewModel::deleteProject)
+                        screen = Screen.Library
+                    },
                     setPreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
-                    showDrawnLettersOnOpen = openDrawnLetterPicker,
-                    onDrawnLettersOpened = { openDrawnLetterPicker = false },
                 )
-                Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Fonts }
+                Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Letters }
                 Screen.Image -> ImageScreen(
                     vm = viewModel,
                     back = { preferredImageFontName = null; initialImageText = ""; screen = Screen.Home },
