@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,7 +43,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -178,14 +182,28 @@ internal fun SpacingScreen(
             shape = MaterialTheme.shapes.medium,
         ) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Sample", style = MaterialTheme.typography.labelLarge)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Sample", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                    IconButton(
+                        onClick = { showSampleEditor = true },
+                        modifier = Modifier.semantics { contentDescription = "Edit sample text" },
+                    ) {
+                        Icon(Icons.Filled.Edit, contentDescription = null)
+                    }
+                }
                 Text(
-                    previewText.ifBlank { DEFAULT_PREVIEW_TEXT },
+                    spacingPreviewText(
+                        previewText.ifBlank { DEFAULT_PREVIEW_TEXT },
+                        letter,
+                        word,
+                    ),
                     style = MaterialTheme.typography.headlineSmall.copy(
                         fontFamily = vm.previewTypeface?.let(::FontFamily) ?: FontFamily.Default,
                     ),
                 )
-                TextButton(onClick = { showSampleEditor = true }) { Text("Edit sample text") }
             }
         }
 
@@ -194,7 +212,12 @@ internal fun SpacingScreen(
 
         Spacer(Modifier.weight(1f))
         Button(
-            onClick = { if (vm.setSpacing(letter.toString(), word.toString())) vm.generate() },
+            onClick = {
+                if (vm.setSpacing(letter.toString(), word.toString())) {
+                    vm.generate()
+                    back()
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Apply spacing") }
         if (vm.status.isNotBlank()) {
@@ -224,6 +247,20 @@ internal fun SpacingScreen(
             },
             dismissButton = { TextButton(onClick = { showSampleEditor = false }) { Text("Cancel") } },
         )
+    }
+}
+
+private fun spacingPreviewText(
+    text: String,
+    letterSpacingMm: Float,
+    wordSpacingMm: Float,
+) = buildAnnotatedString {
+    val letterSpacing = (letterSpacingMm * 0.5f).sp
+    val wordSpacing = (wordSpacingMm * 0.5f).sp
+    text.forEach { character ->
+        withStyle(SpanStyle(letterSpacing = if (character.isWhitespace()) wordSpacing else letterSpacing)) {
+            append(character)
+        }
     }
 }
 
