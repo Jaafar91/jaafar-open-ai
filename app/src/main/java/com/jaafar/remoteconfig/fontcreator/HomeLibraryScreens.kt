@@ -22,7 +22,12 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -197,15 +202,31 @@ internal fun LibraryScreen(
                                         Text(project.name, style = MaterialTheme.typography.titleMedium)
                                         Text("${project.drawings.size} drawn characters")
                                     }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        OutlinedButton(onClick = {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Button(onClick = {
                                             val index = vm.projects.indexOf(project)
                                             if (index >= 0) {
                                                 vm.openProject(index)
                                                 openLetterEditor()
                                             }
-                                        }) { Text("Edit letters") }
-                                        TextButton(onClick = { projectToDelete = project }) { Text("Delete") }
+                                        }) {
+                                            Icon(Icons.Filled.Edit, contentDescription = null)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("Edit")
+                                        }
+                                        IconButton(
+                                            onClick = { projectToDelete = project },
+                                            modifier = Modifier.semantics { contentDescription = "Delete ${project.name}" },
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Delete,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -224,7 +245,11 @@ internal fun LibraryScreen(
                     }
                 }
             }
-            OutlinedButton(openFontManager, Modifier.fillMaxWidth()) { Text("Open font manager") }
+            OutlinedButton(openFontManager, Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.FolderOpen, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Open font manager")
+            }
         }
         LibraryTab.Signatures -> {
             val sigCount = vm.signatures.count { it.imageFileName == null }
@@ -239,6 +264,8 @@ internal fun LibraryScreen(
                         Text("No signatures yet.", style = MaterialTheme.typography.titleMedium)
                         Text("Create your first signature. Draw it once and reuse it whenever you sign a document.")
                         Button(onClick = { signaturePage = LibrarySignaturePage.Draw }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Filled.Add, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
                             Text("Create signature")
                         }
                     }
@@ -269,7 +296,9 @@ internal fun LibraryScreen(
                     }
                     item {
                         OutlinedButton(onClick = { signaturePage = LibrarySignaturePage.Draw }, modifier = Modifier.fillMaxWidth()) {
-                            Text("+ Add signature")
+                            Icon(Icons.Filled.Add, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Add signature")
                         }
                     }
                     item { Text("STAMPS · ${stamps.size}", style = MaterialTheme.typography.titleSmall) }
@@ -294,7 +323,9 @@ internal fun LibraryScreen(
                     }
                     item {
                         OutlinedButton(onClick = { signaturePage = LibrarySignaturePage.ImportStamp }, modifier = Modifier.fillMaxWidth()) {
-                            Text("+ Add stamp")
+                            Icon(Icons.Filled.Add, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Add stamp")
                         }
                     }
                 }
@@ -320,14 +351,22 @@ internal fun LibraryScreen(
                         openSignatureWithMark(mark.name)
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Use in a document") }
+                ) {
+                    Icon(Icons.Filled.Description, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Use in a document")
+                }
                 OutlinedButton(
                     onClick = {
                         renameValue = mark.name
                         showRenameDialog = true
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Rename") }
+                ) {
+                    Icon(Icons.Filled.Edit, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Rename")
+                }
                 TextButton(
                     onClick = {
                         vm.deleteSignature(mark.name)
@@ -335,7 +374,15 @@ internal fun LibraryScreen(
                         selectedLibraryMark = null
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Delete") }
+                ) {
+                    Icon(
+                        Icons.Filled.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Delete")
+                }
             }
         }
     }
