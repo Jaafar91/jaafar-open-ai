@@ -99,6 +99,8 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var imageTypeface by remember { mutableStateOf<Typeface?>(null) }
     var preferredImageFontName by remember { mutableStateOf<String?>(null) }
+    var initialImageText by remember { mutableStateOf("") }
+    var openDrawnLetterPicker by remember { mutableStateOf(false) }
     var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
     MaterialTheme(
         colorScheme = if (darkTheme) ModernDarkColors else ModernLightColors,
@@ -115,14 +117,20 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
             viewModel.referenceTypeface()
         }
         when {
-            imageUri != null && imageTypeface != null -> ImageTextEditorScreen(imageUri!!, imageTypeface!!) { imageUri = null; imageTypeface = null }
+            imageUri != null && imageTypeface != null -> ImageTextEditorScreen(imageUri!!, imageTypeface!!, initialImageText) {
+                imageUri = null
+                imageTypeface = null
+                initialImageText = ""
+            }
             viewModel.selectedCodePoint != null -> GlyphEditorScreen(
                 codePoint = viewModel.selectedCodePoint!!,
                 initial = viewModel.drawings[viewModel.selectedCodePoint],
                 pagingMode = viewModel.isPagingMode,
                 pagingProgress = viewModel.pagingProgress,
+                canGoPrevious = viewModel.canGoToPreviousLetter,
                 referenceTypeface = referenceTypeface,
                 onCancel = viewModel::closeEditor,
+                onPrevious = viewModel::previousLetter,
                 onSkip = viewModel::skipLetter,
                 onSave = viewModel::saveDrawing,
             )
@@ -132,7 +140,10 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     vm = viewModel,
                     back = { screen = Screen.Home },
                     openFontManager = { screen = Screen.Fonts },
-                    openLetterEditor = { screen = Screen.Letters },
+                    openLetterEditor = {
+                        openDrawnLetterPicker = true
+                        screen = Screen.Letters
+                    },
                     openSignatureWithMark = { markName ->
                         pendingSignatureMark = markName
                         screen = Screen.Signature
@@ -143,8 +154,14 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     back = { screen = Screen.Home },
                     editLetters = { screen = Screen.Letters },
                     showReady = { screen = Screen.FontReady },
-                    useOnImage = { fontName -> preferredImageFontName = fontName; screen = Screen.Image },
+                    useOnImage = { fontName ->
+                        preferredImageFontName = fontName
+                        initialImageText = ""
+                        screen = Screen.Image
+                    },
                     setPreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
+                    showDrawnLettersOnOpen = openDrawnLetterPicker,
+                    onDrawnLettersOpened = { openDrawnLetterPicker = false },
                 )
                 Screen.FontReady -> FontReadyScreen(
                     vm = viewModel,
@@ -154,7 +171,11 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     editLetters = { screen = Screen.Letters },
                     startDrawing = viewModel::startPaging,
                     adjustSpacing = { screen = Screen.Spacing },
-                    useOnImage = { fontName -> preferredImageFontName = fontName; screen = Screen.Image },
+                    useOnImage = { fontName, text ->
+                        preferredImageFontName = fontName
+                        initialImageText = text
+                        screen = Screen.Image
+                    },
                 )
                 Screen.Letters -> LettersScreen(
                     vm = viewModel,
@@ -165,7 +186,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                 Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Fonts }
                 Screen.Image -> ImageScreen(
                     vm = viewModel,
-                    back = { preferredImageFontName = null; screen = Screen.Home },
+                    back = { preferredImageFontName = null; initialImageText = ""; screen = Screen.Home },
                     initiallySelectedFont = preferredImageFontName,
                 ) { tf, uri -> imageTypeface = tf; imageUri = uri; preferredImageFontName = null }
                 Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Home }
@@ -359,6 +380,7 @@ private fun LibraryScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameValue by remember { mutableStateOf("") }
     var libraryStatus by remember { mutableStateOf("") }
+    var projectToDelete by remember { mutableStateOf<FontProject?>(null) }
     when (signaturePage) {
         LibrarySignaturePage.Draw -> {
             SignatureEditorScreen(
@@ -413,13 +435,16 @@ private fun LibraryScreen(
                                         Text(project.name, style = MaterialTheme.typography.titleMedium)
                                         Text("${project.drawings.size} drawn characters")
                                     }
-                                    OutlinedButton(onClick = {
-                                        val index = vm.projects.indexOf(project)
-                                        if (index >= 0) {
-                                            vm.openProject(index)
-                                            openLetterEditor()
-                                        }
-                                    }) { Text("Edit letters") }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        OutlinedButton(onClick = {
+                                            val index = vm.projects.indexOf(project)
+                                            if (index >= 0) {
+                                                vm.openProject(index)
+                                                openLetterEditor()
+                                            }
+                                        }) { Text("Edit letters") }
+                                        TextButton(onClick = { projectToDelete = project }) { Text("Delete") }
+                                    }
                                 }
                             }
                         }
@@ -552,6 +577,21 @@ private fun LibraryScreen(
             }
         }
     }
+    projectToDelete?.let { project ->
+        AlertDialog(
+            onDismissRequest = { projectToDelete = null },
+            title = { Text("Delete font?") },
+            text = { Text("Delete \"${project.name}\" and its generated font file? This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deleteProject(project.name)
+                    libraryStatus = "Deleted ${project.name}."
+                    projectToDelete = null
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { projectToDelete = null }) { Text("Cancel") } },
+        )
+    }
     if (showRenameDialog) {
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
@@ -595,7 +635,7 @@ private fun LibraryScreen(
     back: () -> Unit,
     editLetters: () -> Unit,
     showReady: () -> Unit,
-    useOnImage: (String) -> Unit,
+    useOnImage: (String, String) -> Unit,
     setPreviewText: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -790,7 +830,7 @@ private fun LibraryScreen(
             }
             Text(if (complete) "Your font is ready to use." else "Your preview uses the letters you have drawn so far.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(value = previewText, onValueChange = changePreviewText, modifier = Modifier.fillMaxWidth(), label = { Text("Try typing with your font") }, minLines = 3, textStyle = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(vm.previewTypeface!!)))
-            Button(onClick = { useOnImage(project.name) }, modifier = Modifier.fillMaxWidth()) { Text("Use on an image") }
+            Button(onClick = { useOnImage(project.name, previewText) }, modifier = Modifier.fillMaxWidth()) { Text("Use on an image") }
             if (!complete) OutlinedButton(onClick = startDrawing, modifier = Modifier.fillMaxWidth()) { Text("Continue drawing") }
             TextButton(onClick = adjustSpacing, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Adjust spacing") }
             vm.generatedFont?.let { file ->
@@ -851,8 +891,16 @@ private enum class ActionIconType { Add, Edit, Share, Import }
     back: () -> Unit,
     preview: () -> Unit,
     setPreviewText: (String) -> Unit,
+    showDrawnLettersOnOpen: Boolean,
+    onDrawnLettersOpened: () -> Unit,
 ) = Page("Build ${vm.activeProject?.name.orEmpty()}", back) {
     var showEditDrawnLetters by remember { mutableStateOf(false) }
+    LaunchedEffect(showDrawnLettersOnOpen) {
+        if (showDrawnLettersOnOpen) {
+            showEditDrawnLetters = true
+            onDrawnLettersOpened()
+        }
+    }
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phrase by remember { mutableStateOf("") }
     val total = vm.activeCharacterOrder.size
@@ -948,14 +996,14 @@ private enum class ActionIconType { Add, Edit, Share, Import }
 }
 
 @Composable private fun SpacingScreen(vm: FontCreatorViewModel, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit) = Page("Letter spacing", back, scrollable = true) {
-    var letter by remember(vm.activeProject) { mutableStateOf(vm.activeProject?.letterSpacingMm?.toString().orEmpty()) }
-    var word by remember(vm.activeProject) { mutableStateOf(vm.activeProject?.wordSpacingMm?.toString().orEmpty()) }
+    var letter by remember(vm.activeProject) { mutableFloatStateOf(vm.activeProject?.letterSpacingMm ?: 0f) }
+    var word by remember(vm.activeProject) { mutableFloatStateOf(vm.activeProject?.wordSpacingMm ?: 3f) }
     Text("Character spacing", style = MaterialTheme.typography.titleMedium)
     Text("Extra distance between every pair of letters. Use a negative value to bring letters closer.")
-    OutlinedTextField(letter, { letter = it }, Modifier.fillMaxWidth(), label = { Text("Extra letter spacing (mm)") }, singleLine = true)
+    NumberStepper(label = "Extra letter spacing", value = letter, unit = "mm", step = 0.25f, min = -3f, max = 10f) { letter = it }
     Text("Word spacing", style = MaterialTheme.typography.titleMedium)
     Text("Width of the blank space character between words.")
-    OutlinedTextField(word, { word = it }, Modifier.fillMaxWidth(), label = { Text("Word space width (mm)") }, singleLine = true)
+    NumberStepper(label = "Word space width", value = word, unit = "mm", step = 0.5f, min = 0.2f, max = 50f) { word = it }
     Text("Preview", style = MaterialTheme.typography.titleMedium)
     OutlinedTextField(
         previewText,
@@ -968,8 +1016,19 @@ private enum class ActionIconType { Add, Edit, Share, Import }
             fontFamily = vm.previewTypeface?.let { FontFamily(it) } ?: FontFamily.Default
         )
     )
-    Button({ if (vm.setSpacing(letter, word)) vm.generate() }, Modifier.fillMaxWidth()) { Text("Save spacing") }
+    Button({ if (vm.setSpacing(letter.toString(), word.toString())) vm.generate() }, Modifier.fillMaxWidth()) { Text("Save spacing") }
     if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
+}
+
+@Composable private fun NumberStepper(label: String, value: Float, unit: String, step: Float, min: Float, max: Float, change: (Float) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedButton(onClick = { change((value - step).coerceAtLeast(min)) }, enabled = value > min) { Text("−") }
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(label, style = MaterialTheme.typography.labelLarge)
+            Text("${String.format(java.util.Locale.US, "%.2f", value)} $unit", style = MaterialTheme.typography.titleMedium)
+        }
+        OutlinedButton(onClick = { change((value + step).coerceAtMost(max)) }, enabled = value < max) { Text("+") }
+    }
 }
 
 @Composable private fun ImageScreen(vm: FontCreatorViewModel, back: () -> Unit, initiallySelectedFont: String? = null, selected: (Typeface, Uri) -> Unit) {
@@ -1062,7 +1121,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun GlyphEditorScreen(codePoint: Int, initial: GlyphDrawing?, pagingMode: Boolean, pagingProgress: Pair<Int, Int>?, referenceTypeface: Typeface?, onCancel: () -> Unit, onSkip: () -> Unit, onSave: (GlyphDrawing) -> Unit) {
+@Composable private fun GlyphEditorScreen(codePoint: Int, initial: GlyphDrawing?, pagingMode: Boolean, pagingProgress: Pair<Int, Int>?, canGoPrevious: Boolean, referenceTypeface: Typeface?, onCancel: () -> Unit, onPrevious: () -> Unit, onSkip: () -> Unit, onSave: (GlyphDrawing) -> Unit) {
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember(codePoint) { mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)) }
@@ -1171,6 +1230,7 @@ private enum class ActionIconType { Add, Edit, Share, Import }
                 IconButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
                     Icon(Icons.Default.Clear, contentDescription = "Clear")
                 }
+                if (pagingMode && canGoPrevious) TextButton(onPrevious) { Text("Previous") }
                 if (pagingMode) TextButton(onSkip) { Text("Skip") }
                 Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second, strokeWidth)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) {
                     Text(saveLabel, maxLines = 1)
