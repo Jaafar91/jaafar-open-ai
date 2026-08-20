@@ -208,9 +208,16 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun deleteProject(name: String) {
         val index = projects.indexOfFirst { it.name == name }
         if (index < 0) return
-        val project = projects.removeAt(index)
-        if (activeProjectIndex == index) closeProject()
-        else if (activeProjectIndex != null && activeProjectIndex!! > index) activeProjectIndex = activeProjectIndex!! - 1
+        val project = projects[index]
+        if (activeProjectIndex == index) {
+            activeProjectIndex = null
+            drawings.clear()
+            generatedFont = null
+            previewTypeface = null
+        } else if (activeProjectIndex != null && activeProjectIndex!! > index) {
+            activeProjectIndex = activeProjectIndex!! - 1
+        }
+        projects.removeAt(index)
         generatedFile(project.name).delete()
         persist()
         status = "Font deleted."
