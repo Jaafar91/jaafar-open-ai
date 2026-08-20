@@ -160,8 +160,6 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                         screen = Screen.Image
                     },
                     setPreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
-                    showDrawnLettersOnOpen = openDrawnLetterPicker,
-                    onDrawnLettersOpened = { openDrawnLetterPicker = false },
                 )
                 Screen.FontReady -> FontReadyScreen(
                     vm = viewModel,
@@ -182,6 +180,8 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     back = { screen = Screen.Home },
                     preview = { screen = Screen.FontReady },
                     setPreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
+                    showDrawnLettersOnOpen = openDrawnLetterPicker,
+                    onDrawnLettersOpened = { openDrawnLetterPicker = false },
                 )
                 Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Fonts }
                 Screen.Image -> ImageScreen(
