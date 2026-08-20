@@ -48,7 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.jaafar.remoteconfig.R
 
-private const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
+internal const val DEFAULT_PREVIEW_TEXT = "The quick brown fox jumps over the lazy dog 123"
 
 private val ModernLightColors = lightColorScheme(
     primary = Color(0xFF3859C7),
