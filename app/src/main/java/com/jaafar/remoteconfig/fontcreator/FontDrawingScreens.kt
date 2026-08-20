@@ -59,23 +59,20 @@ import com.jaafar.remoteconfig.R
     vm: FontCreatorViewModel,
     back: () -> Unit,
     preview: () -> Unit,
+    adjustSpacing: () -> Unit,
+    deleteFont: () -> Unit,
     setPreviewText: (String) -> Unit,
-    showDrawnLettersOnOpen: Boolean,
-    onDrawnLettersOpened: () -> Unit,
-) = Page("Build ${vm.activeProject?.name.orEmpty()}", back) {
+) = Page("Font workspace", back) {
     var showEditDrawnLetters by remember { mutableStateOf(false) }
-    LaunchedEffect(showDrawnLettersOnOpen) {
-        if (showDrawnLettersOnOpen) {
-            showEditDrawnLetters = true
-            onDrawnLettersOpened()
-        }
-    }
+    var showDeleteDialog by remember { mutableStateOf(false) }
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phrase by remember { mutableStateOf("") }
+    val project = vm.activeProject
     val total = vm.activeCharacterOrder.size
     val drawn = vm.drawings.size
     val nextCode = vm.activeCharacterOrder.firstOrNull { it !in vm.drawings }
 
+    Text(project?.name.orEmpty(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
     Text("Draw one letter at a time.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(14.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -106,14 +103,35 @@ import com.jaafar.remoteconfig.R
     } else {
         Text("Your letter set is complete.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Button(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) { Text("Try your font") }
-        Text("You can start another font from Fonts whenever you are ready.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
     if (drawn > 0) {
         OutlinedButton(onClick = { showEditDrawnLetters = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("Edit drawn letters")
+            Text("Edit letters")
+        }
+        TextButton(onClick = adjustSpacing, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Text("Adjust spacing")
         }
     }
+    TextButton(
+        onClick = { showDeleteDialog = true },
+        modifier = Modifier.align(Alignment.CenterHorizontally),
+    ) {
+        Text("Delete font", color = MaterialTheme.colorScheme.error)
+    }
+
+    if (showDeleteDialog) AlertDialog(
+        onDismissRequest = { showDeleteDialog = false },
+        title = { Text("Delete font?") },
+        text = { Text("Delete \"${project?.name.orEmpty()}\" and its generated file? This cannot be undone.") },
+        confirmButton = {
+            TextButton(onClick = {
+                showDeleteDialog = false
+                deleteFont()
+            }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") } },
+    )
 
     if (showEditDrawnLetters) AlertDialog(
         onDismissRequest = { showEditDrawnLetters = false },
