@@ -124,7 +124,18 @@ import com.jaafar.remoteconfig.R
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(vm.drawings.keys.sorted()) { codePoint ->
+                items(
+                    vm.drawings.keys.sortedWith(
+                        compareBy<Int> {
+                            when (it) {
+                                in 'A'.code..'Z'.code -> 0
+                                in 'a'.code..'z'.code -> 1
+                                in '0'.code..'9'.code -> 2
+                                else -> 3
+                            }
+                        }.thenBy { it },
+                    ),
+                ) { codePoint ->
                     OutlinedButton(
                         onClick = {
                             showEditDrawnLetters = false
