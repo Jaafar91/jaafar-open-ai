@@ -635,7 +635,7 @@ private fun LibraryScreen(
     back: () -> Unit,
     editLetters: () -> Unit,
     showReady: () -> Unit,
-    useOnImage: (String, String) -> Unit,
+    useOnImage: (String) -> Unit,
     setPreviewText: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -806,7 +806,7 @@ private fun LibraryScreen(
     editLetters: () -> Unit,
     startDrawing: () -> Unit,
     adjustSpacing: () -> Unit,
-    useOnImage: (String) -> Unit,
+    useOnImage: (String, String) -> Unit,
 ) {
     val project = vm.activeProject
     if (project == null) {
