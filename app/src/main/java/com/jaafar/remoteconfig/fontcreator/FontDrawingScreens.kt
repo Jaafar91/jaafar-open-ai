@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.NavigateBefore
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
@@ -308,15 +309,43 @@ private fun SpacingControl(
     val handleBack = { if (isDirty) showDiscardDialog = true else onCancel() }
     BackHandler(onBack = handleBack)
     val char = codePoint.toChar().toString()
-    val title = if (pagingProgress != null) "Continue drawing · ${pagingProgress.first} of ${pagingProgress.second}" else "Draw a character"
+    val title = "Draw a letter"
     val isLastInQueue = pagingProgress != null && pagingProgress.first == pagingProgress.second
     val saveLabel = when {
         isLastInQueue -> "Save & Finish"
         pagingMode -> "Save & Next"
         else -> "Save letter"
     }
-    Scaffold(topBar = { AppTopBar(title, handleBack) }) { padding ->
+    Scaffold(
+        topBar = {
+            AppTopBar(title, handleBack) {
+                if (pagingMode && canGoPrevious) {
+                    IconButton(onClick = onPrevious) {
+                        Icon(Icons.Filled.NavigateBefore, contentDescription = "Previous letter")
+                    }
+                }
+            }
+        },
+    ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (pagingProgress != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${pagingProgress.first} of ${pagingProgress.second}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    LinearProgressIndicator(
+                        progress = (pagingProgress.first.toFloat() / pagingProgress.second).coerceIn(0f, 1f),
+                        modifier = Modifier.weight(1f).height(4.dp),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+            }
             Text("Copy the reference character into the canvas.", style = MaterialTheme.typography.bodySmall)
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer,
@@ -406,7 +435,6 @@ private fun SpacingControl(
                 IconButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
                     Icon(Icons.Default.Clear, contentDescription = "Clear")
                 }
-                if (pagingMode && canGoPrevious) TextButton(onPrevious) { Text("Previous") }
                 if (pagingMode) TextButton(onSkip) { Text("Skip") }
                 Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second, strokeWidth)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) {
                     Text(saveLabel, maxLines = 1)
