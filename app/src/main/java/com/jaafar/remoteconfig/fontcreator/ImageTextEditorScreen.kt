@@ -65,10 +65,10 @@ private val TEXT_COLORS = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, onBack: () -> Unit) {
+fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, initialText: String = "", onBack: () -> Unit) {
     val context = LocalContext.current
     val bitmap = remember(imageUri) { loadBitmap(context.contentResolver, imageUri) }
-    var text by remember { mutableStateOf("") }
+    var text by remember(imageUri, initialText) { mutableStateOf(initialText) }
     var sizePercent by remember { mutableFloatStateOf(10f) }
     var textColor by remember { mutableStateOf(TEXT_COLORS.first()) }
     var textPosition by remember { mutableStateOf(Offset(.5f, .85f)) }
