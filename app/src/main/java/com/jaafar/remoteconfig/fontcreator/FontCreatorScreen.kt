@@ -138,7 +138,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                 Screen.Home -> HomeScreen(viewModel, { screen = it })
                 Screen.Library -> LibraryScreen(
                     vm = viewModel,
-                    back = { screen = fontEntryBack },
+                    back = { screen = Screen.Home },
                     openFontManager = {
                         fontEntryBack = Screen.Library
                         screen = Screen.Fonts
@@ -151,7 +151,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                 )
                 Screen.Fonts -> FontsScreen(
                     vm = viewModel,
-                    back = { screen = Screen.Home },
+                    back = { screen = fontEntryBack },
                     editLetters = { screen = Screen.Letters },
                     showReady = { screen = Screen.FontReady },
                     useOnImage = { fontName ->
