@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.NavigateBefore
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
@@ -315,7 +316,17 @@ private fun SpacingControl(
         pagingMode -> "Save & Next"
         else -> "Save letter"
     }
-    Scaffold(topBar = { AppTopBar(title, handleBack) }) { padding ->
+    Scaffold(
+        topBar = {
+            AppTopBar(title, handleBack) {
+                if (pagingMode && canGoPrevious) {
+                    IconButton(onClick = onPrevious) {
+                        Icon(Icons.Filled.NavigateBefore, contentDescription = "Previous letter")
+                    }
+                }
+            }
+        },
+    ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Copy the reference character into the canvas.", style = MaterialTheme.typography.bodySmall)
             Surface(
@@ -406,7 +417,6 @@ private fun SpacingControl(
                 IconButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
                     Icon(Icons.Default.Clear, contentDescription = "Clear")
                 }
-                if (pagingMode && canGoPrevious) TextButton(onPrevious) { Text("Previous") }
                 if (pagingMode) TextButton(onSkip) { Text("Skip") }
                 Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second, strokeWidth)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) {
                     Text(saveLabel, maxLines = 1)
