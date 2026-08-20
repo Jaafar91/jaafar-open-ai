@@ -23,9 +23,12 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.NavigateBefore
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.NavigateBefore
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -83,33 +86,51 @@ import com.jaafar.remoteconfig.R
 
     if (drawn == 0) {
         Text("Start your font", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Button(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("Use a phrase")
+        Button(onClick = vm::startPaging, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Edit, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Start drawing")
         }
-        TextButton(onClick = vm::startPaging, modifier = Modifier.fillMaxWidth()) {
-            Text("Start with the alphabet")
+        OutlinedButton(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Edit, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Use a phrase")
         }
     } else if (nextCode != null) {
         Text("Keep building your font.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Button(onClick = { vm.startPaging() }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Edit, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
             Text("Continue drawing")
         }
-        TextButton(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("Draw letters from a phrase instead")
+        OutlinedButton(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Edit, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Draw letters from a phrase")
         }
         OutlinedButton(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Visibility, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
             Text("Try your font")
         }
     } else {
         Text("Your letter set is complete.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Button(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) { Text("Try your font") }
+        Button(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Visibility, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Try your font")
+        }
     }
 
     if (drawn > 0) {
         OutlinedButton(onClick = { showEditDrawnLetters = true }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Edit, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
             Text("Edit letters")
         }
-        TextButton(onClick = adjustSpacing, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+        OutlinedButton(onClick = adjustSpacing, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Tune, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
             Text("Adjust spacing")
         }
     }
@@ -117,6 +138,12 @@ import com.jaafar.remoteconfig.R
         onClick = { showDeleteDialog = true },
         modifier = Modifier.align(Alignment.CenterHorizontally),
     ) {
+        Icon(
+            Icons.Filled.Delete,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+        )
+        Spacer(Modifier.width(6.dp))
         Text("Delete font", color = MaterialTheme.colorScheme.error)
     }
 
