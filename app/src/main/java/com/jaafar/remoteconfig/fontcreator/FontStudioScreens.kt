@@ -81,78 +81,32 @@ import com.jaafar.remoteconfig.R
         }
     }
 
-    Page("Fonts", back, scrollable = true) {
-        Text("Your font studio", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Build a handwriting font or keep the fonts you already use in one place.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-        featuredProject?.let { project ->
-            val selectedCharacters = project.selectedLanguages.flatMap { it.codePoints }.filter { it != 0x20 }.toSet()
-            val total = selectedCharacters.size
-            val drawn = project.drawings.count { it.codePoint in selectedCharacters }
-            val ready = vm.hasGeneratedFont(project.name)
-            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(if (ready) "YOUR FONT IS READY" else "CONTINUE WHERE YOU LEFT OFF", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Text(project.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(if (ready) "Ready to use." else "$drawn of $total letters drawn", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    if (!ready) LinearProgressIndicator(progress = if (total == 0) 0f else drawn.toFloat() / total, modifier = Modifier.fillMaxWidth())
-                    Button(onClick = {
-                        featuredIndex?.let(vm::openProject)
-                        if (ready) showReady() else editLetters()
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (ready) "Try your font" else if (drawn == 0) "Start drawing" else "Continue drawing")
-                    }
-                }
-            }
+    Page("Add a font", back) {
+        Text("Create or import", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(
+            "Create a handwriting font or import a font you already own.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(onClick = { showCreateDialog = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Create a handwriting font")
         }
-
-        Text("Start something new", style = MaterialTheme.typography.titleMedium)
-        Button(onClick = { showCreateDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Create a handwriting font") }
-        OutlinedButton(onClick = { fontFilePicker.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream", "*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Import a font") }
-        if (vm.importStatus.isNotBlank()) Text(vm.importStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-
-        val otherProjects = vm.projects.filterIndexed { index, _ -> index != featuredIndex }
-        if (otherProjects.isNotEmpty()) {
-            Text("All handwriting fonts", style = MaterialTheme.typography.titleMedium)
-            otherProjects.forEach { project ->
-                val index = vm.projects.indexOf(project)
-                val ready = vm.hasGeneratedFont(project.name)
-                Row(Modifier.fillMaxWidth().clickable {
-                    vm.openProject(index)
-                    if (ready) showReady() else editLetters()
-                }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(44.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Text("Aa", fontWeight = FontWeight.Bold) }
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(project.name, style = MaterialTheme.typography.titleMedium)
-                        Text(if (ready) "Preview ready" else "${project.drawings.size} letters drawn", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Text(if (ready) "Try" else "Draw", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
-                }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            }
+        OutlinedButton(
+            onClick = {
+                fontFilePicker.launch(
+                    arrayOf("font/ttf", "font/otf", "application/octet-stream", "*/*"),
+                )
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Import a font")
         }
-
-        if (vm.importedFonts.isNotEmpty()) {
-            Text("Imported fonts", style = MaterialTheme.typography.titleMedium)
-            vm.importedFonts.forEach { font ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Surface(color = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(44.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Text("Aa", fontWeight = FontWeight.Bold) }
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(font.displayName, style = MaterialTheme.typography.titleMedium)
-                        Text("Ready to use", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    TextButton(onClick = { useOnImage(font.displayName) }) { Text("Use") }
-                }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            }
-        }
-
-        if (featuredProject == null && vm.importedFonts.isEmpty()) {
-            Text("Start by creating your own handwriting font or importing a .ttf or .otf file.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (vm.importStatus.isNotBlank()) {
+            Text(
+                vm.importStatus,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 
