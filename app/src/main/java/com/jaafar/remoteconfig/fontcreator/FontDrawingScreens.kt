@@ -159,38 +159,91 @@ import com.jaafar.remoteconfig.R
 
 }
 
-@Composable internal fun SpacingScreen(vm: FontCreatorViewModel, previewText: String, changePreviewText: (String) -> Unit, back: () -> Unit) = Page("Letter spacing", back, scrollable = true) {
+@Composable
+internal fun SpacingScreen(
+    vm: FontCreatorViewModel,
+    previewText: String,
+    changePreviewText: (String) -> Unit,
+    back: () -> Unit,
+) {
     var letter by remember(vm.activeProject) { mutableFloatStateOf(vm.activeProject?.letterSpacingMm ?: 0f) }
     var word by remember(vm.activeProject) { mutableFloatStateOf(vm.activeProject?.wordSpacingMm ?: 3f) }
-    Text("Character spacing", style = MaterialTheme.typography.titleMedium)
-    Text("Extra distance between every pair of letters. Use a negative value to bring letters closer.")
-    NumberStepper(label = "Extra letter spacing", value = letter, unit = "mm", step = 0.25f, min = -3f, max = 10f) { letter = it }
-    Text("Word spacing", style = MaterialTheme.typography.titleMedium)
-    Text("Width of the blank space character between words.")
-    NumberStepper(label = "Word space width", value = word, unit = "mm", step = 0.5f, min = 0.2f, max = 50f) { word = it }
-    Text("Preview", style = MaterialTheme.typography.titleMedium)
-    OutlinedTextField(
-        previewText,
-        changePreviewText,
-        Modifier.fillMaxWidth(),
-        label = { Text("Preview text") },
-        supportingText = { Text(if (vm.previewTypeface == null) "Save spacing to generate its preview" else "Save spacing to refresh this preview") },
-        minLines = 2,
-        textStyle = MaterialTheme.typography.headlineMedium.copy(
-            fontFamily = vm.previewTypeface?.let { FontFamily(it) } ?: FontFamily.Default
+    var showSampleEditor by remember { mutableStateOf(false) }
+
+    Page("Spacing", back) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            shape = MaterialTheme.shapes.medium,
+        ) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Sample", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    previewText.ifBlank { DEFAULT_PREVIEW_TEXT },
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontFamily = vm.previewTypeface?.let(::FontFamily) ?: FontFamily.Default,
+                    ),
+                )
+                TextButton(onClick = { showSampleEditor = true }) { Text("Edit sample text") }
+            }
+        }
+
+        SpacingControl(label = "Letter spacing", value = letter, step = 0.25f, min = -3f, max = 10f) { letter = it }
+        SpacingControl(label = "Word spacing", value = word, step = 0.5f, min = 0.2f, max = 50f) { word = it }
+
+        Spacer(Modifier.weight(1f))
+        Button(
+            onClick = { if (vm.setSpacing(letter.toString(), word.toString())) vm.generate() },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Apply spacing") }
+        if (vm.status.isNotBlank()) {
+            Text(vm.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+
+    if (showSampleEditor) {
+        var editedText by remember(previewText) { mutableStateOf(previewText) }
+        AlertDialog(
+            onDismissRequest = { showSampleEditor = false },
+            title = { Text("Sample text") },
+            text = {
+                OutlinedTextField(
+                    value = editedText,
+                    onValueChange = { editedText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    label = { Text("Text") },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    changePreviewText(editedText)
+                    showSampleEditor = false
+                }) { Text("Done") }
+            },
+            dismissButton = { TextButton(onClick = { showSampleEditor = false }) { Text("Cancel") } },
         )
-    )
-    Button({ if (vm.setSpacing(letter.toString(), word.toString())) vm.generate() }, Modifier.fillMaxWidth()) { Text("Save spacing") }
-    if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
+    }
 }
 
-@Composable private fun NumberStepper(label: String, value: Float, unit: String, step: Float, min: Float, max: Float, change: (Float) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+@Composable
+private fun SpacingControl(
+    label: String,
+    value: Float,
+    step: Float,
+    min: Float,
+    max: Float,
+    change: (Float) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
         OutlinedButton(onClick = { change((value - step).coerceAtLeast(min)) }, enabled = value > min) { Text("−") }
-        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(label, style = MaterialTheme.typography.labelLarge)
-            Text("${String.format(java.util.Locale.US, "%.2f", value)} $unit", style = MaterialTheme.typography.titleMedium)
-        }
+        Text("${String.format(java.util.Locale.US, "%.2f", value)} mm", style = MaterialTheme.typography.titleMedium)
         OutlinedButton(onClick = { change((value + step).coerceAtMost(max)) }, enabled = value < max) { Text("+") }
     }
 }
