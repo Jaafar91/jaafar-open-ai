@@ -309,7 +309,7 @@ private fun SpacingControl(
     val handleBack = { if (isDirty) showDiscardDialog = true else onCancel() }
     BackHandler(onBack = handleBack)
     val char = codePoint.toChar().toString()
-    val title = if (pagingProgress != null) "Continue drawing · ${pagingProgress.first} of ${pagingProgress.second}" else "Draw a character"
+    val title = "Draw a letter"
     val isLastInQueue = pagingProgress != null && pagingProgress.first == pagingProgress.second
     val saveLabel = when {
         isLastInQueue -> "Save & Finish"
@@ -328,6 +328,24 @@ private fun SpacingControl(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (pagingProgress != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${pagingProgress.first} of ${pagingProgress.second}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    LinearProgressIndicator(
+                        progress = (pagingProgress.first.toFloat() / pagingProgress.second).coerceIn(0f, 1f),
+                        modifier = Modifier.weight(1f).height(4.dp),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+            }
             Text("Copy the reference character into the canvas.", style = MaterialTheme.typography.bodySmall)
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer,
