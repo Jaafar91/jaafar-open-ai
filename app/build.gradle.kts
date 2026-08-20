@@ -6,14 +6,14 @@ plugins {
 
 android {
     namespace = "com.jaafar.remoteconfig"
-    compileSdk = 35
+    compileSdk = 36
 
     val ciBuildNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
 
     defaultConfig {
         applicationId = "com.mjaafar.fontcreator"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = ciBuildNumber ?: 1
         versionName = if (ciBuildNumber == null) "1.0.0" else "1.0.$ciBuildNumber"
     }
