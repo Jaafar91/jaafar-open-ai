@@ -49,6 +49,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     private val executor = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private var pagingQueue by mutableStateOf(emptyList<Int>())
+    private var pagingHistory by mutableStateOf(emptyList<Int>())
     private var pagingTotal by mutableStateOf(0)
     val projects = mutableStateListOf<FontProject>().apply { addAll(repository.load()) }
     val signatures = mutableStateListOf<SavedSignature>().apply { addAll(signatureRepository.load().sortedByDescending { it.savedAt }) }
@@ -58,6 +59,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     val activeProject: FontProject? get() = activeProjectIndex?.let { projects.getOrNull(it) }
     var selectedCodePoint by mutableStateOf<Int?>(null)
     var isPagingMode by mutableStateOf(false); private set
+    val canGoToPreviousLetter: Boolean get() = isPagingMode && pagingHistory.isNotEmpty()
     val pagingProgress: Pair<Int, Int>? get() = if (isPagingMode && pagingTotal > 0) (pagingTotal - pagingQueue.size + 1).coerceAtMost(pagingTotal) to pagingTotal else null
     var status by mutableStateOf(""); private set
     var generatedFont by mutableStateOf<File?>(null); private set
@@ -111,7 +113,11 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun drawMissingCharacters(text: String) = startQueue(text.asSequence().map { it.code }.filter { it != 0x20 && it in activeCharacterOrder && it !in drawings }.distinct().toList(), "This text has no missing supported characters.")
     private fun startQueue(queue: List<Int>, emptyMessage: String) {
         if (queue.isEmpty()) { status = emptyMessage; return }
-        pagingQueue = queue; pagingTotal = queue.size; isPagingMode = true; selectedCodePoint = queue.first()
+        pagingQueue = queue
+        pagingHistory = emptyList()
+        pagingTotal = queue.size
+        isPagingMode = true
+        selectedCodePoint = queue.first()
     }
 
     fun setSpacing(letter: String, word: String): Boolean {
@@ -124,16 +130,34 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return true
     }
 
-    fun closeEditor() { selectedCodePoint = null; isPagingMode = false; pagingQueue = emptyList() }
+    fun closeEditor() {
+        selectedCodePoint = null
+        isPagingMode = false
+        pagingQueue = emptyList()
+        pagingHistory = emptyList()
+    }
     fun skipLetter() {
         if (!isPagingMode) return
+        selectedCodePoint?.let { pagingHistory = pagingHistory + it }
         pagingQueue = pagingQueue.filterNot { it == selectedCodePoint }
         selectedCodePoint = if (pagingQueue.isNotEmpty()) pagingQueue.first() else null
         if (selectedCodePoint == null) isPagingMode = false
     }
+
+    fun previousLetter() {
+        if (!isPagingMode || pagingHistory.isEmpty()) return
+        val previous = pagingHistory.last()
+        pagingHistory = pagingHistory.dropLast(1)
+        pagingQueue = listOf(previous) + pagingQueue.filterNot { it == previous }
+        selectedCodePoint = previous
+    }
+
     fun saveDrawing(drawing: GlyphDrawing) {
         drawings[drawing.codePoint] = drawing
-        if (isPagingMode) pagingQueue = pagingQueue.filterNot { it == drawing.codePoint }
+        if (isPagingMode) {
+            pagingHistory = pagingHistory + drawing.codePoint
+            pagingQueue = pagingQueue.filterNot { it == drawing.codePoint }
+        }
         selectedCodePoint = if (isPagingMode && pagingQueue.isNotEmpty()) pagingQueue.first() else null
         if (selectedCodePoint == null) isPagingMode = false
         syncActive(); persist(); status = "Glyph saved."
@@ -179,6 +203,24 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
                 main.post { importStatus = "Import failed: ${error.message ?: "unknown error"}" }
             }
         }
+    }
+
+    fun deleteProject(name: String) {
+        val index = projects.indexOfFirst { it.name == name }
+        if (index < 0) return
+        val project = projects[index]
+        if (activeProjectIndex == index) {
+            activeProjectIndex = null
+            drawings.clear()
+            generatedFont = null
+            previewTypeface = null
+        } else if (activeProjectIndex != null && activeProjectIndex!! > index) {
+            activeProjectIndex = activeProjectIndex!! - 1
+        }
+        projects.removeAt(index)
+        generatedFile(project.name).delete()
+        persist()
+        status = "Font deleted."
     }
 
     fun deleteImportedFont(displayName: String) {
