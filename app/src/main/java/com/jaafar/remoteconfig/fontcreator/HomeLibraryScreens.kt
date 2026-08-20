@@ -248,7 +248,7 @@ internal fun LibraryScreen(
             OutlinedButton(openFontManager, Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.FolderOpen, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Open font manager")
+                Text("Create or import font")
             }
         }
         LibraryTab.Signatures -> {
