@@ -103,7 +103,6 @@ import com.jaafar.remoteconfig.R
     } else {
         Text("Your letter set is complete.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Button(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) { Text("Try your font") }
-        Text("You can start another font from Fonts whenever you are ready.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
     if (drawn > 0) {
