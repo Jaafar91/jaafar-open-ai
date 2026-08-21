@@ -335,9 +335,6 @@ internal fun LibraryScreen(
             }
         }
         LibraryTab.Signatures -> {
-            val sigCount = vm.signatures.count { it.imageFileName == null }
-            val stampCount = vm.signatures.count { it.imageFileName != null }
-            Text("$sigCount signature${if (sigCount == 1) "" else "s"} · $stampCount stamp${if (stampCount == 1) "" else "s"}")
             if (vm.signatures.isEmpty()) {
                 OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(
