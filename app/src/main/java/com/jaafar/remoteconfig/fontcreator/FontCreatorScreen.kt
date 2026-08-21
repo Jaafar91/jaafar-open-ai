@@ -84,7 +84,7 @@ private val ModernDarkColors = darkColorScheme(
     outlineVariant = Color(0xFF45464F),
 )
 
-internal enum class Screen { Home, Library, Fonts, FontReady, Letters, Spacing, Image, PdfFont, Signature, FillMark, Settings }
+internal enum class Screen { Home, Library, Fonts, FontReady, Letters, Spacing, Image, Signature, FillMark, Settings }
 internal enum class LibraryTab(val label: String) { Fonts("Fonts"), Signatures("Signatures & Stamps") }
 internal enum class LibrarySignaturePage { Hub, Draw, ImportStamp }
 
@@ -212,7 +212,6 @@ fun FontCreatorApp(
                     autoPickImage = autoPickImage,
                     onAutoPickConsumed = { autoPickImage = false },
                 ) { tf, uri -> imageTypeface = tf; imageUri = uri; preferredImageFontName = null }
-                Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Home }
                 Screen.Signature -> SignatureScreen(
                     vm = viewModel,
                     initialMarkName = pendingSignatureMark,
