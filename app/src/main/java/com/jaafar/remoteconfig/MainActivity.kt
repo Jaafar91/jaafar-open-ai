@@ -34,19 +34,39 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Returns a PDF or image URI received via the Android Share sheet, or null. */
+    /**
+     * Returns the first PDF or image received from Android's Share sheet.
+     * Google Photos can use ACTION_SEND_MULTIPLE even when a single image is selected.
+     */
     private fun extractSharedDocumentUri(intent: Intent?): Uri? {
-        if (intent?.action != Intent.ACTION_SEND) return null
+        val action = intent?.action
+        if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return null
         val mimeType = intent.type ?: return null
         if (mimeType != "application/pdf" && !mimeType.startsWith("image/")) return null
-        val streamUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(Intent.EXTRA_STREAM)
+
+        val streamUri = when (action) {
+            Intent.ACTION_SEND -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM)
+                }
+            }
+            else -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                        ?.firstOrNull()
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+                        ?.firstOrNull()
+                }
+            }
         }
 
         // Some Android share sheets provide the URI only in ClipData.
         return streamUri ?: intent.clipData?.getItemAt(0)?.uri
     }
+
 }
