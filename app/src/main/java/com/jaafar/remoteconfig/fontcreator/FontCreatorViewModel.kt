@@ -126,7 +126,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             status = "Use -3 to 10 mm for letter spacing and 0.2 to 50 mm for word spacing."; return false
         }
         updateActive { it.copy(letterSpacingMm = letterValue, wordSpacingMm = wordValue) }
-        status = "Spacing saved. Generate again to apply it."
+        status = "Spacing updated."
         return true
     }
 
