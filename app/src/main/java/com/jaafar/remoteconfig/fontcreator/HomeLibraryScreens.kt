@@ -161,10 +161,26 @@ private data class TutorialPage(
 internal fun FeatureTutorial(onFinished: () -> Unit) {
     var pageIndex by remember { mutableIntStateOf(0) }
     val pages = listOf(
-        TutorialPage("Create a font", "Draw letters in your own style.", Icons.Filled.TextFields),
-        TutorialPage("Write on an image", "Add text, fonts, and stamps.", Icons.Filled.Image),
-        TutorialPage("Fill & mark", "Complete documents with text and signatures.", Icons.Filled.Description),
-        TutorialPage("My Library", "Keep fonts, signatures, and stamps together.", Icons.Filled.Folder),
+        TutorialPage(
+            "Create a font",
+            "Turn your handwriting into a font. Start with the letters you use most, then try a phrase.",
+            Icons.Filled.TextFields,
+        ),
+        TutorialPage(
+            "Write on an image",
+            "Choose a photo, type your words, then move them into place. Use your font or a stamp.",
+            Icons.Filled.Image,
+        ),
+        TutorialPage(
+            "Fill & mark",
+            "Open a PDF or image, then add text, dates, a signature, or a stamp. Export when you’re done.",
+            Icons.Filled.Description,
+        ),
+        TutorialPage(
+            "My Library",
+            "Your fonts, signatures, and stamps stay here. Reuse them whenever you edit an image or document.",
+            Icons.Filled.Folder,
+        ),
     )
     val page = pages[pageIndex]
     val isLastPage = pageIndex == pages.lastIndex
