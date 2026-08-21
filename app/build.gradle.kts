@@ -8,14 +8,18 @@ android {
     namespace = "com.jaafar.remoteconfig"
     compileSdk = 36
 
+    // GITHUB_RUN_NUMBER restarts for each workflow, so it can make a Play
+    // release older than an APK built by a different workflow. Epoch seconds
+    // are monotonically increasing and remain below Android's versionCode limit.
+    val buildVersionCode = (System.currentTimeMillis() / 1_000L).toInt()
     val ciBuildNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
 
     defaultConfig {
         applicationId = "com.mjaafar.fontcreator"
         minSdk = 24
         targetSdk = 36
-        versionCode = ciBuildNumber ?: 1
-        versionName = if (ciBuildNumber == null) "1.0.0" else "1.0.$ciBuildNumber"
+        versionCode = buildVersionCode
+        versionName = ciBuildNumber?.let { "1.0.$it" } ?: "1.0.0"
     }
 
     signingConfigs {
