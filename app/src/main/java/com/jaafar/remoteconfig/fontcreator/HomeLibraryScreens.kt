@@ -435,6 +435,7 @@ internal fun LibraryScreen(
         )
     }
 }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
