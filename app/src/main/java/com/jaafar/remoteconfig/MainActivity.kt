@@ -39,11 +39,14 @@ class MainActivity : ComponentActivity() {
         if (intent?.action != Intent.ACTION_SEND) return null
         val mimeType = intent.type ?: return null
         if (mimeType != "application/pdf" && !mimeType.startsWith("image/")) return null
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val streamUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
         } else {
             @Suppress("DEPRECATION")
             intent.getParcelableExtra(Intent.EXTRA_STREAM)
         }
+
+        // Some Android share sheets provide the URI only in ClipData.
+        return streamUri ?: intent.clipData?.getItemAt(0)?.uri
     }
 }
