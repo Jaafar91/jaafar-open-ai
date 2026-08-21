@@ -206,7 +206,6 @@ import com.jaafar.remoteconfig.R
             Button(onClick = { useOnImage(project.name, previewText) }, modifier = Modifier.fillMaxWidth()) { Text("Use on an image") }
             if (!complete) OutlinedButton(onClick = startDrawing, modifier = Modifier.fillMaxWidth()) { Text("Continue drawing") }
         }
-        }
         if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
     }
 }
