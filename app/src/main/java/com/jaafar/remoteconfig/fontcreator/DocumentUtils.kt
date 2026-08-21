@@ -55,14 +55,55 @@ internal fun getPdfPageCount(context: Context, uri: Uri): Int {
     return descriptor.use { pfd -> PdfRenderer(pfd).use { it.pageCount } }
 }
 
-internal fun loadBitmap(resolver: ContentResolver, uri: Uri): Bitmap? = runCatching {
-    if (Build.VERSION.SDK_INT >= 28) {
-        ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, uri)) { decoder, _, _ ->
-            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+/**
+ * Decodes a shared image without loading an entire camera photo into memory.
+ * Gallery apps often share 12–50 MP images; scaling them for the editor avoids
+ * a silent out-of-memory failure while keeping enough detail for marking.
+ */
+internal fun loadBitmap(resolver: ContentResolver, uri: Uri): Bitmap? {
+    val maxEditorDimension = 2_048
+    val decoded = runCatching {
+        if (Build.VERSION.SDK_INT >= 28) {
+            ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, uri)) { decoder, info, _ ->
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                val source = info.size
+                val largestSide = maxOf(source.width, source.height)
+                if (largestSide > maxEditorDimension) {
+                    val scale = maxEditorDimension.toFloat() / largestSide.toFloat()
+                    decoder.setTargetSize(
+                        (source.width * scale).toInt().coerceAtLeast(1),
+                        (source.height * scale).toInt().coerceAtLeast(1),
+                    )
+                }
+            }
+        } else {
+            decodeSampledBitmap(resolver, uri, maxEditorDimension)
         }
-    } else {
-        @Suppress("DEPRECATION")
-        resolver.openInputStream(uri).use { input -> BitmapFactory.decodeStream(input) }
+    }.getOrNull()
+    return decoded ?: decodeSampledBitmap(resolver, uri, maxEditorDimension)
+}
+
+private fun decodeSampledBitmap(
+    resolver: ContentResolver,
+    uri: Uri,
+    maxDimension: Int,
+): Bitmap? = runCatching {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri).use { input ->
+        BitmapFactory.decodeStream(input, null, bounds)
+    }
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+
+    var sampleSize = 1
+    while (bounds.outWidth / sampleSize > maxDimension || bounds.outHeight / sampleSize > maxDimension) {
+        sampleSize *= 2
+    }
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = sampleSize
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+    }
+    resolver.openInputStream(uri).use { input ->
+        BitmapFactory.decodeStream(input, null, options)
     }
 }.getOrNull()
 

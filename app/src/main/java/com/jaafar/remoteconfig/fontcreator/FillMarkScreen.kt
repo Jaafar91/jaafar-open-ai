@@ -204,6 +204,12 @@ internal fun FillMarkScreen(
 ) {
     var documentUri by remember { mutableStateOf(initialUri) }
 
+    // Update the editor when another document is shared while the app is already open.
+    LaunchedEffect(initialUri) {
+        if (initialUri != null) documentUri = initialUri
+    }
+
+
     if (documentUri == null) {
         FillMarkLandingScreen(
             onDocumentChosen = { uri -> documentUri = uri },
