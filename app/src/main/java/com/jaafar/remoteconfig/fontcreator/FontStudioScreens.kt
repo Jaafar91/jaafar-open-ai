@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -38,6 +40,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -68,6 +71,8 @@ import com.jaafar.remoteconfig.R
     var importDisplayName by remember { mutableStateOf("") }
     val featuredIndex = vm.activeProjectIndex ?: vm.projects.indices.lastOrNull()
     val featuredProject = featuredIndex?.let { vm.projects.getOrNull(it) }
+    val createNameFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     val fontFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -114,9 +119,19 @@ import com.jaafar.remoteconfig.R
         onDismissRequest = { showCreateDialog = false; name = "" },
         title = { Text("Name your font") },
         text = {
+            LaunchedEffect(Unit) {
+                createNameFocusRequester.requestFocus()
+                keyboardController?.show()
+            }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Next, you will choose the letters to draw. You can add more any time.")
-                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Font name") }, singleLine = true)
+                OutlinedTextField(
+                    name,
+                    { name = it },
+                    Modifier.fillMaxWidth().focusRequester(createNameFocusRequester),
+                    label = { Text("Font name") },
+                    singleLine = true,
+                )
             }
         },
         confirmButton = {
@@ -159,14 +174,14 @@ import com.jaafar.remoteconfig.R
             }
         },
         confirmButton = {
-            Button(onClick = {
-                if (setupCharsText.isNotBlank()) {
+            if (setupCharsText.isNotBlank()) {
+                Button(onClick = {
                     vm.drawMissingCharacters(setupCharsText)
                     setPreviewText(setupCharsText)
-                }
-                showAddCharsSetupDialog = false
-                editLetters()
-            }) { Text(if (setupCharsText.isBlank()) "Choose letters myself" else "Use this phrase") }
+                    showAddCharsSetupDialog = false
+                    editLetters()
+                }) { Text("Use this phrase") }
+            }
         },
         dismissButton = { TextButton(onClick = { showAddCharsSetupDialog = false; editLetters() }) { Text("Choose letters myself") } },
     )
@@ -251,4 +266,3 @@ private enum class ActionIconType { Add, Edit, Share, Import }
         }
     }
 }
-
