@@ -100,6 +100,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
     var imageTypeface by remember { mutableStateOf<Typeface?>(null) }
     var preferredImageFontName by remember { mutableStateOf<String?>(null) }
     var initialImageText by remember { mutableStateOf("") }
+    var autoPickImage by remember { mutableStateOf(false) }
     var fontEntryBack by remember { mutableStateOf(Screen.Home) }
     var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
     MaterialTheme(
@@ -171,6 +172,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     useOnImage = { fontName, text ->
                         preferredImageFontName = fontName
                         initialImageText = text
+                        autoPickImage = true
                         screen = Screen.Image
                     },
                 )
@@ -184,8 +186,10 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                 Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Letters }
                 Screen.Image -> ImageScreen(
                     vm = viewModel,
-                    back = { preferredImageFontName = null; initialImageText = ""; screen = Screen.Home },
+                    back = { preferredImageFontName = null; initialImageText = ""; autoPickImage = false; screen = Screen.Home },
                     initiallySelectedFont = preferredImageFontName,
+                    autoPickImage = autoPickImage,
+                    onAutoPickConsumed = { autoPickImage = false },
                 ) { tf, uri -> imageTypeface = tf; imageUri = uri; preferredImageFontName = null }
                 Screen.PdfFont -> PdfFontScreen(viewModel) { screen = Screen.Home }
                 Screen.Signature -> SignatureScreen(
@@ -286,17 +290,42 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     )
 }
 
-@Composable private fun ImageScreen(vm: FontCreatorViewModel, back: () -> Unit, initiallySelectedFont: String? = null, selected: (Typeface, Uri) -> Unit) {
+private const val PREF_KEY_LAST_IMAGE_FONT = "last_font"
+
+@Composable private fun ImageScreen(
+    vm: FontCreatorViewModel,
+    back: () -> Unit,
+    initiallySelectedFont: String? = null,
+    autoPickImage: Boolean = false,
+    onAutoPickConsumed: () -> Unit = {},
+    selected: (Typeface, Uri) -> Unit,
+) {
     val context = LocalContext.current
+    val preferences = remember { context.getSharedPreferences("image_editor", 0) }
     val allFonts = remember(vm.projects, vm.importedFonts) { vm.allFontOptions() }
     val systemFonts = listOf("Default" to Typeface.DEFAULT, "Serif" to Typeface.SERIF, "Sans-Serif" to Typeface.SANS_SERIF, "Monospace" to Typeface.MONOSPACE)
     val allAvailable = systemFonts + allFonts
-    var selectedFontLabel by remember(allAvailable, initiallySelectedFont) { mutableStateOf(allAvailable.firstOrNull { it.first == initiallySelectedFont }?.first ?: allAvailable.firstOrNull()?.first ?: "Default") }
+    val lastSavedFont = remember { preferences.getString(PREF_KEY_LAST_IMAGE_FONT, null) }
+    var selectedFontLabel by remember(allAvailable, initiallySelectedFont) {
+        val resolved = when {
+            initiallySelectedFont != null && allAvailable.any { it.first == initiallySelectedFont } -> initiallySelectedFont
+            lastSavedFont != null && allAvailable.any { it.first == lastSavedFont } -> lastSavedFont
+            else -> allAvailable.firstOrNull()?.first ?: "Default"
+        }
+        mutableStateOf(resolved)
+    }
     var expanded by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             val tf = allAvailable.firstOrNull { it.first == selectedFontLabel }?.second ?: Typeface.DEFAULT
+            preferences.edit().putString(PREF_KEY_LAST_IMAGE_FONT, selectedFontLabel).apply()
             selected(tf, uri)
+        }
+    }
+    LaunchedEffect(autoPickImage) {
+        if (autoPickImage) {
+            picker.launch("image/*")
+            onAutoPickConsumed()
         }
     }
     Page("Edit an image", back, scrollable = true) {
@@ -307,7 +336,11 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
                 allAvailable.forEach { (label, _) ->
                     DropdownMenuItem(
                         text = { Text(label) },
-                        onClick = { selectedFontLabel = label; expanded = false },
+                        onClick = {
+                            selectedFontLabel = label
+                            expanded = false
+                            preferences.edit().putString(PREF_KEY_LAST_IMAGE_FONT, label).apply()
+                        },
                         trailingIcon = { if (label == selectedFontLabel) Text("✓") },
                     )
                 }
