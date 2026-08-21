@@ -25,6 +25,12 @@
         <category android:name="android.intent.category.DEFAULT" />
         <data android:mimeType="image/*" />
       </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.EDIT" />
+        <action android:name="com.google.android.apps.photos.OEM_EDIT" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <data android:mimeType="image/*" />
+      </intent-filter>
     </activity>
   </application>
 </manifest>
