@@ -12,6 +12,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -43,10 +45,16 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.jaafar.remoteconfig.R
@@ -229,8 +237,10 @@ internal fun SpacingScreen(
                         Icon(Icons.Filled.Edit, contentDescription = null)
                     }
                 }
-                Text(
-                    previewText.ifBlank { DEFAULT_PREVIEW_TEXT },
+                SpacingPreviewText(
+                    text = previewText.ifBlank { DEFAULT_PREVIEW_TEXT },
+                    letterSpacingMm = letter,
+                    wordSpacingMm = word,
                     style = MaterialTheme.typography.headlineSmall.copy(
                         fontFamily = vm.previewTypeface?.let(::FontFamily) ?: FontFamily.Default,
                     ),
@@ -274,6 +284,48 @@ internal fun SpacingScreen(
             dismissButton = { TextButton(onClick = { showSampleEditor = false }) { Text("Cancel") } },
         )
     }
+}
+
+@Composable
+private fun SpacingPreviewText(
+    text: String,
+    letterSpacingMm: Float,
+    wordSpacingMm: Float,
+    style: TextStyle,
+) {
+    val inlineContent = remember(text, wordSpacingMm) {
+        val wordSpacing = (wordSpacingMm * 0.5f).sp
+        buildMap {
+            text.forEachIndexed { index, character ->
+                if (character.isWhitespace() && character != '\n') {
+                    put(
+                        "space-$index",
+                        InlineTextContent(
+                            Placeholder(
+                                width = wordSpacing,
+                                height = 1.em,
+                                placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                            ),
+                        ) { Spacer(Modifier) },
+                    )
+                }
+            }
+        }
+    }
+    Text(
+        text = buildAnnotatedString {
+            val letterSpacing = (letterSpacingMm * 0.5f).sp
+            text.forEachIndexed { index, character ->
+                when {
+                    character == '\n' -> append('\n')
+                    character.isWhitespace() -> appendInlineContent("space-$index", " ")
+                    else -> withStyle(SpanStyle(letterSpacing = letterSpacing)) { append(character) }
+                }
+            }
+        },
+        inlineContent = inlineContent,
+        style = style,
+    )
 }
 
 @Composable

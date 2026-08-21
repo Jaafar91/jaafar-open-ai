@@ -223,8 +223,8 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         status = "Font deleted."
     }
 
-    fun deleteImportedFont(displayName: String) {
-        val idx = importedFonts.indexOfFirst { it.displayName == displayName }
+    fun deleteImportedFont(fileName: String) {
+        val idx = importedFonts.indexOfFirst { it.fileName == fileName }
         if (idx >= 0) {
             val font = importedFonts[idx]
             importedFonts.removeAt(idx)

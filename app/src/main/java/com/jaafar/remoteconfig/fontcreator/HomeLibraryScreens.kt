@@ -213,7 +213,7 @@ internal fun LibraryScreen(
                     }
                     if (vm.importedFonts.isNotEmpty()) {
                         item { Text("Imported fonts", style = MaterialTheme.typography.titleSmall) }
-                        items(vm.importedFonts, key = { it.displayName }) { font ->
+                        items(vm.importedFonts, key = { it.fileName }) { font ->
                             FontLibrarySwipeToDelete(onDelete = { importedFontToDelete = font }) {
                                 OutlinedCard(Modifier.fillMaxWidth()) {
                                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -391,7 +391,7 @@ internal fun LibraryScreen(
             text = { Text("Delete \"${font.displayName}\" from your library? This cannot be undone.") },
             confirmButton = {
                 TextButton(onClick = {
-                    vm.deleteImportedFont(font.displayName)
+                    vm.deleteImportedFont(font.fileName)
                     libraryStatus = "Deleted ${font.displayName}."
                     importedFontToDelete = null
                 }) { Text("Delete") }
@@ -457,7 +457,7 @@ private fun FontLibrarySwipeToDelete(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFFC62828)),
+                    .background(MaterialTheme.colorScheme.error),
             )
         },
         content = content,
