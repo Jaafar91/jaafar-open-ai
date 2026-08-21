@@ -441,7 +441,7 @@ internal fun LibraryScreen(
 @Composable
 private fun FontLibrarySwipeToDelete(
     onDelete: () -> Unit,
-    content: @Composable () -> Unit,
+    content: @Composable RowScope.() -> Unit,
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
