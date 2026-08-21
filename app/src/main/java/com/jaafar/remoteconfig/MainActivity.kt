@@ -35,14 +35,15 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Returns the first PDF or image received from Android's Share sheet.
-     * Google Photos can use ACTION_SEND_MULTIPLE even when a single image is selected.
+     * Returns the first PDF or image received from a share or edit request.
+     * Google Photos may use either a stream, ClipData, or the intent data URI.
      */
     private fun extractSharedDocumentUri(intent: Intent?): Uri? {
         val action = intent?.action
-        if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return null
-        val mimeType = intent.type ?: return null
-        if (mimeType != "application/pdf" && !mimeType.startsWith("image/")) return null
+        val isShare = action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE
+        val isImageEdit = action == Intent.ACTION_EDIT ||
+            action == "com.google.android.apps.photos.OEM_EDIT"
+        if (!isShare && !isImageEdit) return null
 
         val streamUri = when (action) {
             Intent.ACTION_SEND -> {
@@ -53,7 +54,7 @@ class MainActivity : ComponentActivity() {
                     intent.getParcelableExtra(Intent.EXTRA_STREAM)
                 }
             }
-            else -> {
+            Intent.ACTION_SEND_MULTIPLE -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
                         ?.firstOrNull()
@@ -63,10 +64,11 @@ class MainActivity : ComponentActivity() {
                         ?.firstOrNull()
                 }
             }
+            else -> null
         }
-
-        // Some Android share sheets provide the URI only in ClipData.
-        return streamUri ?: intent.clipData?.getItemAt(0)?.uri
+        val uri = streamUri ?: intent.clipData?.getItemAt(0)?.uri ?: intent.data ?: return null
+        val mimeType = intent.type ?: contentResolver.getType(uri)
+        return if (mimeType == "application/pdf" || mimeType?.startsWith("image/") == true) uri else null
     }
 
 }
