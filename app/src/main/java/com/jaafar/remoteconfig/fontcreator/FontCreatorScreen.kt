@@ -180,10 +180,6 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     back = { screen = Screen.Library },
                     preview = { screen = Screen.FontReady },
                     adjustSpacing = { screen = Screen.Spacing },
-                    deleteFont = {
-                        viewModel.activeProject?.name?.let(viewModel::deleteProject)
-                        screen = Screen.Library
-                    },
                     setPreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
                 )
                 Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Letters }
@@ -379,4 +375,3 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     Text("Use Home to start common tasks and My Library to manage saved assets.", style = MaterialTheme.typography.bodySmall)
     Text("App data stays on-device unless you explicitly share exported files.", style = MaterialTheme.typography.bodySmall)
 }
-

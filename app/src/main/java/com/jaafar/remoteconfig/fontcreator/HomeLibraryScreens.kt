@@ -43,8 +43,6 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
@@ -192,41 +190,58 @@ internal fun LibraryScreen(
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (vm.projects.isNotEmpty()) {
                         item { Text("Generated fonts", style = MaterialTheme.typography.titleSmall) }
-                        items(vm.projects) { project ->
-                            OutlinedCard(Modifier.fillMaxWidth()) {
-                                Row(
-                                    Modifier.fillMaxWidth().padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(project.name, style = MaterialTheme.typography.titleMedium)
-                                        Text("${project.drawings.size} drawn characters")
+                        items(vm.projects, key = { it.name }) { project ->
+                            val dismissState = rememberSwipeToDismissBoxState(
+                                confirmValueChange = { value ->
+                                    if (value == SwipeToDismissBoxValue.EndToStart) {
+                                        projectToDelete = project
                                     }
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
+                                    false
+                                },
+                            )
+                            SwipeToDismissBox(
+                                state = dismissState,
+                                enableDismissFromStartToEnd = false,
+                                backgroundContent = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.errorContainer)
+                                            .padding(horizontal = 16.dp),
+                                        contentAlignment = Alignment.CenterEnd,
                                     ) {
-                                        Button(onClick = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Delete,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                            )
+                                            Text(
+                                                "Delete",
+                                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                                style = MaterialTheme.typography.labelLarge,
+                                            )
+                                        }
+                                    }
+                                },
+                            ) {
+                                OutlinedCard(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
                                             val index = vm.projects.indexOf(project)
                                             if (index >= 0) {
                                                 vm.openProject(index)
                                                 openLetterEditor()
                                             }
-                                        }) {
-                                            Icon(Icons.Filled.Edit, contentDescription = null)
-                                            Spacer(Modifier.width(6.dp))
-                                            Text("Edit")
-                                        }
-                                        IconButton(
-                                            onClick = { projectToDelete = project },
-                                            modifier = Modifier.semantics { contentDescription = "Delete ${project.name}" },
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.Delete,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.error,
-                                            )
-                                        }
+                                        },
+                                ) {
+                                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                                        Text(project.name, style = MaterialTheme.typography.titleMedium)
+                                        Text("${project.drawings.size} drawn characters")
                                     }
                                 }
                             }
@@ -438,4 +453,3 @@ internal fun LibraryScreen(
     }
 }
 }
-
