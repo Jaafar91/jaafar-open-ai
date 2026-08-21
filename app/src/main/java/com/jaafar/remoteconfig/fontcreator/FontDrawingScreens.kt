@@ -23,7 +23,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.NavigateBefore
 import androidx.compose.material.icons.filled.Tune
@@ -63,11 +62,9 @@ import com.jaafar.remoteconfig.R
     back: () -> Unit,
     preview: () -> Unit,
     adjustSpacing: () -> Unit,
-    deleteFont: () -> Unit,
     setPreviewText: (String) -> Unit,
 ) = Page("Font workspace", back) {
     var showEditDrawnLetters by remember { mutableStateOf(false) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phrase by remember { mutableStateOf("") }
     val project = vm.activeProject
@@ -134,32 +131,6 @@ import com.jaafar.remoteconfig.R
             Text("Adjust spacing")
         }
     }
-    TextButton(
-        onClick = { showDeleteDialog = true },
-        modifier = Modifier.align(Alignment.CenterHorizontally),
-    ) {
-        Icon(
-            Icons.Filled.Delete,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.error,
-        )
-        Spacer(Modifier.width(6.dp))
-        Text("Delete font", color = MaterialTheme.colorScheme.error)
-    }
-
-    if (showDeleteDialog) AlertDialog(
-        onDismissRequest = { showDeleteDialog = false },
-        title = { Text("Delete font?") },
-        text = { Text("Delete \"${project?.name.orEmpty()}\" and its generated file? This cannot be undone.") },
-        confirmButton = {
-            TextButton(onClick = {
-                showDeleteDialog = false
-                deleteFont()
-            }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-        },
-        dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") } },
-    )
-
     if (showEditDrawnLetters) AlertDialog(
         onDismissRequest = { showEditDrawnLetters = false },
         title = { Text("Edit drawn letters") },
