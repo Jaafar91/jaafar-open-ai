@@ -63,7 +63,11 @@ import com.jaafar.remoteconfig.R
     preview: () -> Unit,
     adjustSpacing: () -> Unit,
     setPreviewText: (String) -> Unit,
-) = Page("Font workspace", back) {
+) = Page("Font workspace", back, actions = {
+    val file = vm.generatedFont
+    val project = vm.activeProject
+    if (file != null && project != null) ShareButton(file, project.name)
+}) {
     var showEditDrawnLetters by remember { mutableStateOf(false) }
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phrase by remember { mutableStateOf("") }

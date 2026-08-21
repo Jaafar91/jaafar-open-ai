@@ -179,7 +179,6 @@ import com.jaafar.remoteconfig.R
     back: () -> Unit,
     editLetters: () -> Unit,
     startDrawing: () -> Unit,
-    adjustSpacing: () -> Unit,
     useOnImage: (String, String) -> Unit,
 ) {
     val project = vm.activeProject
@@ -206,19 +205,13 @@ import com.jaafar.remoteconfig.R
             OutlinedTextField(value = previewText, onValueChange = changePreviewText, modifier = Modifier.fillMaxWidth(), label = { Text("Try typing with your font") }, minLines = 3, textStyle = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(vm.previewTypeface!!)))
             Button(onClick = { useOnImage(project.name, previewText) }, modifier = Modifier.fillMaxWidth()) { Text("Use on an image") }
             if (!complete) OutlinedButton(onClick = startDrawing, modifier = Modifier.fillMaxWidth()) { Text("Continue drawing") }
-            TextButton(onClick = adjustSpacing, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Adjust spacing") }
-            vm.generatedFont?.let { file ->
-                Row(Modifier.align(Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-                    ShareButton(file, project.name)
-                    Text("Export font", style = MaterialTheme.typography.labelLarge)
-                }
-            }
+        }
         }
         if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
     }
 }
 
-@Composable private fun ShareButton(file: java.io.File, name: String) {
+@Composable internal fun ShareButton(file: java.io.File, name: String) {
     val context = LocalContext.current
     IconButton(onClick = { val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file); context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "font/ttf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Share $name")) }) { ActionIcon(ActionIconType.Share, "Share $name") }
 }

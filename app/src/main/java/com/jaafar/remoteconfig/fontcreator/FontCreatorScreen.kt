@@ -168,7 +168,6 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
                     back = { screen = Screen.Letters },
                     editLetters = { screen = Screen.Letters },
                     startDrawing = viewModel::startPaging,
-                    adjustSpacing = { screen = Screen.Spacing },
                     useOnImage = { fontName, text ->
                         preferredImageFontName = fontName
                         initialImageText = text
