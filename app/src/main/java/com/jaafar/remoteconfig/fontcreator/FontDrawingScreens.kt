@@ -12,6 +12,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -24,7 +26,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.NavigateBefore
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Visibility
@@ -44,13 +45,16 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.jaafar.remoteconfig.R
@@ -205,6 +209,13 @@ internal fun SpacingScreen(
     var letter by remember(vm.activeProject) { mutableFloatStateOf(vm.activeProject?.letterSpacingMm ?: 0f) }
     var word by remember(vm.activeProject) { mutableFloatStateOf(vm.activeProject?.wordSpacingMm ?: 3f) }
     var showSampleEditor by remember { mutableStateOf(false) }
+    val updateSpacing = { nextLetter: Float, nextWord: Float ->
+        letter = nextLetter
+        word = nextWord
+        if (vm.setSpacing(nextLetter.toString(), nextWord.toString())) {
+            vm.generate()
+        }
+    }
 
     Page("Spacing", back) {
         Surface(
@@ -226,12 +237,10 @@ internal fun SpacingScreen(
                         Icon(Icons.Filled.Edit, contentDescription = null)
                     }
                 }
-                Text(
-                    spacingPreviewText(
-                        previewText.ifBlank { DEFAULT_PREVIEW_TEXT },
-                        letter,
-                        word,
-                    ),
+                SpacingPreviewText(
+                    text = previewText.ifBlank { DEFAULT_PREVIEW_TEXT },
+                    letterSpacingMm = letter,
+                    wordSpacingMm = word,
                     style = MaterialTheme.typography.headlineSmall.copy(
                         fontFamily = vm.previewTypeface?.let(::FontFamily) ?: FontFamily.Default,
                     ),
@@ -239,19 +248,14 @@ internal fun SpacingScreen(
             }
         }
 
-        SpacingControl(label = "Letter spacing", value = letter, step = 0.25f, min = -3f, max = 10f) { letter = it }
-        SpacingControl(label = "Word spacing", value = word, step = 0.5f, min = 0.2f, max = 50f) { word = it }
+        SpacingControl(label = "Letter spacing", value = letter, step = 0.25f, min = -3f, max = 10f) {
+            updateSpacing(it, word)
+        }
+        SpacingControl(label = "Word spacing", value = word, step = 0.5f, min = 0.2f, max = 50f) {
+            updateSpacing(letter, it)
+        }
 
         Spacer(Modifier.weight(1f))
-        Button(
-            onClick = {
-                if (vm.setSpacing(letter.toString(), word.toString())) {
-                    vm.generate()
-                    back()
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Apply spacing") }
         if (vm.status.isNotBlank()) {
             Text(vm.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -282,18 +286,46 @@ internal fun SpacingScreen(
     }
 }
 
-private fun spacingPreviewText(
+@Composable
+private fun SpacingPreviewText(
     text: String,
     letterSpacingMm: Float,
     wordSpacingMm: Float,
-) = buildAnnotatedString {
-    val letterSpacing = (letterSpacingMm * 0.5f).sp
-    val wordSpacing = (wordSpacingMm * 0.5f).sp
-    text.forEach { character ->
-        withStyle(SpanStyle(letterSpacing = if (character.isWhitespace()) wordSpacing else letterSpacing)) {
-            append(character)
+    style: TextStyle,
+) {
+    val inlineContent = remember(text, wordSpacingMm) {
+        val wordSpacing = (wordSpacingMm * 0.5f).sp
+        buildMap {
+            text.forEachIndexed { index, character ->
+                if (character.isWhitespace() && character != '\n') {
+                    put(
+                        "space-$index",
+                        InlineTextContent(
+                            Placeholder(
+                                width = wordSpacing,
+                                height = 1.em,
+                                placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                            ),
+                        ) { Spacer(Modifier) },
+                    )
+                }
+            }
         }
     }
+    Text(
+        text = buildAnnotatedString {
+            val letterSpacing = (letterSpacingMm * 0.5f).sp
+            text.forEachIndexed { index, character ->
+                when {
+                    character == '\n' -> append('\n')
+                    character.isWhitespace() -> appendInlineContent("space-$index", " ")
+                    else -> withStyle(SpanStyle(letterSpacing = letterSpacing)) { append(character) }
+                }
+            }
+        },
+        inlineContent = inlineContent,
+        style = style,
+    )
 }
 
 @Composable
@@ -340,9 +372,13 @@ private fun SpacingControl(
         topBar = {
             AppTopBar(title, handleBack) {
                 if (pagingMode && canGoPrevious) {
-                    IconButton(onClick = onPrevious) {
-                        Icon(Icons.Filled.NavigateBefore, contentDescription = "Previous letter")
-                    }
+                    OutlinedButton(
+                        onClick = onPrevious,
+                        modifier = Modifier
+                            .padding(end = 8.dp, top = 8.dp, bottom = 8.dp)
+                            .height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    ) { Text("Previous") }
                 }
             }
         },
@@ -366,7 +402,6 @@ private fun SpacingControl(
                 }
                 Spacer(Modifier.height(8.dp))
             }
-            Text("Copy the reference character into the canvas.", style = MaterialTheme.typography.bodySmall)
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer,

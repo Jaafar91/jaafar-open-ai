@@ -146,6 +146,7 @@ internal fun LibraryScreen(
     var renameValue by remember { mutableStateOf("") }
     var libraryStatus by remember { mutableStateOf("") }
     var projectToDelete by remember { mutableStateOf<FontProject?>(null) }
+    var importedFontToDelete by remember { mutableStateOf<ImportedFont?>(null) }
     when (signaturePage) {
         LibrarySignaturePage.Draw -> {
             SignatureEditorScreen(
@@ -183,7 +184,6 @@ internal fun LibraryScreen(
     }
     when (tab) {
         LibraryTab.Fonts -> {
-            Text("${vm.projects.size} generated · ${vm.importedFonts.size} imported")
             if (vm.projects.isEmpty() && vm.importedFonts.isEmpty()) {
                 Text("No fonts in your library yet.")
             } else {
@@ -191,43 +191,7 @@ internal fun LibraryScreen(
                     if (vm.projects.isNotEmpty()) {
                         item { Text("Generated fonts", style = MaterialTheme.typography.titleSmall) }
                         items(vm.projects, key = { it.name }) { project ->
-                            val dismissState = rememberSwipeToDismissBoxState(
-                                confirmValueChange = { value ->
-                                    if (value == SwipeToDismissBoxValue.EndToStart) {
-                                        projectToDelete = project
-                                    }
-                                    false
-                                },
-                            )
-                            SwipeToDismissBox(
-                                state = dismissState,
-                                enableDismissFromStartToEnd = false,
-                                backgroundContent = {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(MaterialTheme.colorScheme.errorContainer)
-                                            .padding(horizontal = 16.dp),
-                                        contentAlignment = Alignment.CenterEnd,
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.Delete,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onErrorContainer,
-                                            )
-                                            Text(
-                                                "Delete",
-                                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                                style = MaterialTheme.typography.labelLarge,
-                                            )
-                                        }
-                                    }
-                                },
-                            ) {
+                            FontLibrarySwipeToDelete(onDelete = { projectToDelete = project }) {
                                 OutlinedCard(
                                     Modifier
                                         .fillMaxWidth()
@@ -249,11 +213,12 @@ internal fun LibraryScreen(
                     }
                     if (vm.importedFonts.isNotEmpty()) {
                         item { Text("Imported fonts", style = MaterialTheme.typography.titleSmall) }
-                        items(vm.importedFonts) { font ->
-                            OutlinedCard(Modifier.fillMaxWidth()) {
-                                Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                                    Text(font.displayName, style = MaterialTheme.typography.titleMedium)
-                                    Text("Imported · read-only", style = MaterialTheme.typography.bodySmall)
+                        items(vm.importedFonts, key = { it.fileName }) { font ->
+                            FontLibrarySwipeToDelete(onDelete = { importedFontToDelete = font }) {
+                                OutlinedCard(Modifier.fillMaxWidth()) {
+                                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                                        Text(font.displayName, style = MaterialTheme.typography.titleMedium)
+                                    }
                                 }
                             }
                         }
@@ -264,6 +229,9 @@ internal fun LibraryScreen(
                 Icon(Icons.Filled.FolderOpen, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Create or import font")
+            }
+            if (libraryStatus.isNotBlank()) {
+                Text(libraryStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
         }
         LibraryTab.Signatures -> {
@@ -416,6 +384,21 @@ internal fun LibraryScreen(
             dismissButton = { TextButton(onClick = { projectToDelete = null }) { Text("Cancel") } },
         )
     }
+    importedFontToDelete?.let { font ->
+        AlertDialog(
+            onDismissRequest = { importedFontToDelete = null },
+            title = { Text("Delete imported font?") },
+            text = { Text("Delete \"${font.displayName}\" from your library? This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deleteImportedFont(font.fileName)
+                    libraryStatus = "Deleted ${font.displayName}."
+                    importedFontToDelete = null
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { importedFontToDelete = null }) { Text("Cancel") } },
+        )
+    }
     if (showRenameDialog) {
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
@@ -452,4 +435,32 @@ internal fun LibraryScreen(
         )
     }
 }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FontLibrarySwipeToDelete(
+    onDelete: () -> Unit,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onDelete()
+            }
+            false
+        },
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.error),
+            )
+        },
+        content = content,
+    )
 }
