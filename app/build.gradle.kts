@@ -59,7 +59,5 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.google.mlkit:text-recognition:16.0.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
