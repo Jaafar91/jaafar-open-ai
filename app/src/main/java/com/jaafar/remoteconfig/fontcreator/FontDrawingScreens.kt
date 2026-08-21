@@ -256,9 +256,6 @@ internal fun SpacingScreen(
         }
 
         Spacer(Modifier.weight(1f))
-        if (vm.status.isNotBlank()) {
-            Text(vm.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
     }
 
     if (showSampleEditor) {
