@@ -93,6 +93,7 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("appearance", 0) }
     var darkTheme by remember { mutableStateOf(preferences.getBoolean("dark_theme", false)) }
+    var showTutorial by remember { mutableStateOf(sharedUri == null && !preferences.getBoolean("feature_tutorial_seen", false)) }
     var previewText by remember { mutableStateOf(preferences.getString("preview_text", DEFAULT_PREVIEW_TEXT) ?: DEFAULT_PREVIEW_TEXT) }
     var screen by remember { mutableStateOf(if (sharedUri != null) Screen.FillMark else Screen.Home) }
     var fillMarkUri by remember { mutableStateOf<Uri?>(sharedUri) }
@@ -118,6 +119,12 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
             viewModel.referenceTypeface()
         }
         when {
+            showTutorial -> FeatureTutorial(
+                onFinished = {
+                    preferences.edit().putBoolean("feature_tutorial_seen", true).apply()
+                    showTutorial = false
+                },
+            )
             imageUri != null && imageTypeface != null -> ImageTextEditorScreen(imageUri!!, imageTypeface!!, initialImageText) {
                 imageUri = null
                 imageTypeface = null

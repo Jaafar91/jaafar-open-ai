@@ -23,6 +23,11 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
@@ -42,6 +47,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
@@ -52,79 +58,158 @@ import com.jaafar.remoteconfig.R
 
 /** Home and saved-asset screens. Kept separate from the font studio workflow. */
 
-@Composable internal fun HomeScreen(vm: FontCreatorViewModel, go: (Screen) -> Unit) = Page(
+private data class HomeGridAction(
+    val title: String,
+    val detail: String,
+    val icon: ImageVector,
+    val destination: Screen,
+    val primary: Boolean = false,
+)
+
+@Composable
+internal fun HomeScreen(vm: FontCreatorViewModel, go: (Screen) -> Unit) = Page(
     "Studio",
-    scrollable = true,
-    actions = { TextButton(onClick = { go(Screen.Settings) }) { Text("Settings") } },
+    actions = {
+        IconButton(onClick = { go(Screen.Settings) }) {
+            Icon(Icons.Filled.Settings, contentDescription = "Settings")
+        }
+    },
 ) {
-    HomeTaskCard(
-        label = "DOCUMENT",
-        title = "Complete a document",
-        detail = "Add text, dates, signatures, or stamps.",
-        featured = true,
-    ) { go(Screen.FillMark) }
+    val actions = listOf(
+        HomeGridAction("Create font", "Draw your style", Icons.Filled.TextFields, Screen.Fonts, primary = true),
+        HomeGridAction("Write on image", "Add text or stamps", Icons.Filled.Image, Screen.Image),
+        HomeGridAction("Fill & mark", "Complete a document", Icons.Filled.Description, Screen.FillMark),
+        HomeGridAction("My Library", "Fonts and saved items", Icons.Filled.Folder, Screen.Library),
+    )
 
-    Text("Create", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-    HomeTaskCard(
-        label = "FONT",
-        title = "Create a font",
-        detail = "Make a font or import one.",
-    ) { go(Screen.Fonts) }
-    HomeTaskCard(
-        label = "IMAGE",
-        title = "Edit an image",
-        detail = "Add text, fonts, or stamps to an image.",
-    ) { go(Screen.Image) }
-
-    Text("Your workspace", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-    HomeTaskCard(
-        label = "LIBRARY",
-        title = "My library",
-        detail = "Your fonts, signatures, and stamps.",
-    ) { go(Screen.Library) }
-
+    Text("Create your own font", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    Text(
+        "Draw letters, then use your font on images and documents.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = Modifier.weight(1f),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(actions, key = { it.title }) { action ->
+            HomeGridTile(action = action) { go(action.destination) }
+        }
+    }
     vm.activeProject?.let { project ->
-        Text("Current font: ${project.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            "Current font: ${project.name}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
-@Composable private fun HomeTaskCard(
-    label: String,
-    title: String,
-    detail: String,
-    featured: Boolean = false,
-    click: () -> Unit,
-) {
+@Composable
+private fun HomeGridTile(action: HomeGridAction, click: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     OutlinedCard(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = click),
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clickable(onClick = click),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.outlinedCardColors(
-            containerColor = if (featured) colors.primaryContainer else colors.surface,
+            containerColor = if (action.primary) colors.primaryContainer else colors.surface,
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (featured) colors.primaryContainer else colors.outlineVariant,
+            if (action.primary) colors.primary else colors.outlineVariant,
         ),
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Surface(
-                color = if (featured) colors.primary else colors.secondaryContainer,
-                contentColor = if (featured) colors.onPrimary else colors.onSecondaryContainer,
-                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.size(64.dp),
+                color = if (action.primary) colors.primary else colors.secondaryContainer,
+                contentColor = if (action.primary) colors.onPrimary else colors.onSecondaryContainer,
+                shape = RoundedCornerShape(20.dp),
             ) {
-                Text(
-                    label,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(action.icon, contentDescription = null, modifier = Modifier.size(32.dp))
+                }
             }
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(detail, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+            Spacer(Modifier.height(12.dp))
+            Text(action.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                action.detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private data class TutorialPage(
+    val title: String,
+    val detail: String,
+    val icon: ImageVector,
+)
+
+@Composable
+internal fun FeatureTutorial(onFinished: () -> Unit) {
+    var pageIndex by remember { mutableIntStateOf(0) }
+    val pages = listOf(
+        TutorialPage("Create a font", "Draw letters in your own style.", Icons.Filled.TextFields),
+        TutorialPage("Write on an image", "Add text, fonts, and stamps.", Icons.Filled.Image),
+        TutorialPage("Fill & mark", "Complete documents with text and signatures.", Icons.Filled.Description),
+        TutorialPage("My Library", "Keep fonts, signatures, and stamps together.", Icons.Filled.Folder),
+    )
+    val page = pages[pageIndex]
+    val isLastPage = pageIndex == pages.lastIndex
+
+    Scaffold { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onFinished) { Text("Skip") }
+            }
+            Spacer(Modifier.weight(1f))
+            Surface(
+                modifier = Modifier.size(144.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                shape = RoundedCornerShape(44.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(page.icon, contentDescription = null, modifier = Modifier.size(76.dp))
+                }
+            }
+            Spacer(Modifier.height(32.dp))
+            Text(page.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(12.dp))
+            Text(
+                page.detail,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.weight(1f))
+            LinearProgressIndicator(
+                progress = (pageIndex + 1).toFloat() / pages.size,
+                modifier = Modifier.fillMaxWidth().height(4.dp),
+            )
+            Spacer(Modifier.height(20.dp))
+            Button(
+                onClick = {
+                    if (isLastPage) onFinished() else pageIndex++
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (isLastPage) "Get started" else "Next")
+            }
         }
     }
 }
