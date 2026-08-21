@@ -89,7 +89,11 @@ internal enum class LibraryTab(val label: String) { Fonts("Fonts"), Signatures("
 internal enum class LibrarySignaturePage { Hub, Draw, ImportStamp }
 
 @Composable
-fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
+fun FontCreatorApp(
+    viewModel: FontCreatorViewModel,
+    sharedUri: Uri? = null,
+    shareRequestId: Int = 0,
+) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("appearance", 0) }
     var darkTheme by remember { mutableStateOf(preferences.getBoolean("dark_theme", false)) }
@@ -104,6 +108,16 @@ fun FontCreatorApp(viewModel: FontCreatorViewModel, sharedUri: Uri? = null) {
     var autoPickImage by remember { mutableStateOf(false) }
     var fontEntryBack by remember { mutableStateOf(Screen.Home) }
     var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
+
+    // A running activity receives subsequent Share-sheet requests through onNewIntent.
+    // Route every request straight to the editor, including a re-shared copy of the same file.
+    LaunchedEffect(sharedUri, shareRequestId) {
+        sharedUri ?: return@LaunchedEffect
+        showTutorial = false
+        fillMarkUri = sharedUri
+        screen = Screen.FillMark
+    }
+
     MaterialTheme(
         colorScheme = if (darkTheme) ModernDarkColors else ModernLightColors,
         typography = appTypography(null),
