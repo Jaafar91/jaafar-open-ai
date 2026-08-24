@@ -160,7 +160,6 @@ fun FontCreatorApp(
                 onSave = viewModel::saveDrawing,
                 onSaveAndContinue = viewModel::saveDrawingAndContinue,
                 onSaveAndStay = viewModel::saveDrawingAndStay,
-                onSaveAndClose = viewModel::saveDrawingAndClose,
             )
             else -> when (screen) {
                 Screen.Home -> HomeScreen(viewModel, { screen = it })
