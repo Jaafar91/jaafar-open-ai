@@ -90,11 +90,21 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         if (clean.isBlank()) { status = "Enter a name for the font."; return false }
         val requestedStorageKey = normalizedFontStorageKey(clean)
         if (requestedStorageKey.isBlank()) { status = "Use letters or numbers in the font name."; return false }
-        if (projects.any { it.name.equals(clean, true) || normalizedFontStorageKey(it.name) == requestedStorageKey }) {
+        if (isDuplicateFontProjectName(projects.map { it.name }, clean)) {
             status = "A font with that name already exists."
             return false
         }
         projects.add(FontProject(clean)); openProject(projects.lastIndex); persist(); return true
+    }
+
+    fun hasProjectName(name: String): Boolean {
+        val clean = name.trim()
+        if (clean.isBlank()) return false
+        val requestedStorageKey = normalizedFontStorageKey(clean)
+        if (requestedStorageKey.isBlank()) return false
+        return projects.any { project ->
+            project.name.equals(clean, ignoreCase = true) || normalizedFontStorageKey(project.name) == requestedStorageKey
+        }
     }
 
     fun openProject(index: Int) {
