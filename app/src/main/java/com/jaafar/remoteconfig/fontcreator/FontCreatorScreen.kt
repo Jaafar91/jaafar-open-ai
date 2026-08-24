@@ -179,7 +179,10 @@ fun FontCreatorApp(
                 Screen.Fonts -> FontsScreen(
                     vm = viewModel,
                     back = { screen = fontEntryBack },
-                    editLetters = { screen = Screen.Letters },
+                    editLetters = {
+                        screen = Screen.Letters
+                        viewModel.editLetters()
+                    },
                     showReady = { screen = Screen.FontReady },
                     useOnImage = { fontName ->
                         preferredImageFontName = fontName
