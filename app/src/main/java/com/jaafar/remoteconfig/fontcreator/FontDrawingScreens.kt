@@ -47,7 +47,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.jaafar.remoteconfig.R
 
@@ -56,6 +55,7 @@ import com.jaafar.remoteconfig.R
 @Composable internal fun LettersScreen(
     vm: FontCreatorViewModel,
     back: () -> Unit,
+    editLetters: () -> Unit,
     preview: () -> Unit,
     adjustSpacing: () -> Unit,
     setPreviewText: (String) -> Unit,
@@ -64,7 +64,6 @@ import com.jaafar.remoteconfig.R
     val project = vm.activeProject
     if (file != null && project != null) ShareButton(file, project.name)
 }) {
-    var showEditDrawnLetters by remember { mutableStateOf(false) }
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phrase by remember { mutableStateOf("") }
     val project = vm.activeProject
@@ -120,7 +119,7 @@ import com.jaafar.remoteconfig.R
     }
 
     if (drawn > 0) {
-        OutlinedButton(onClick = { showEditDrawnLetters = true }, modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(onClick = editLetters, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Edit, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text("Edit letters")
@@ -131,49 +130,6 @@ import com.jaafar.remoteconfig.R
             Text("Adjust spacing")
         }
     }
-    if (showEditDrawnLetters) AlertDialog(
-        onDismissRequest = { showEditDrawnLetters = false },
-        title = { Text("Edit drawn letters") },
-        text = {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(5),
-                modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
-            ) {
-                items(
-                    vm.drawings.keys.sortedWith(
-                        compareBy<Int> {
-                            when (it) {
-                                in 'A'.code..'Z'.code -> 0
-                                in 'a'.code..'z'.code -> 1
-                                in '0'.code..'9'.code -> 2
-                                else -> 3
-                            }
-                        }.thenBy { it },
-                    ),
-                ) { codePoint ->
-                    FilledTonalButton(
-                        onClick = {
-                            showEditDrawnLetters = false
-                            vm.edit(codePoint)
-                        },
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-                        shape = RoundedCornerShape(0.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        ),
-                    ) {
-                        Text(codePoint.toChar().toString(), style = MaterialTheme.typography.bodyLarge)
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { showEditDrawnLetters = false }) { Text("Done") } },
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier.fillMaxWidth(0.9f),
-    )
-
     if (showPhraseDialog) AlertDialog(
         onDismissRequest = { showPhraseDialog = false },
         title = { Text("Use a phrase") },
@@ -300,22 +256,51 @@ private fun SpacingControl(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun GlyphEditorScreen(codePoint: Int, initial: GlyphDrawing?, pagingMode: Boolean, pagingProgress: Pair<Int, Int>?, canGoPrevious: Boolean, referenceTypeface: Typeface?, onCancel: () -> Unit, onPrevious: () -> Unit, onSkip: () -> Unit, onSave: (GlyphDrawing) -> Unit) {
+@Composable internal fun GlyphEditorScreen(
+    codePoint: Int,
+    initial: GlyphDrawing?,
+    drawings: Map<Int, GlyphDrawing>,
+    characterOrder: List<Int>,
+    pagingMode: Boolean,
+    pagingProgress: Pair<Int, Int>?,
+    canGoPrevious: Boolean,
+    referenceTypeface: Typeface?,
+    onCancel: () -> Unit,
+    onPrevious: () -> Unit,
+    onNavigatePrevious: () -> Unit,
+    onNavigateNext: () -> Unit,
+    onSelectCharacter: (Int) -> Unit,
+    onSkip: () -> Unit,
+    onSave: (GlyphDrawing) -> Unit,
+) {
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember(codePoint) { mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)) }
     var strokeWidth by remember { mutableFloatStateOf(initial?.strokeWidth ?: 8f) }
     var showDiscardDialog by remember { mutableStateOf(false) }
+    var showCharacterPicker by remember { mutableStateOf(false) }
+    var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     val initialStrokes = remember(codePoint) { initial?.strokes ?: emptyList<GlyphStroke>() }
-    val isDirty = strokes != initialStrokes
-    val handleBack = { if (isDirty) showDiscardDialog = true else onCancel() }
+    val initialStrokeWidth = remember(codePoint) { initial?.strokeWidth ?: 8f }
+    val isDirty = strokes != initialStrokes || strokeWidth != initialStrokeWidth
+    val navigateSafely: (() -> Unit) -> Unit = { action ->
+        if (isDirty) {
+            pendingNavigation = action
+            showDiscardDialog = true
+        } else action()
+    }
+    val handleBack = { navigateSafely(onCancel) }
     BackHandler(onBack = handleBack)
     val char = codePoint.toChar().toString()
-    val title = "Draw a letter"
+    val title = "${if (initial == null) "Draw" else "Edit"} letter $char"
+    val characterIndex = characterOrder.indexOf(codePoint)
+    val canNavigatePrevious = characterIndex > 0
+    val canNavigateNext = characterIndex >= 0 && characterIndex < characterOrder.lastIndex
     val isLastInQueue = pagingProgress != null && pagingProgress.first == pagingProgress.second
     val saveLabel = when {
         isLastInQueue -> "Save & Finish"
         pagingMode -> "Save & Next"
+        initial != null -> "Save changes"
         else -> "Save letter"
     }
     Scaffold(
@@ -349,6 +334,30 @@ private fun SpacingControl(
                         progress = (pagingProgress.first.toFloat() / pagingProgress.second).coerceIn(0f, 1f),
                         modifier = Modifier.weight(1f).height(4.dp),
                     )
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            if (!pagingMode) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = { navigateSafely(onNavigatePrevious) },
+                        enabled = canNavigatePrevious,
+                        contentPadding = PaddingValues(horizontal = 10.dp),
+                    ) { Text("← Previous", maxLines = 1) }
+                    FilledTonalButton(
+                        onClick = { showCharacterPicker = true },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                    ) { Text("Letter $char ▾", maxLines = 1) }
+                    OutlinedButton(
+                        onClick = { navigateSafely(onNavigateNext) },
+                        enabled = canNavigateNext,
+                        contentPadding = PaddingValues(horizontal = 10.dp),
+                    ) { Text("Next →", maxLines = 1) }
                 }
                 Spacer(Modifier.height(8.dp))
             }
@@ -406,7 +415,6 @@ private fun SpacingControl(
                         canvas.nativeCanvas.drawText(char, size.width / 2, size.height * 0.82f, refPaint)
                     }
                 }
-                drawCoordinateRulers()
                 drawLine(Color.LightGray, Offset(0f, size.height * .1f), Offset(size.width, size.height * .1f), 2f)
                 drawLine(Color.Red, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f), 3f)
                 drawLine(Color.LightGray, Offset(0f, size.height * .94f), Offset(size.width, size.height * .94f), 2f)
@@ -447,36 +455,107 @@ private fun SpacingControl(
             }
         }
     }
+    if (showCharacterPicker) CharacterPickerSheet(
+        characterOrder = characterOrder,
+        drawings = drawings,
+        selectedCodePoint = codePoint,
+        onDismiss = { showCharacterPicker = false },
+        onSelect = { selected ->
+            showCharacterPicker = false
+            if (selected != codePoint) navigateSafely { onSelectCharacter(selected) }
+        },
+    )
     if (showDiscardDialog) AlertDialog(
-        onDismissRequest = { showDiscardDialog = false },
+        onDismissRequest = { showDiscardDialog = false; pendingNavigation = null },
         title = { Text("Discard changes?") },
         text = { Text("You have unsaved strokes for this letter. Discard them?") },
-        confirmButton = { TextButton(onClick = { showDiscardDialog = false; onCancel() }) { Text("Discard") } },
-        dismissButton = { OutlinedButton(onClick = { showDiscardDialog = false }) { Text("Keep drawing") } },
+        confirmButton = { TextButton(onClick = {
+            val action = pendingNavigation
+            showDiscardDialog = false
+            pendingNavigation = null
+            action?.invoke()
+        }) { Text("Discard changes") } },
+        dismissButton = { OutlinedButton(onClick = { showDiscardDialog = false; pendingNavigation = null }) { Text("Keep editing") } },
     )
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCoordinateRulers() {
-    val rulerColor = android.graphics.Color.rgb(110, 110, 110)
-    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        color = rulerColor
-        textSize = 10.sp.toPx()
+private enum class CharacterCategory(val label: String) {
+    Uppercase("Uppercase"), Lowercase("Lowercase"), Numbers("Numbers"), Symbols("Symbols")
+}
+
+private fun CharacterCategory.contains(codePoint: Int): Boolean = when (this) {
+    CharacterCategory.Uppercase -> codePoint.toChar().isUpperCase()
+    CharacterCategory.Lowercase -> codePoint.toChar().let { it.isLowerCase() || (it.isLetter() && !it.isUpperCase()) }
+    CharacterCategory.Numbers -> codePoint.toChar().isDigit()
+    CharacterCategory.Symbols -> !codePoint.toChar().isLetterOrDigit()
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CharacterPickerSheet(
+    characterOrder: List<Int>,
+    drawings: Map<Int, GlyphDrawing>,
+    selectedCodePoint: Int,
+    onDismiss: () -> Unit,
+    onSelect: (Int) -> Unit,
+) {
+    val availableCategories = CharacterCategory.entries.filter { category -> characterOrder.any(category::contains) }
+    var selectedCategory by remember(selectedCodePoint, characterOrder) {
+        mutableStateOf(availableCategories.firstOrNull { it.contains(selectedCodePoint) } ?: availableCategories.firstOrNull())
     }
-    listOf(0, 25, 50, 75, 100).forEach { value ->
-        val x = size.width * value / 100f
-        val y = size.height * value / 100f
-        drawLine(Color.LightGray, Offset(x, 0f), Offset(x, 7.dp.toPx()), 1.dp.toPx())
-        drawLine(Color.LightGray, Offset(0f, y), Offset(7.dp.toPx(), y), 1.dp.toPx())
-        paint.textAlign = when (value) {
-            0 -> android.graphics.Paint.Align.LEFT
-            100 -> android.graphics.Paint.Align.RIGHT
-            else -> android.graphics.Paint.Align.CENTER
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text("Choose a character", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
+        if (availableCategories.isNotEmpty()) {
+            ScrollableTabRow(selectedTabIndex = availableCategories.indexOf(selectedCategory).coerceAtLeast(0)) {
+                availableCategories.forEach { category ->
+                    Tab(
+                        selected = category == selectedCategory,
+                        onClick = { selectedCategory = category },
+                        text = { Text(category.label) },
+                    )
+                }
+            }
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(64.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).padding(12.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
+            ) {
+                items(characterOrder.filter { selectedCategory?.contains(it) == true }) { candidate ->
+                    val selected = candidate == selectedCodePoint
+                    Surface(
+                        onClick = { onSelect(candidate) },
+                        modifier = Modifier.padding(4.dp).aspectRatio(1f),
+                        shape = MaterialTheme.shapes.small,
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        border = if (selected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+                    ) {
+                        drawings[candidate]?.let { drawing ->
+                            GlyphPreviewCanvas(drawing, Modifier.fillMaxSize().padding(8.dp))
+                        } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(candidate.toChar().toString(), style = MaterialTheme.typography.headlineMedium)
+                        }
+                    }
+                }
+            }
         }
-        drawContext.canvas.nativeCanvas.drawText(value.toString(), x, 12.dp.toPx(), paint)
-        paint.textAlign = android.graphics.Paint.Align.LEFT
-        drawContext.canvas.nativeCanvas.drawText(value.toString(), 3.dp.toPx(), (y + 11.dp.toPx()).coerceAtMost(size.height - 2.dp.toPx()), paint)
     }
-    paint.textAlign = android.graphics.Paint.Align.RIGHT
-    drawContext.canvas.nativeCanvas.drawText("X", size.width - 3.dp.toPx(), 25.dp.toPx(), paint)
-    drawContext.canvas.nativeCanvas.drawText("Y", 20.dp.toPx(), size.height - 3.dp.toPx(), paint)
+}
+
+@Composable
+private fun GlyphPreviewCanvas(drawing: GlyphDrawing, modifier: Modifier = Modifier) {
+    val strokeColor = MaterialTheme.colorScheme.onSurfaceVariant
+    Canvas(modifier) {
+        val scaleX = size.width / drawing.canvasWidth.coerceAtLeast(1f)
+        val scaleY = size.height / drawing.canvasHeight.coerceAtLeast(1f)
+        drawing.strokes.forEach { stroke ->
+            if (stroke.points.size > 1) drawPath(
+                path = Path().apply {
+                    moveTo(stroke.points.first().x * scaleX, stroke.points.first().y * scaleY)
+                    stroke.points.drop(1).forEach { lineTo(it.x * scaleX, it.y * scaleY) }
+                },
+                color = strokeColor,
+                style = Stroke((drawing.strokeWidth * minOf(scaleX, scaleY)).coerceAtLeast(1f), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+        }
+    }
 }
