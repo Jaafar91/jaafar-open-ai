@@ -179,14 +179,16 @@ fun FontCreatorApp(
                 Screen.Fonts -> FontsScreen(
                     vm = viewModel,
                     back = { screen = fontEntryBack },
-                    editLetters = { screen = Screen.Letters },
+                    editLetters = {
+                        screen = Screen.Letters
+                        viewModel.editLetters()
+                    },
                     showReady = { screen = Screen.FontReady },
                     useOnImage = { fontName ->
                         preferredImageFontName = fontName
                         initialImageText = ""
                         screen = Screen.Image
                     },
-                    setPreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
                 )
                 Screen.FontReady -> FontReadyScreen(
                     vm = viewModel,
@@ -207,7 +209,6 @@ fun FontCreatorApp(
                     back = { screen = Screen.Library },
                     preview = { screen = Screen.FontReady },
                     adjustSpacing = { screen = Screen.Spacing },
-                    setPreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
                 )
                 Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Letters }
                 Screen.Image -> ImageScreen(

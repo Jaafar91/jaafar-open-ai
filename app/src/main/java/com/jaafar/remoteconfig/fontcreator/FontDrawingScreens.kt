@@ -60,14 +60,11 @@ import com.jaafar.remoteconfig.R
     back: () -> Unit,
     preview: () -> Unit,
     adjustSpacing: () -> Unit,
-    setPreviewText: (String) -> Unit,
 ) = Page("Font workspace", back, actions = {
     val file = vm.generatedFont
     val project = vm.activeProject
     if (file != null && project != null) ShareButton(file, project.name)
 }) {
-    var showPhraseDialog by remember { mutableStateOf(false) }
-    var phrase by remember { mutableStateOf("") }
     val project = vm.activeProject
     val total = vm.activeCharacterOrder.size
     val drawn = vm.drawings.size
@@ -89,22 +86,12 @@ import com.jaafar.remoteconfig.R
             Spacer(Modifier.width(8.dp))
             Text("Start drawing")
         }
-        OutlinedButton(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Edit, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Use a phrase")
-        }
     } else if (nextCode != null) {
         Text("Keep building your font.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Button(onClick = { vm.edit(nextCode) }, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Edit, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text("Continue drawing")
-        }
-        OutlinedButton(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Edit, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Draw letters from a phrase")
         }
         OutlinedButton(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Visibility, contentDescription = null)
@@ -132,26 +119,6 @@ import com.jaafar.remoteconfig.R
             Text("Adjust spacing")
         }
     }
-    if (showPhraseDialog) AlertDialog(
-        onDismissRequest = { showPhraseDialog = false },
-        title = { Text("Use a phrase") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Type a phrase. You will draw its missing letters first.")
-                OutlinedTextField(phrase, { phrase = it }, Modifier.fillMaxWidth(), label = { Text("Phrase") }, minLines = 3)
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                vm.drawMissingCharacters(phrase)
-                setPreviewText(phrase)
-                showPhraseDialog = false
-            }, enabled = phrase.isNotBlank()) { Text("Start drawing") }
-        },
-        dismissButton = { TextButton(onClick = { showPhraseDialog = false }) { Text("Cancel") } },
-    )
-
-
 }
 
 @Composable

@@ -163,7 +163,7 @@ internal fun FeatureTutorial(onFinished: () -> Unit) {
     val pages = listOf(
         TutorialPage(
             "Create a font",
-            "Turn your handwriting into a font. Start with the letters you use most, then try a phrase.",
+            "Turn your handwriting into a font by drawing each character in your own style.",
             Icons.Filled.TextFields,
         ),
         TutorialPage(
