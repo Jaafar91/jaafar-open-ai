@@ -88,7 +88,12 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun createProject(name: String): Boolean {
         val clean = name.trim()
         if (clean.isBlank()) { status = "Enter a name for the font."; return false }
-        if (projects.any { it.name.equals(clean, true) }) { status = "A font with that name already exists."; return false }
+        val requestedStorageKey = normalizedFontStorageKey(clean)
+        if (requestedStorageKey.isBlank()) { status = "Use letters or numbers in the font name."; return false }
+        if (projects.any { it.name.equals(clean, true) || normalizedFontStorageKey(it.name) == requestedStorageKey }) {
+            status = "A font with that name already exists."
+            return false
+        }
         projects.add(FontProject(clean)); openProject(projects.lastIndex); persist(); return true
     }
 
@@ -399,7 +404,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun loadTypeface(file: File) = if (Build.VERSION.SDK_INT >= 26) Typeface.Builder(file).build() else Typeface.createFromFile(file)
-    private fun generatedFile(name: String) = File(getApplication<Application>().filesDir, "font-${name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')}.ttf")
+    private fun generatedFile(name: String) = File(getApplication<Application>().filesDir, "font-${normalizedFontStorageKey(name)}.ttf")
     private fun updateActive(transform: (FontProject) -> FontProject) { val index = activeProjectIndex ?: return; projects[index] = transform(projects[index]); persist() }
     private fun syncActive() { val index = activeProjectIndex ?: return; projects[index] = projects[index].copy(drawings = drawings.values.toList()) }
     private fun persist() { val snapshot = projects.toList(); executor.execute { repository.save(snapshot) } }
