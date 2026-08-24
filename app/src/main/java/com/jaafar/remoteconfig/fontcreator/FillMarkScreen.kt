@@ -303,7 +303,9 @@ private fun FillMarkEditorScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val fontOptions = remember { vm.allFontOptions() }
+    val fontOptions = remember(vm.projects.toList(), vm.importedFonts.toList(), vm.generatedFont) {
+        vm.allFontOptions()
+    }
 
     // Document state
     var isPdf by remember { mutableStateOf(false) }
