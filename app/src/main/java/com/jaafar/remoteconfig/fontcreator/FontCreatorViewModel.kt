@@ -288,23 +288,23 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         prefs.edit().putString("reference_font", key).apply()
     }
 
-    fun referenceTypeface(): Typeface? {
+    fun referenceTypeface(): Typeface {
         val app = getApplication<Application>()
         return when (referenceFontKey) {
-            "Default" -> null
+            "Default" -> Typeface.DEFAULT
             "Sans-serif" -> Typeface.SANS_SERIF
             "Serif" -> Typeface.SERIF
             "Monospace" -> Typeface.MONOSPACE
             else -> {
                 val imported = importedFonts.firstOrNull { it.displayName == referenceFontKey }
                 if (imported != null) {
-                    runCatching { loadTypeface(File(app.filesDir, imported.fileName)) }.getOrNull()
+                    runCatching { loadTypeface(File(app.filesDir, imported.fileName)) }.getOrDefault(Typeface.DEFAULT)
                 } else {
                     val project = projects.firstOrNull { it.name == referenceFontKey }
                     if (project != null) {
                         val file = generatedFile(project.name)
-                        runCatching { if (file.exists()) loadTypeface(file) else null }.getOrNull()
-                    } else null
+                        runCatching { if (file.exists()) loadTypeface(file) else Typeface.DEFAULT }.getOrDefault(Typeface.DEFAULT)
+                    } else Typeface.DEFAULT
                 }
             }
         }
