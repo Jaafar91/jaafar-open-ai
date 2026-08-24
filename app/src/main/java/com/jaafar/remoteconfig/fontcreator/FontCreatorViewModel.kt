@@ -97,7 +97,15 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         projects.add(FontProject(clean)); openProject(projects.lastIndex); persist(); return true
     }
 
-    fun hasProjectName(name: String): Boolean = isDuplicateFontProjectName(projects.map { it.name }, name)
+    fun hasProjectName(name: String): Boolean {
+        val clean = name.trim()
+        if (clean.isBlank()) return false
+        val requestedStorageKey = normalizedFontStorageKey(clean)
+        if (requestedStorageKey.isBlank()) return false
+        return projects.any { project ->
+            project.name.equals(clean, ignoreCase = true) || normalizedFontStorageKey(project.name) == requestedStorageKey
+        }
+    }
 
     fun openProject(index: Int) {
         val project = projects.getOrNull(index) ?: return
