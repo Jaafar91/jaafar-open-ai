@@ -297,7 +297,7 @@ private fun SpacingControl(
     val handleBack = { navigateSafely(onCancel) }
     BackHandler(onBack = handleBack)
     val char = codePoint.toChar().toString()
-    val title = "Letter $char"
+    val title = "Draw $char"
     val characterIndex = characterOrder.indexOf(codePoint)
     val letterBarState = rememberLazyListState()
     LaunchedEffect(codePoint, characterOrder) {
@@ -378,30 +378,10 @@ private fun SpacingControl(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (pagingProgress != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "${pagingProgress.first} of ${pagingProgress.second}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    LinearProgressIndicator(
-                        progress = (pagingProgress.first.toFloat() / pagingProgress.second).coerceIn(0f, 1f),
-                        modifier = Modifier.weight(1f).height(4.dp),
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-            }
             if (!pagingMode) {
-                Text(
-                    if (initial == null) "New letter" else if (showSavedConfirmation) "Saved ✓" else "Saved letter",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (showSavedConfirmation) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (showSavedConfirmation) {
+                    Text("Saved ✓", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                }
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val centerPadding = ((maxWidth - 48.dp) / 2).coerceAtLeast(0.dp)
                     LazyRow(
@@ -425,8 +405,14 @@ private fun SpacingControl(
                                 if (savedDrawing != null) {
                                     GlyphBarPreview(savedDrawing, tileContentColor, Modifier.fillMaxSize().padding(6.dp))
                                 } else {
-                                    Box(contentAlignment = Alignment.Center) {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                         Text(candidate.toChar().toString(), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                                        Text(
+                                            "*",
+                                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 5.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                        )
                                     }
                                 }
                             }
@@ -435,6 +421,19 @@ private fun SpacingControl(
                 }
                 Spacer(Modifier.height(8.dp))
             }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${drawings.size} / ${characterOrder.size} completed",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            LinearProgressIndicator(
+                progress = if (characterOrder.isEmpty()) 0f else (drawings.size.toFloat() / characterOrder.size).coerceIn(0f, 1f),
+                modifier = Modifier.fillMaxWidth().height(3.dp),
+            )
+            Spacer(Modifier.height(4.dp))
             Text("Use the guides to keep every letter aligned and evenly sized.", style = MaterialTheme.typography.bodySmall)
             Canvas(
                 Modifier
