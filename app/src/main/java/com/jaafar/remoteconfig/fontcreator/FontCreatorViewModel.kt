@@ -214,12 +214,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         isPagingMode = false
     }
 
-    fun saveDrawingAndClose(drawing: GlyphDrawing) {
-        drawings[drawing.codePoint] = drawing
-        syncActive(); persist(); status = "Letter saved."
-        closeEditor()
-    }
-
     fun generate() {
         val project = activeProject ?: return
         if (drawings.isEmpty()) { status = "Draw at least one character first."; return }
