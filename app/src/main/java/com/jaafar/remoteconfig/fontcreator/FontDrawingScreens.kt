@@ -1,7 +1,6 @@
 package com.jaafar.remoteconfig.fontcreator
 
 import android.content.Intent
-import android.graphics.Typeface
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -12,18 +11,19 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Visibility
@@ -37,8 +37,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -47,12 +45,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.jaafar.remoteconfig.R
 
 /** Character-drawing and spacing workflow. */
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun LettersScreen(
     vm: FontCreatorViewModel,
     back: () -> Unit,
@@ -64,7 +62,6 @@ import com.jaafar.remoteconfig.R
     val project = vm.activeProject
     if (file != null && project != null) ShareButton(file, project.name)
 }) {
-    var showEditDrawnLetters by remember { mutableStateOf(false) }
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phrase by remember { mutableStateOf("") }
     val project = vm.activeProject
@@ -81,9 +78,9 @@ import com.jaafar.remoteconfig.R
         }
     }
 
-    if (drawn == 0) {
+    if (drawn == 0 && nextCode != null) {
         Text("Start your font", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Button(onClick = vm::startPaging, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = { vm.edit(nextCode) }, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Edit, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text("Start drawing")
@@ -95,7 +92,7 @@ import com.jaafar.remoteconfig.R
         }
     } else if (nextCode != null) {
         Text("Keep building your font.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Button(onClick = { vm.startPaging() }, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = { vm.edit(nextCode) }, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Edit, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text("Continue drawing")
@@ -120,60 +117,12 @@ import com.jaafar.remoteconfig.R
     }
 
     if (drawn > 0) {
-        OutlinedButton(onClick = { showEditDrawnLetters = true }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Edit, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Edit letters")
-        }
         OutlinedButton(onClick = adjustSpacing, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Tune, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text("Adjust spacing")
         }
     }
-    if (showEditDrawnLetters) AlertDialog(
-        onDismissRequest = { showEditDrawnLetters = false },
-        title = { Text("Edit drawn letters") },
-        text = {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(5),
-                modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
-            ) {
-                items(
-                    vm.drawings.keys.sortedWith(
-                        compareBy<Int> {
-                            when (it) {
-                                in 'A'.code..'Z'.code -> 0
-                                in 'a'.code..'z'.code -> 1
-                                in '0'.code..'9'.code -> 2
-                                else -> 3
-                            }
-                        }.thenBy { it },
-                    ),
-                ) { codePoint ->
-                    FilledTonalButton(
-                        onClick = {
-                            showEditDrawnLetters = false
-                            vm.edit(codePoint)
-                        },
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-                        shape = RoundedCornerShape(0.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        ),
-                    ) {
-                        Text(codePoint.toChar().toString(), style = MaterialTheme.typography.bodyLarge)
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { showEditDrawnLetters = false }) { Text("Done") } },
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier.fillMaxWidth(0.9f),
-    )
-
     if (showPhraseDialog) AlertDialog(
         onDismissRequest = { showPhraseDialog = false },
         title = { Text("Use a phrase") },
@@ -300,23 +249,84 @@ private fun SpacingControl(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun GlyphEditorScreen(codePoint: Int, initial: GlyphDrawing?, pagingMode: Boolean, pagingProgress: Pair<Int, Int>?, canGoPrevious: Boolean, referenceTypeface: Typeface?, onCancel: () -> Unit, onPrevious: () -> Unit, onSkip: () -> Unit, onSave: (GlyphDrawing) -> Unit) {
+@Composable internal fun GlyphEditorScreen(
+    codePoint: Int,
+    initial: GlyphDrawing?,
+    drawings: Map<Int, GlyphDrawing>,
+    characterOrder: List<Int>,
+    pagingMode: Boolean,
+    pagingProgress: Pair<Int, Int>?,
+    canGoPrevious: Boolean,
+    onCancel: () -> Unit,
+    onPrevious: () -> Unit,
+    onSelectCharacter: (Int) -> Unit,
+    onSkip: () -> Unit,
+    onSave: (GlyphDrawing) -> Unit,
+    onSaveAndContinue: (GlyphDrawing) -> Unit,
+    onSaveAndStay: (GlyphDrawing) -> Unit,
+    onSaveAndClose: (GlyphDrawing) -> Unit,
+) {
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember(codePoint) { mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)) }
     var strokeWidth by remember { mutableFloatStateOf(initial?.strokeWidth ?: 8f) }
     var showDiscardDialog by remember { mutableStateOf(false) }
-    val initialStrokes = remember(codePoint) { initial?.strokes ?: emptyList<GlyphStroke>() }
-    val isDirty = strokes != initialStrokes
-    val handleBack = { if (isDirty) showDiscardDialog = true else onCancel() }
+    var showMoreMenu by remember { mutableStateOf(false) }
+    var showSavedConfirmation by remember(codePoint) { mutableStateOf(false) }
+    var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var savedStrokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
+    var savedStrokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: 8f) }
+    val isDirty = strokes != savedStrokes || strokeWidth != savedStrokeWidth
+    val navigateSafely: (() -> Unit) -> Unit = { action ->
+        if (isDirty) {
+            pendingNavigation = action
+            showDiscardDialog = true
+        } else action()
+    }
+    val handleBack = { navigateSafely(onCancel) }
     BackHandler(onBack = handleBack)
     val char = codePoint.toChar().toString()
-    val title = "Draw a letter"
+    val title = "Letter $char"
+    val characterIndex = characterOrder.indexOf(codePoint)
+    val letterBarState = rememberLazyListState()
+    LaunchedEffect(codePoint, characterOrder) {
+        if (characterIndex >= 0) {
+            letterBarState.scrollToItem(characterIndex)
+            withFrameNanos { _ -> }
+            val layout = letterBarState.layoutInfo
+            val item = layout.visibleItemsInfo.firstOrNull { it.index == characterIndex }
+            if (item != null) {
+                val viewportCenter = (layout.viewportStartOffset + layout.viewportEndOffset) / 2f
+                val itemCenter = item.offset + item.size / 2f
+                letterBarState.animateScrollBy(itemCenter - viewportCenter)
+            }
+        }
+    }
     val isLastInQueue = pagingProgress != null && pagingProgress.first == pagingProgress.second
     val saveLabel = when {
         isLastInQueue -> "Save & Finish"
         pagingMode -> "Save & Next"
-        else -> "Save letter"
+        else -> "Save"
+    }
+    val drawing = { GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second, strokeWidth) }
+    val savePrimary = {
+        val saved = drawing()
+        savedStrokes = strokes
+        savedStrokeWidth = strokeWidth
+        when {
+            pagingMode -> onSave(saved)
+            initial == null -> onSaveAndContinue(saved)
+            else -> {
+                onSaveAndStay(saved)
+                showSavedConfirmation = true
+            }
+        }
+    }
+    LaunchedEffect(showSavedConfirmation) {
+        if (showSavedConfirmation) {
+            kotlinx.coroutines.delay(1600)
+            showSavedConfirmation = false
+        }
     }
     Scaffold(
         topBar = {
@@ -329,6 +339,21 @@ private fun SpacingControl(
                             .height(36.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                     ) { Text("Previous") }
+                }
+                if (!pagingMode) Box {
+                    IconButton(onClick = { showMoreMenu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                    }
+                    DropdownMenu(expanded = showMoreMenu, onDismissRequest = { showMoreMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Save & close") },
+                            enabled = strokes.isNotEmpty(),
+                            onClick = {
+                                showMoreMenu = false
+                                onSaveAndClose(drawing())
+                            },
+                        )
+                    }
                 }
             }
         },
@@ -352,23 +377,44 @@ private fun SpacingControl(
                 }
                 Spacer(Modifier.height(8.dp))
             }
-            Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(
-                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text("REFERENCE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                    Text(
-                        char,
-                        style = MaterialTheme.typography.displayLarge,
-                        fontFamily = referenceTypeface?.let(::FontFamily),
-                    )
+            if (!pagingMode) {
+                Text(
+                    if (initial == null) "New letter" else if (showSavedConfirmation) "Saved ✓" else "Saved letter",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (showSavedConfirmation) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val centerPadding = ((maxWidth - 48.dp) / 2).coerceAtLeast(0.dp)
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        state = letterBarState,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = PaddingValues(horizontal = centerPadding),
+                    ) {
+                        items(characterOrder) { candidate ->
+                            val selected = candidate == codePoint
+                            val savedDrawing = drawings[candidate]
+                            val tileColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                            val tileContentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            Surface(
+                                onClick = { if (!selected) navigateSafely { onSelectCharacter(candidate) } },
+                                shape = MaterialTheme.shapes.small,
+                                color = tileColor,
+                                contentColor = tileContentColor,
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                if (savedDrawing != null) {
+                                    GlyphBarPreview(savedDrawing, tileContentColor, Modifier.fillMaxSize().padding(6.dp))
+                                } else {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(candidate.toChar().toString(), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
+                Spacer(Modifier.height(8.dp))
             }
             Text("Gray: ascender/descender · Red: baseline", style = MaterialTheme.typography.bodySmall)
             Canvas(
@@ -395,18 +441,6 @@ private fun SpacingControl(
                     },
             ) {
                 canvasSize = size.width to size.height
-                if (referenceTypeface != null) {
-                    drawIntoCanvas { canvas ->
-                        val refPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                            typeface = referenceTypeface
-                            textSize = size.height * 0.72f
-                            color = android.graphics.Color.argb(34, 0, 0, 0)
-                            textAlign = android.graphics.Paint.Align.CENTER
-                        }
-                        canvas.nativeCanvas.drawText(char, size.width / 2, size.height * 0.82f, refPaint)
-                    }
-                }
-                drawCoordinateRulers()
                 drawLine(Color.LightGray, Offset(0f, size.height * .1f), Offset(size.width, size.height * .1f), 2f)
                 drawLine(Color.Red, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f), 3f)
                 drawLine(Color.LightGray, Offset(0f, size.height * .94f), Offset(size.width, size.height * .94f), 2f)
@@ -441,42 +475,70 @@ private fun SpacingControl(
                     Icon(Icons.Default.Clear, contentDescription = "Clear")
                 }
                 if (pagingMode) TextButton(onSkip) { Text("Skip") }
-                Button({ onSave(GlyphDrawing(codePoint, strokes, canvasSize.first, canvasSize.second, strokeWidth)) }, Modifier.weight(1f), enabled = strokes.isNotEmpty()) {
+                Button(savePrimary, Modifier.weight(1f), enabled = strokes.isNotEmpty() && (isDirty || initial == null || pagingMode)) {
                     Text(saveLabel, maxLines = 1)
                 }
             }
         }
     }
-    if (showDiscardDialog) AlertDialog(
-        onDismissRequest = { showDiscardDialog = false },
-        title = { Text("Discard changes?") },
-        text = { Text("You have unsaved strokes for this letter. Discard them?") },
-        confirmButton = { TextButton(onClick = { showDiscardDialog = false; onCancel() }) { Text("Discard") } },
-        dismissButton = { OutlinedButton(onClick = { showDiscardDialog = false }) { Text("Keep drawing") } },
-    )
+    if (showDiscardDialog) ModalBottomSheet(onDismissRequest = { showDiscardDialog = false; pendingNavigation = null }) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Unsaved changes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Save this letter before continuing?")
+            Button(
+                onClick = {
+                    val action = pendingNavigation
+                    onSaveAndStay(drawing())
+                    savedStrokes = strokes
+                    savedStrokeWidth = strokeWidth
+                    showDiscardDialog = false
+                    pendingNavigation = null
+                    action?.invoke()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = strokes.isNotEmpty(),
+            ) { Text("Save and continue") }
+            OutlinedButton(
+                onClick = {
+                    val action = pendingNavigation
+                    showDiscardDialog = false
+                    pendingNavigation = null
+                    action?.invoke()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Discard") }
+            TextButton(onClick = { showDiscardDialog = false; pendingNavigation = null }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCoordinateRulers() {
-    val rulerColor = android.graphics.Color.rgb(110, 110, 110)
-    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        color = rulerColor
-        textSize = 10.sp.toPx()
-    }
-    listOf(0, 25, 50, 75, 100).forEach { value ->
-        val x = size.width * value / 100f
-        val y = size.height * value / 100f
-        drawLine(Color.LightGray, Offset(x, 0f), Offset(x, 7.dp.toPx()), 1.dp.toPx())
-        drawLine(Color.LightGray, Offset(0f, y), Offset(7.dp.toPx(), y), 1.dp.toPx())
-        paint.textAlign = when (value) {
-            0 -> android.graphics.Paint.Align.LEFT
-            100 -> android.graphics.Paint.Align.RIGHT
-            else -> android.graphics.Paint.Align.CENTER
+@Composable
+private fun GlyphBarPreview(drawing: GlyphDrawing, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val scale = minOf(
+            size.width / drawing.canvasWidth.coerceAtLeast(1f),
+            size.height / drawing.canvasHeight.coerceAtLeast(1f),
+        )
+        val offsetX = (size.width - drawing.canvasWidth * scale) / 2f
+        val offsetY = (size.height - drawing.canvasHeight * scale) / 2f
+        drawing.strokes.forEach { stroke ->
+            if (stroke.points.size > 1) {
+                drawPath(
+                    path = Path().apply {
+                        moveTo(offsetX + stroke.points.first().x * scale, offsetY + stroke.points.first().y * scale)
+                        stroke.points.drop(1).forEach { point ->
+                            lineTo(offsetX + point.x * scale, offsetY + point.y * scale)
+                        }
+                    },
+                    color = color,
+                    style = Stroke(
+                        width = (drawing.strokeWidth * scale).coerceAtLeast(1f),
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round,
+                    ),
+                )
+            }
         }
-        drawContext.canvas.nativeCanvas.drawText(value.toString(), x, 12.dp.toPx(), paint)
-        paint.textAlign = android.graphics.Paint.Align.LEFT
-        drawContext.canvas.nativeCanvas.drawText(value.toString(), 3.dp.toPx(), (y + 11.dp.toPx()).coerceAtMost(size.height - 2.dp.toPx()), paint)
     }
-    paint.textAlign = android.graphics.Paint.Align.RIGHT
-    drawContext.canvas.nativeCanvas.drawText("X", size.width - 3.dp.toPx(), 25.dp.toPx(), paint)
-    drawContext.canvas.nativeCanvas.drawText("Y", 20.dp.toPx(), size.height - 3.dp.toPx(), paint)
 }

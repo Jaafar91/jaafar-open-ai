@@ -129,9 +129,6 @@ fun FontCreatorApp(
             extraLarge = RoundedCornerShape(32.dp),
         ),
     ) {
-        val referenceTypeface = remember(viewModel.referenceFontKey, viewModel.projects.size, viewModel.importedFonts.size) {
-            viewModel.referenceTypeface()
-        }
         when {
             showTutorial -> FeatureTutorial(
                 onFinished = {
@@ -147,14 +144,19 @@ fun FontCreatorApp(
             viewModel.selectedCodePoint != null -> GlyphEditorScreen(
                 codePoint = viewModel.selectedCodePoint!!,
                 initial = viewModel.drawings[viewModel.selectedCodePoint],
+                drawings = viewModel.drawings,
+                characterOrder = viewModel.activeCharacterOrder,
                 pagingMode = viewModel.isPagingMode,
                 pagingProgress = viewModel.pagingProgress,
                 canGoPrevious = viewModel.canGoToPreviousLetter,
-                referenceTypeface = referenceTypeface,
                 onCancel = viewModel::closeEditor,
                 onPrevious = viewModel::previousLetter,
+                onSelectCharacter = viewModel::edit,
                 onSkip = viewModel::skipLetter,
                 onSave = viewModel::saveDrawing,
+                onSaveAndContinue = viewModel::saveDrawingAndContinue,
+                onSaveAndStay = viewModel::saveDrawingAndStay,
+                onSaveAndClose = viewModel::saveDrawingAndClose,
             )
             else -> when (screen) {
                 Screen.Home -> HomeScreen(viewModel, { screen = it })
