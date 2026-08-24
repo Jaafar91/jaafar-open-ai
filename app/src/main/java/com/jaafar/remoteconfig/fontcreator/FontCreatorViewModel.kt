@@ -144,7 +144,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun startPaging() = startQueue(activeCharacterOrder.filter { it !in drawings }, "All supported characters have already been drawn.")
-    fun drawMissingCharacters(text: String) = startQueue(text.asSequence().map { it.code }.filter { it != 0x20 && it in activeCharacterOrder && it !in drawings }.distinct().toList(), "This text has no missing supported characters.")
     private fun startQueue(queue: List<Int>, emptyMessage: String) {
         if (queue.isEmpty()) { status = emptyMessage; return }
         pagingQueue = queue
