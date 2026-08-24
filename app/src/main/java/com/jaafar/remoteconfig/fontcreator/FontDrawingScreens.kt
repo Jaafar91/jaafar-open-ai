@@ -274,7 +274,6 @@ private fun SpacingControl(
     onSave: (GlyphDrawing) -> Unit,
     onSaveAndContinue: (GlyphDrawing) -> Unit,
     onSaveAndStay: (GlyphDrawing) -> Unit,
-    onSaveAndClose: (GlyphDrawing) -> Unit,
 ) {
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
@@ -287,7 +286,9 @@ private fun SpacingControl(
     var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var savedStrokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var savedStrokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: 8f) }
-    val isDirty = strokes != savedStrokes || strokeWidth != savedStrokeWidth
+    val strokesChanged = strokes != savedStrokes
+    val thicknessChanged = strokes.isNotEmpty() && strokeWidth != savedStrokeWidth
+    val isDirty = strokesChanged || thicknessChanged
     val navigateSafely: (() -> Unit) -> Unit = { action ->
         if (isDirty) {
             pendingNavigation = action
@@ -361,17 +362,6 @@ private fun SpacingControl(
                             trailingIcon = { Checkbox(checked = showReference, onCheckedChange = null) },
                             onClick = { showReference = !showReference; showMoreMenu = false },
                         )
-                        if (!pagingMode) {
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("Save & close") },
-                                enabled = strokes.isNotEmpty(),
-                                onClick = {
-                                    showMoreMenu = false
-                                    onSaveAndClose(drawing())
-                                },
-                            )
-                        }
                     }
                 }
             }
