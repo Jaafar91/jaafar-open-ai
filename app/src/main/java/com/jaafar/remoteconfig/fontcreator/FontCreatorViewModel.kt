@@ -68,6 +68,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     var importStatus by mutableStateOf(""); private set
     var defaultSignatureName by mutableStateOf(prefs.getString(PREFS_DEFAULT_SIGNATURE, null)); private set
     var defaultStampName by mutableStateOf(prefs.getString(PREFS_DEFAULT_STAMP, null)); private set
+    var lastEditedCodePoint by mutableStateOf<Int?>(null); private set
 
     /** Returns all available typefaces (generated + imported) with their display labels. */
     fun hasGeneratedFont(name: String): Boolean = generatedFile(name).exists()
@@ -116,7 +117,25 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun closeProject() { syncActive(); activeProjectIndex = null; drawings.clear(); generatedFont = null; previewTypeface = null }
-    fun edit(codePoint: Int) { isPagingMode = false; selectedCodePoint = codePoint }
+    fun edit(codePoint: Int) { lastEditedCodePoint = codePoint; isPagingMode = false; selectedCodePoint = codePoint }
+    fun editLetters() {
+        val order = activeCharacterOrder
+        if (order.isEmpty()) { status = "No characters available."; return }
+        val start = lastEditedCodePoint?.takeIf { it in order } ?: order.first()
+        edit(start)
+    }
+    fun editPrevious() {
+        val order = activeCharacterOrder
+        val current = selectedCodePoint ?: return
+        val idx = order.indexOf(current)
+        if (idx > 0) edit(order[idx - 1])
+    }
+    fun editNext() {
+        val order = activeCharacterOrder
+        val current = selectedCodePoint ?: return
+        val idx = order.indexOf(current)
+        if (idx >= 0 && idx < order.size - 1) edit(order[idx + 1])
+    }
     fun setLanguages(languages: Set<LanguageScript>): Boolean {
         if (languages.isEmpty()) { status = "Select at least one language."; return false }
         updateActive { it.copy(selectedLanguages = languages) }
