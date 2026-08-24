@@ -328,9 +328,9 @@ private const val PREF_KEY_LAST_IMAGE_FONT = "last_font"
 ) {
     val context = LocalContext.current
     val preferences = remember { context.getSharedPreferences("image_editor", 0) }
-    val allFonts = remember(vm.projects, vm.importedFonts) { vm.allFontOptions() }
-    val systemFonts = listOf("Default" to Typeface.DEFAULT, "Serif" to Typeface.SERIF, "Sans-Serif" to Typeface.SANS_SERIF, "Monospace" to Typeface.MONOSPACE)
-    val allAvailable = systemFonts + allFonts
+    val allAvailable = remember(vm.projects.toList(), vm.importedFonts.toList(), vm.generatedFont) {
+        vm.availableFontOptions()
+    }
     val lastSavedFont = remember { preferences.getString(PREF_KEY_LAST_IMAGE_FONT, null) }
     var selectedFontLabel by remember(allAvailable, initiallySelectedFont) {
         val resolved = when {
