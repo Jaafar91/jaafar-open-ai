@@ -1249,9 +1249,14 @@ private fun exportMarkedPdf(
             try {
                 for (pageIdx in 0 until renderer.pageCount) {
                     val page = renderer.openPage(pageIdx)
+                    // Render at 3x resolution (≈216 DPI) so the exported PDF is
+                    // sharp rather than blurry on screen and when printed.
+                    val renderScale = 3
+                    val pageW = page.width.coerceAtLeast(1)
+                    val pageH = page.height.coerceAtLeast(1)
                     val bmp = Bitmap.createBitmap(
-                        page.width.coerceAtLeast(1),
-                        page.height.coerceAtLeast(1),
+                        pageW * renderScale,
+                        pageH * renderScale,
                         Bitmap.Config.ARGB_8888,
                     )
                     try {
@@ -1264,10 +1269,17 @@ private fun exportMarkedPdf(
                                 drawMarkOnBitmap(canvas, mark, bmp.width, bmp.height, pageIdx, context, fontOptions, signatures)
                             }
                         }
-                        val pageInfo = PdfDocument.PageInfo.Builder(bmp.width, bmp.height, pageIdx + 1).create()
+                        // Keep PDF page at original point dimensions; the high-res
+                        // bitmap is scaled down so PDF viewers render crisp content.
+                        val pageInfo = PdfDocument.PageInfo.Builder(pageW, pageH, pageIdx + 1).create()
                         val outPage = outputDocument.startPage(pageInfo)
                         outPage.canvas.drawColor(Color.WHITE)
-                        outPage.canvas.drawBitmap(bmp, 0f, 0f, null)
+                        outPage.canvas.drawBitmap(
+                            bmp,
+                            null,
+                            android.graphics.RectF(0f, 0f, pageW.toFloat(), pageH.toFloat()),
+                            Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+                        )
                         outputDocument.finishPage(outPage)
                     } finally {
                         bmp.recycle()
