@@ -76,8 +76,20 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun allFontOptions(): List<Pair<String, Typeface>> {
         val app = getApplication<Application>()
         val generated = projects.mapNotNull { project ->
+            if (project.drawings.isEmpty()) return@mapNotNull null
             val file = generatedFile(project.name)
-            if (file.exists()) runCatching { project.name to loadTypeface(file) }.getOrNull() else null
+            runCatching {
+                // Keep Library fonts usable and current even if the user has not opened Preview.
+                file.writeBytes(
+                    TrueTypeGenerator().generate(
+                        project.drawings,
+                        project.wordSpacingMm,
+                        project.letterSpacingMm,
+                        project.name,
+                    ),
+                )
+                project.name to loadTypeface(file)
+            }.getOrNull()
         }
         val imported = importedFonts.mapNotNull { font ->
             val file = File(app.filesDir, font.fileName)
@@ -85,16 +97,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         }
         return generated + imported
     }
-
-    /** Complete font catalog shared by every text editor. */
-    fun availableFontOptions(): List<Pair<String, Typeface>> = (
-        listOf(
-            "Default" to Typeface.DEFAULT,
-            "Sans-serif" to Typeface.SANS_SERIF,
-            "Serif" to Typeface.SERIF,
-            "Monospace" to Typeface.MONOSPACE,
-        ) + allFontOptions()
-    ).distinctBy { it.first }
 
     fun createProject(name: String): Boolean {
         val clean = name.trim()
