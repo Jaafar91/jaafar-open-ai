@@ -197,6 +197,29 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         syncActive(); persist(); status = "Glyph saved."
     }
 
+    fun saveDrawingAndContinue(drawing: GlyphDrawing) {
+        drawings[drawing.codePoint] = drawing
+        syncActive(); persist(); status = "Letter saved."
+        val order = activeCharacterOrder
+        val currentIndex = order.indexOf(drawing.codePoint).coerceAtLeast(0)
+        selectedCodePoint = (order.drop(currentIndex + 1) + order.take(currentIndex + 1))
+            .firstOrNull { it !in drawings }
+        isPagingMode = false
+    }
+
+    fun saveDrawingAndStay(drawing: GlyphDrawing) {
+        drawings[drawing.codePoint] = drawing
+        syncActive(); persist(); status = "Letter saved."
+        selectedCodePoint = drawing.codePoint
+        isPagingMode = false
+    }
+
+    fun saveDrawingAndClose(drawing: GlyphDrawing) {
+        drawings[drawing.codePoint] = drawing
+        syncActive(); persist(); status = "Letter saved."
+        closeEditor()
+    }
+
     fun generate() {
         val project = activeProject ?: return
         if (drawings.isEmpty()) { status = "Draw at least one character first."; return }
