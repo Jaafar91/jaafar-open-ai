@@ -304,7 +304,7 @@ private fun FillMarkEditorScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val fontOptions = remember(vm.projects.toList(), vm.importedFonts.toList(), vm.generatedFont) {
-        vm.availableFontOptions()
+        vm.allFontOptions()
     }
 
     // Document state
@@ -329,7 +329,7 @@ private fun FillMarkEditorScreen(
     // Per-tool config state (shared across marks for ergonomics)
     var configText by remember { mutableStateOf(initialText ?: "") }
     var configColorIdx by remember { mutableIntStateOf(0) }
-    var configFontIdx by remember { mutableIntStateOf(0) }
+    var configFontIdx by remember { mutableIntStateOf(-1) }
     var configSizeFraction by remember { mutableFloatStateOf(0.20f) }
     var configCheckStyle by remember { mutableStateOf(CheckStyle.Check) }
     val defaultSignatureName = vm.signatures.firstOrNull { it.imageFileName == null && it.name == vm.defaultSignatureName }?.name
@@ -419,7 +419,7 @@ private fun FillMarkEditorScreen(
         val m = marks.firstOrNull { it.id == selectedMarkId } ?: return@LaunchedEffect
         configText = m.text
         configColorIdx = textColors.indexOfFirst { it.second == m.colorArgb }.takeIf { it >= 0 } ?: 0
-        configFontIdx = fontOptions.indexOfFirst { it.first == (m.fontKey ?: "Default") }.takeIf { it >= 0 } ?: 0
+        configFontIdx = fontOptions.indexOfFirst { it.first == m.fontKey }.takeIf { it >= 0 } ?: -1
         configSizeFraction = m.sizeFraction
         configCheckStyle = m.checkStyle
         configSignatureName = m.signatureName
@@ -502,7 +502,7 @@ private fun FillMarkEditorScreen(
 
     // Export action – captured in a lambda so the icon button in the top bar can trigger it.
     fun triggerExport() {
-        val fontOptionsSnapshot = vm.availableFontOptions()
+        val fontOptionsSnapshot = vm.allFontOptions()
         val signaturesSnapshot = vm.signatures.toList()
         scope.launch {
             isProcessing = true
@@ -977,6 +977,12 @@ private fun TextMarkStyleControls(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            val defaultLabel = "Default"
+            if (fontIdx < 0) {
+                Button(onClick = {}) { Text(defaultLabel) }
+            } else {
+                OutlinedButton(onClick = { onFontChange(-1) }) { Text(defaultLabel) }
+            }
             fontOptions.forEachIndexed { idx, (name, _) ->
                 if (idx == fontIdx) {
                     Button(onClick = {}) { Text(name, maxLines = 1) }
