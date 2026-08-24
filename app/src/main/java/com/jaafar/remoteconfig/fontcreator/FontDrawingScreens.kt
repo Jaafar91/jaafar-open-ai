@@ -1,7 +1,6 @@
 package com.jaafar.remoteconfig.fontcreator
 
 import android.content.Intent
-import android.graphics.Typeface
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -12,11 +11,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -36,8 +37,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -253,15 +252,13 @@ private fun SpacingControl(
 @Composable internal fun GlyphEditorScreen(
     codePoint: Int,
     initial: GlyphDrawing?,
+    drawings: Map<Int, GlyphDrawing>,
     characterOrder: List<Int>,
     pagingMode: Boolean,
     pagingProgress: Pair<Int, Int>?,
     canGoPrevious: Boolean,
-    referenceTypeface: Typeface?,
     onCancel: () -> Unit,
     onPrevious: () -> Unit,
-    onNavigatePrevious: () -> Unit,
-    onNavigateNext: () -> Unit,
     onSelectCharacter: (Int) -> Unit,
     onSkip: () -> Unit,
     onSave: (GlyphDrawing) -> Unit,
@@ -291,8 +288,20 @@ private fun SpacingControl(
     val char = codePoint.toChar().toString()
     val title = "Letter $char"
     val characterIndex = characterOrder.indexOf(codePoint)
-    val canNavigatePrevious = characterIndex > 0
-    val canNavigateNext = characterIndex >= 0 && characterIndex < characterOrder.lastIndex
+    val letterBarState = rememberLazyListState()
+    LaunchedEffect(codePoint, characterOrder) {
+        if (characterIndex >= 0) {
+            letterBarState.scrollToItem(characterIndex)
+            withFrameNanos { _ -> }
+            val layout = letterBarState.layoutInfo
+            val item = layout.visibleItemsInfo.firstOrNull { it.index == characterIndex }
+            if (item != null) {
+                val viewportCenter = (layout.viewportStartOffset + layout.viewportEndOffset) / 2f
+                val itemCenter = item.offset + item.size / 2f
+                letterBarState.animateScrollBy(itemCenter - viewportCenter)
+            }
+        }
+    }
     val isLastInQueue = pagingProgress != null && pagingProgress.first == pagingProgress.second
     val saveLabel = when {
         isLastInQueue -> "Save & Finish"
@@ -374,53 +383,38 @@ private fun SpacingControl(
                     style = MaterialTheme.typography.labelLarge,
                     color = if (showSavedConfirmation) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                LazyRow(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp),
-                ) {
-                    item {
-                        FilledTonalIconButton(
-                            onClick = { navigateSafely(onNavigatePrevious) },
-                            enabled = canNavigatePrevious,
-                        ) { Text("‹") }
-                    }
-                    items(characterOrder) { candidate ->
-                        val selected = candidate == codePoint
-                        Surface(
-                            onClick = { if (!selected) navigateSafely { onSelectCharacter(candidate) } },
-                            shape = MaterialTheme.shapes.small,
-                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(48.dp),
-                        ) { Box(contentAlignment = Alignment.Center) { Text(candidate.toChar().toString(), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) } }
-                    }
-                    item {
-                        FilledTonalIconButton(
-                            onClick = { navigateSafely(onNavigateNext) },
-                            enabled = canNavigateNext,
-                        ) { Text("›") }
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val centerPadding = ((maxWidth - 48.dp) / 2).coerceAtLeast(0.dp)
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        state = letterBarState,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = PaddingValues(horizontal = centerPadding),
+                    ) {
+                        items(characterOrder) { candidate ->
+                            val selected = candidate == codePoint
+                            val savedDrawing = drawings[candidate]
+                            val tileColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                            val tileContentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            Surface(
+                                onClick = { if (!selected) navigateSafely { onSelectCharacter(candidate) } },
+                                shape = MaterialTheme.shapes.small,
+                                color = tileColor,
+                                contentColor = tileContentColor,
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                if (savedDrawing != null) {
+                                    GlyphBarPreview(savedDrawing, tileContentColor, Modifier.fillMaxSize().padding(6.dp))
+                                } else {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(candidate.toChar().toString(), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-            }
-            Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(
-                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text("REFERENCE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                    Text(
-                        char,
-                        style = MaterialTheme.typography.displayLarge,
-                        fontFamily = referenceTypeface?.let(::FontFamily),
-                    )
-                }
             }
             Text("Gray: ascender/descender · Red: baseline", style = MaterialTheme.typography.bodySmall)
             Canvas(
@@ -447,17 +441,6 @@ private fun SpacingControl(
                     },
             ) {
                 canvasSize = size.width to size.height
-                if (referenceTypeface != null) {
-                    drawIntoCanvas { canvas ->
-                        val refPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                            typeface = referenceTypeface
-                            textSize = size.height * 0.72f
-                            color = android.graphics.Color.argb(34, 0, 0, 0)
-                            textAlign = android.graphics.Paint.Align.CENTER
-                        }
-                        canvas.nativeCanvas.drawText(char, size.width / 2, size.height * 0.82f, refPaint)
-                    }
-                }
                 drawLine(Color.LightGray, Offset(0f, size.height * .1f), Offset(size.width, size.height * .1f), 2f)
                 drawLine(Color.Red, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f), 3f)
                 drawLine(Color.LightGray, Offset(0f, size.height * .94f), Offset(size.width, size.height * .94f), 2f)
@@ -526,6 +509,36 @@ private fun SpacingControl(
             ) { Text("Discard") }
             TextButton(onClick = { showDiscardDialog = false; pendingNavigation = null }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
             Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun GlyphBarPreview(drawing: GlyphDrawing, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val scale = minOf(
+            size.width / drawing.canvasWidth.coerceAtLeast(1f),
+            size.height / drawing.canvasHeight.coerceAtLeast(1f),
+        )
+        val offsetX = (size.width - drawing.canvasWidth * scale) / 2f
+        val offsetY = (size.height - drawing.canvasHeight * scale) / 2f
+        drawing.strokes.forEach { stroke ->
+            if (stroke.points.size > 1) {
+                drawPath(
+                    path = Path().apply {
+                        moveTo(offsetX + stroke.points.first().x * scale, offsetY + stroke.points.first().y * scale)
+                        stroke.points.drop(1).forEach { point ->
+                            lineTo(offsetX + point.x * scale, offsetY + point.y * scale)
+                        }
+                    },
+                    color = color,
+                    style = Stroke(
+                        width = (drawing.strokeWidth * scale).coerceAtLeast(1f),
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round,
+                    ),
+                )
+            }
         }
     }
 }
