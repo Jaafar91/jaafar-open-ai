@@ -129,6 +129,9 @@ fun FontCreatorApp(
             extraLarge = RoundedCornerShape(32.dp),
         ),
     ) {
+        val referenceTypeface = remember(viewModel.referenceFontKey, viewModel.projects.size, viewModel.importedFonts.size) {
+            viewModel.referenceTypeface()
+        }
         when {
             showTutorial -> FeatureTutorial(
                 onFinished = {
@@ -149,6 +152,7 @@ fun FontCreatorApp(
                 pagingMode = viewModel.isPagingMode,
                 pagingProgress = viewModel.pagingProgress,
                 canGoPrevious = viewModel.canGoToPreviousLetter,
+                referenceTypeface = referenceTypeface,
                 onCancel = viewModel::closeEditor,
                 onPrevious = viewModel::previousLetter,
                 onSelectCharacter = viewModel::edit,

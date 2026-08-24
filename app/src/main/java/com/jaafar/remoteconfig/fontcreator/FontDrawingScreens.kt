@@ -1,6 +1,7 @@
 package com.jaafar.remoteconfig.fontcreator
 
 import android.content.Intent
+import android.graphics.Typeface
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -37,6 +38,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -113,6 +117,11 @@ import com.jaafar.remoteconfig.R
             Icon(Icons.Filled.Visibility, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text("Try your font")
+        }
+        OutlinedButton(onClick = vm::editLetters, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Edit, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Edit letters")
         }
     }
 
@@ -257,6 +266,7 @@ private fun SpacingControl(
     pagingMode: Boolean,
     pagingProgress: Pair<Int, Int>?,
     canGoPrevious: Boolean,
+    referenceTypeface: Typeface?,
     onCancel: () -> Unit,
     onPrevious: () -> Unit,
     onSelectCharacter: (Int) -> Unit,
@@ -272,6 +282,7 @@ private fun SpacingControl(
     var strokeWidth by remember { mutableFloatStateOf(initial?.strokeWidth ?: 8f) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
+    var showReference by remember { mutableStateOf(false) }
     var showSavedConfirmation by remember(codePoint) { mutableStateOf(false) }
     var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var savedStrokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
@@ -340,19 +351,27 @@ private fun SpacingControl(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                     ) { Text("Previous") }
                 }
-                if (!pagingMode) Box {
+                Box {
                     IconButton(onClick = { showMoreMenu = true }) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "More options")
                     }
                     DropdownMenu(expanded = showMoreMenu, onDismissRequest = { showMoreMenu = false }) {
                         DropdownMenuItem(
-                            text = { Text("Save & close") },
-                            enabled = strokes.isNotEmpty(),
-                            onClick = {
-                                showMoreMenu = false
-                                onSaveAndClose(drawing())
-                            },
+                            text = { Text("Reference letter") },
+                            trailingIcon = { Checkbox(checked = showReference, onCheckedChange = null) },
+                            onClick = { showReference = !showReference; showMoreMenu = false },
                         )
+                        if (!pagingMode) {
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Save & close") },
+                                enabled = strokes.isNotEmpty(),
+                                onClick = {
+                                    showMoreMenu = false
+                                    onSaveAndClose(drawing())
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -416,7 +435,7 @@ private fun SpacingControl(
                 }
                 Spacer(Modifier.height(8.dp))
             }
-            Text("Gray: ascender/descender · Red: baseline", style = MaterialTheme.typography.bodySmall)
+            Text("Use the guides to keep every letter aligned and evenly sized.", style = MaterialTheme.typography.bodySmall)
             Canvas(
                 Modifier
                     .fillMaxWidth()
@@ -441,9 +460,18 @@ private fun SpacingControl(
                     },
             ) {
                 canvasSize = size.width to size.height
-                drawLine(Color.LightGray, Offset(0f, size.height * .1f), Offset(size.width, size.height * .1f), 2f)
-                drawLine(Color.Red, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f), 3f)
-                drawLine(Color.LightGray, Offset(0f, size.height * .94f), Offset(size.width, size.height * .94f), 2f)
+                if (showReference && referenceTypeface != null) {
+                    drawIntoCanvas { canvas ->
+                        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                            typeface = referenceTypeface
+                            textSize = size.height * .68f
+                            color = android.graphics.Color.argb(35, 25, 35, 55)
+                            textAlign = android.graphics.Paint.Align.CENTER
+                        }
+                        canvas.nativeCanvas.drawText(char, size.width / 2f, size.height * .78f, paint)
+                    }
+                }
+                drawFontGuides()
                 (strokes.map { it.points } + listOf(active)).forEach { points ->
                     if (points.size > 1) {
                         drawPath(
@@ -541,4 +569,40 @@ private fun GlyphBarPreview(drawing: GlyphDrawing, color: Color, modifier: Modif
             }
         }
     }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawFontGuides() {
+    data class Guide(val fraction: Float, val label: String, val color: Color, val width: Float)
+    val guides = listOf(
+        Guide(.10f, "Ascender · 10%", Color(0xFF64748B), 1.5f),
+        Guide(.20f, "Cap height · 20%", Color(0xFF3B82F6), 1.5f),
+        Guide(.42f, "x-height · 42%", Color(0xFF3B82F6), 1.5f),
+        Guide(.78f, "Baseline · 78%", Color(0xFFDC2626), 2.5f),
+        Guide(.94f, "Descender · 94%", Color(0xFF64748B), 1.5f),
+    )
+    val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 10.sp.toPx()
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+    guides.forEach { guide ->
+        val y = size.height * guide.fraction
+        drawLine(guide.color.copy(alpha = .7f), Offset(0f, y), Offset(size.width, y), guide.width.dp.toPx())
+        labelPaint.color = guide.color.toArgb()
+        labelPaint.textAlign = android.graphics.Paint.Align.LEFT
+        drawContext.canvas.nativeCanvas.drawText(guide.label, 6.dp.toPx(), (y - 4.dp.toPx()).coerceAtLeast(11.dp.toPx()), labelPaint)
+    }
+
+    val sideGuideColor = Color(0xFF94A3B8).copy(alpha = .55f)
+    val left = size.width * .08f
+    val center = size.width * .5f
+    val right = size.width * .92f
+    drawLine(sideGuideColor, Offset(left, 0f), Offset(left, size.height), 1.dp.toPx())
+    drawLine(sideGuideColor, Offset(center, 0f), Offset(center, size.height), 1.dp.toPx())
+    drawLine(sideGuideColor, Offset(right, 0f), Offset(right, size.height), 1.dp.toPx())
+    labelPaint.color = android.graphics.Color.rgb(100, 116, 139)
+    labelPaint.textAlign = android.graphics.Paint.Align.CENTER
+    val measureY = size.height - 6.dp.toPx()
+    drawContext.canvas.nativeCanvas.drawText("8%", left, measureY, labelPaint)
+    drawContext.canvas.nativeCanvas.drawText("center", center, measureY, labelPaint)
+    drawContext.canvas.nativeCanvas.drawText("92%", right, measureY, labelPaint)
 }
