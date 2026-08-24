@@ -19,9 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
@@ -68,63 +65,64 @@ import com.jaafar.remoteconfig.R
 }) {
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phrase by remember { mutableStateOf("") }
+    val project = vm.activeProject
     val total = vm.activeCharacterOrder.size
     val drawn = vm.drawings.size
     val nextCode = vm.activeCharacterOrder.firstOrNull { it !in vm.drawings }
-    val categories = CharacterCategory.entries.filter { category -> vm.activeCharacterOrder.any(category::contains) }
-    var selectedCategory by remember(vm.activeProject) { mutableStateOf(categories.firstOrNull()) }
-    val visibleCharacters = vm.activeCharacterOrder.filter { selectedCategory?.contains(it) == true }
 
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("$drawn of $total letters completed", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        if (drawn > 0) TextButton(onClick = { vm.generate(); preview() }) { Text("Preview font") }
+    Text(project?.name.orEmpty(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+    Text("Draw one letter at a time.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("$drawn of $total letters", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (total > 0) LinearProgressIndicator(progress = (drawn.toFloat() / total).coerceIn(0f, 1f), modifier = Modifier.fillMaxWidth())
+        }
     }
-    if (total > 0) LinearProgressIndicator(progress = (drawn.toFloat() / total).coerceIn(0f, 1f), modifier = Modifier.fillMaxWidth())
 
-    if (nextCode != null) {
+    if (drawn == 0 && nextCode != null) {
+        Text("Start your font", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Button(onClick = { vm.edit(nextCode) }, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Edit, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text("Draw next letter · ${nextCode.toChar()}")
+            Text("Start drawing")
+        }
+        OutlinedButton(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Edit, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Use a phrase")
+        }
+    } else if (nextCode != null) {
+        Text("Keep building your font.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Button(onClick = { vm.edit(nextCode) }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Edit, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Continue drawing")
+        }
+        OutlinedButton(onClick = { phrase = ""; showPhraseDialog = true }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Edit, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Draw letters from a phrase")
+        }
+        OutlinedButton(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Visibility, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Try your font")
         }
     } else {
+        Text("Your letter set is complete.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Button(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Visibility, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text("Preview font")
+            Text("Try your font")
         }
     }
 
-    if (categories.isNotEmpty()) {
-        ScrollableTabRow(
-            selectedTabIndex = categories.indexOf(selectedCategory).coerceAtLeast(0),
-            edgePadding = 0.dp,
-        ) {
-            categories.forEach { category ->
-                Tab(
-                    selected = category == selectedCategory,
-                    onClick = { selectedCategory = category },
-                    text = { Text(category.shortLabel) },
-                )
-            }
+    if (drawn > 0) {
+        OutlinedButton(onClick = adjustSpacing, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Tune, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Adjust spacing")
         }
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(64.dp),
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            contentPadding = PaddingValues(vertical = 4.dp),
-        ) {
-            items(visibleCharacters) { codePoint ->
-                LetterTile(
-                    codePoint = codePoint,
-                    drawing = vm.drawings[codePoint],
-                    onClick = { vm.edit(codePoint) },
-                )
-            }
-        }
-    }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-        TextButton(onClick = { phrase = ""; showPhraseDialog = true }) { Text("Draw from phrase") }
-        if (drawn > 0) TextButton(onClick = adjustSpacing) { Text("Adjust spacing") }
     }
     if (showPhraseDialog) AlertDialog(
         onDismissRequest = { showPhraseDialog = false },
@@ -528,68 +526,6 @@ private fun SpacingControl(
             ) { Text("Discard") }
             TextButton(onClick = { showDiscardDialog = false; pendingNavigation = null }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
             Spacer(Modifier.height(16.dp))
-        }
-    }
-}
-
-private enum class CharacterCategory {
-    Uppercase, Lowercase, Numbers, Symbols
-}
-
-private val CharacterCategory.shortLabel: String get() = when (this) {
-    CharacterCategory.Uppercase -> "ABC"
-    CharacterCategory.Lowercase -> "abc"
-    CharacterCategory.Numbers -> "123"
-    CharacterCategory.Symbols -> "Symbols"
-}
-
-private fun CharacterCategory.contains(codePoint: Int): Boolean = when (this) {
-    CharacterCategory.Uppercase -> codePoint.toChar().isUpperCase()
-    CharacterCategory.Lowercase -> codePoint.toChar().let { it.isLowerCase() || (it.isLetter() && !it.isUpperCase()) }
-    CharacterCategory.Numbers -> codePoint.toChar().isDigit()
-    CharacterCategory.Symbols -> !codePoint.toChar().isLetterOrDigit()
-}
-
-@Composable
-private fun LetterTile(codePoint: Int, drawing: GlyphDrawing?, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.padding(4.dp).aspectRatio(1f),
-        shape = MaterialTheme.shapes.small,
-        color = if (drawing == null) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.secondaryContainer,
-        border = androidx.compose.foundation.BorderStroke(
-            if (drawing == null) 1.dp else 0.dp,
-            if (drawing == null) MaterialTheme.colorScheme.outline else Color.Transparent,
-        ),
-    ) {
-        if (drawing != null) {
-            GlyphPreviewCanvas(drawing, Modifier.fillMaxSize().padding(8.dp))
-        } else {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(codePoint.toChar().toString(), style = MaterialTheme.typography.titleLarge)
-                    Text("+", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GlyphPreviewCanvas(drawing: GlyphDrawing, modifier: Modifier = Modifier) {
-    val strokeColor = MaterialTheme.colorScheme.onSurfaceVariant
-    Canvas(modifier) {
-        val scaleX = size.width / drawing.canvasWidth.coerceAtLeast(1f)
-        val scaleY = size.height / drawing.canvasHeight.coerceAtLeast(1f)
-        drawing.strokes.forEach { stroke ->
-            if (stroke.points.size > 1) drawPath(
-                path = Path().apply {
-                    moveTo(stroke.points.first().x * scaleX, stroke.points.first().y * scaleY)
-                    stroke.points.drop(1).forEach { lineTo(it.x * scaleX, it.y * scaleY) }
-                },
-                color = strokeColor,
-                style = Stroke((drawing.strokeWidth * minOf(scaleX, scaleY)).coerceAtLeast(1f), cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
         }
     }
 }
