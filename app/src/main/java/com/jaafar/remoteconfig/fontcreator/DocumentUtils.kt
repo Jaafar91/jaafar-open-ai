@@ -28,6 +28,14 @@ import kotlinx.coroutines.withContext
 
 internal data class SignedDocument(val file: File, val mimeType: String)
 
+/**
+ * Renders [pageIndex] of the PDF at [uri] into a [Bitmap].
+ *
+ * The returned bitmap is rendered at **2× the page's point dimensions** so it
+ * looks sharp on high-density screens. Callers must not use the bitmap's pixel
+ * dimensions to infer the page's logical size; use [page.width]/[page.height]
+ * (i.e. the bitmap dimensions divided by the render scale) for that purpose.
+ */
 internal fun renderPdfPage(context: Context, uri: Uri, pageIndex: Int): Bitmap? {
     val descriptor = context.contentResolver.openFileDescriptor(uri, "r") ?: return null
     return descriptor.use { pfd ->
@@ -35,9 +43,11 @@ internal fun renderPdfPage(context: Context, uri: Uri, pageIndex: Int): Bitmap? 
             val safeIndex = pageIndex.coerceIn(0, renderer.pageCount - 1)
             val page = renderer.openPage(safeIndex)
             try {
+                // Render at 2x resolution to avoid blurry preview on high-density screens.
+                val renderScale = 2
                 val bitmap = Bitmap.createBitmap(
-                    page.width.coerceAtLeast(1),
-                    page.height.coerceAtLeast(1),
+                    (page.width * renderScale).coerceAtLeast(1),
+                    (page.height * renderScale).coerceAtLeast(1),
                     Bitmap.Config.ARGB_8888,
                 )
                 bitmap.eraseColor(Color.WHITE)
@@ -286,9 +296,14 @@ private fun signPdf(
             try {
                 for (index in 0 until renderer.pageCount) {
                     val page = renderer.openPage(index)
+                    // Render at 3x resolution (≈216 DPI) so that the rasterised
+                    // content stored in the output PDF is sharp and not blurry.
+                    val renderScale = 3
+                    val pageW = page.width.coerceAtLeast(1)
+                    val pageH = page.height.coerceAtLeast(1)
                     val bitmap = Bitmap.createBitmap(
-                        page.width.coerceAtLeast(1),
-                        page.height.coerceAtLeast(1),
+                        pageW * renderScale,
+                        pageH * renderScale,
                         Bitmap.Config.ARGB_8888,
                     )
                     try {
@@ -300,10 +315,18 @@ private fun signPdf(
                                 widthFraction, offsetXFraction, offsetYFraction, signatureBitmap,
                             )
                         }
-                        val pageInfo = PdfDocument.PageInfo.Builder(bitmap.width, bitmap.height, index + 1).create()
+                        // The output PDF page uses original point dimensions; the
+                        // high-resolution bitmap is scaled down onto the canvas so
+                        // PDF viewers display crisp, non-blurry content.
+                        val pageInfo = PdfDocument.PageInfo.Builder(pageW, pageH, index + 1).create()
                         val outputPage = outputDocument.startPage(pageInfo)
                         outputPage.canvas.drawColor(Color.WHITE)
-                        outputPage.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                        outputPage.canvas.drawBitmap(
+                            bitmap,
+                            null,
+                            android.graphics.RectF(0f, 0f, pageW.toFloat(), pageH.toFloat()),
+                            Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+                        )
                         outputDocument.finishPage(outputPage)
                     } finally {
                         bitmap.recycle()
