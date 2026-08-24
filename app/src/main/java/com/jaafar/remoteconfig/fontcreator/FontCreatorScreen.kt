@@ -147,7 +147,6 @@ fun FontCreatorApp(
             viewModel.selectedCodePoint != null -> GlyphEditorScreen(
                 codePoint = viewModel.selectedCodePoint!!,
                 initial = viewModel.drawings[viewModel.selectedCodePoint],
-                drawings = viewModel.drawings,
                 characterOrder = viewModel.activeCharacterOrder,
                 pagingMode = viewModel.isPagingMode,
                 pagingProgress = viewModel.pagingProgress,
@@ -160,6 +159,9 @@ fun FontCreatorApp(
                 onSelectCharacter = viewModel::edit,
                 onSkip = viewModel::skipLetter,
                 onSave = viewModel::saveDrawing,
+                onSaveAndContinue = viewModel::saveDrawingAndContinue,
+                onSaveAndStay = viewModel::saveDrawingAndStay,
+                onSaveAndClose = viewModel::saveDrawingAndClose,
             )
             else -> when (screen) {
                 Screen.Home -> HomeScreen(viewModel, { screen = it })
@@ -205,7 +207,6 @@ fun FontCreatorApp(
                 Screen.Letters -> LettersScreen(
                     vm = viewModel,
                     back = { screen = Screen.Library },
-                    editLetters = viewModel::editLetters,
                     preview = { screen = Screen.FontReady },
                     adjustSpacing = { screen = Screen.Spacing },
                     setPreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
