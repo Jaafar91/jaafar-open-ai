@@ -86,6 +86,16 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return generated + imported
     }
 
+    /** Complete font catalog shared by every text editor. */
+    fun availableFontOptions(): List<Pair<String, Typeface>> = (
+        listOf(
+            "Default" to Typeface.DEFAULT,
+            "Sans-serif" to Typeface.SANS_SERIF,
+            "Serif" to Typeface.SERIF,
+            "Monospace" to Typeface.MONOSPACE,
+        ) + allFontOptions()
+    ).distinctBy { it.first }
+
     fun createProject(name: String): Boolean {
         val clean = name.trim()
         if (clean.isBlank()) { status = "Enter a name for the font."; return false }
