@@ -233,7 +233,7 @@ private fun SpacingControl(
     pagingMode: Boolean,
     pagingProgress: Pair<Int, Int>?,
     canGoPrevious: Boolean,
-    referenceTypeface: Typeface?,
+    referenceTypeface: Typeface,
     onCancel: () -> Unit,
     onPrevious: () -> Unit,
     onSelectCharacter: (Int) -> Unit,
@@ -416,7 +416,7 @@ private fun SpacingControl(
                     },
             ) {
                 canvasSize = size.width to size.height
-                if (showReference && referenceTypeface != null) {
+                if (showReference) {
                     drawIntoCanvas { canvas ->
                         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                             typeface = referenceTypeface
