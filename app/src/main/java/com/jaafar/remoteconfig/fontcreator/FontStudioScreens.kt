@@ -59,13 +59,10 @@ import com.jaafar.remoteconfig.R
     editLetters: () -> Unit,
     showReady: () -> Unit,
     useOnImage: (String) -> Unit,
-    setPreviewText: (String) -> Unit,
 ) {
     val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
-    var showAddCharsSetupDialog by remember { mutableStateOf(false) }
-    var setupCharsText by remember { mutableStateOf("") }
     var showImportNameDialog by remember { mutableStateOf(false) }
     var importPendingUri by remember { mutableStateOf<Uri?>(null) }
     var importDisplayName by remember { mutableStateOf("") }
@@ -125,7 +122,7 @@ import com.jaafar.remoteconfig.R
                 keyboardController?.show()
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Next, you will choose the letters to draw. You can add more any time.")
+                Text("Next, you will start drawing your letters. You can return and continue any time.")
                 OutlinedTextField(
                     name,
                     { name = it },
@@ -144,10 +141,9 @@ import com.jaafar.remoteconfig.R
                 if (vm.createProject(name)) {
                     showCreateDialog = false
                     name = ""
-                    setupCharsText = ""
-                    showAddCharsSetupDialog = true
+                    editLetters()
                 }
-            }, enabled = name.isNotBlank() && !duplicateProjectName) { Text("Choose letters") }
+            }, enabled = name.isNotBlank() && !duplicateProjectName) { Text("Create font") }
         },
         dismissButton = { TextButton(onClick = { showCreateDialog = false; name = "" }) { Text("Cancel") } },
     )
@@ -168,27 +164,6 @@ import com.jaafar.remoteconfig.R
             }, enabled = importDisplayName.isNotBlank()) { Text("Import") }
         },
         dismissButton = { TextButton(onClick = { showImportNameDialog = false; importPendingUri = null }) { Text("Cancel") } },
-    )
-    if (showAddCharsSetupDialog) AlertDialog(
-        onDismissRequest = { showAddCharsSetupDialog = false; editLetters() },
-        title = { Text("Start with the letters you need") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Optional: paste a useful phrase. We will put its letters first. You can also choose letters yourself.")
-                OutlinedTextField(setupCharsText, { setupCharsText = it }, Modifier.fillMaxWidth(), label = { Text("Useful phrase") }, minLines = 3)
-            }
-        },
-        confirmButton = {
-            if (setupCharsText.isNotBlank()) {
-                Button(onClick = {
-                    vm.drawMissingCharacters(setupCharsText)
-                    setPreviewText(setupCharsText)
-                    showAddCharsSetupDialog = false
-                    editLetters()
-                }) { Text("Use this phrase") }
-            }
-        },
-        dismissButton = { TextButton(onClick = { showAddCharsSetupDialog = false; editLetters() }) { Text("Choose letters myself") } },
     )
 }
 
