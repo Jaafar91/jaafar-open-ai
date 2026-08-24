@@ -73,6 +73,7 @@ import com.jaafar.remoteconfig.R
     val featuredProject = featuredIndex?.let { vm.projects.getOrNull(it) }
     val createNameFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val duplicateProjectName = name.trim().isNotEmpty() && vm.hasProjectName(name)
 
     val fontFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -131,6 +132,10 @@ import com.jaafar.remoteconfig.R
                     Modifier.fillMaxWidth().focusRequester(createNameFocusRequester),
                     label = { Text("Font name") },
                     singleLine = true,
+                    isError = duplicateProjectName,
+                    supportingText = {
+                        if (duplicateProjectName) Text("A font with that name already exists.")
+                    },
                 )
             }
         },
@@ -142,7 +147,7 @@ import com.jaafar.remoteconfig.R
                     setupCharsText = ""
                     showAddCharsSetupDialog = true
                 }
-            }, enabled = name.isNotBlank()) { Text("Choose letters") }
+            }, enabled = name.isNotBlank() && !duplicateProjectName) { Text("Choose letters") }
         },
         dismissButton = { TextButton(onClick = { showCreateDialog = false; name = "" }) { Text("Cancel") } },
     )

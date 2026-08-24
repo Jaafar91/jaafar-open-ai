@@ -144,4 +144,14 @@ internal fun removeNearWhitePixels(source: Bitmap, threshold: Int = 240): Bitmap
 internal fun normalizedFontStorageKey(name: String): String =
     name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 
+internal fun isDuplicateFontProjectName(existingNames: List<String>, candidate: String): Boolean {
+    val clean = candidate.trim()
+    if (clean.isBlank()) return false
+    val requestedStorageKey = normalizedFontStorageKey(clean)
+    if (requestedStorageKey.isBlank()) return false
+    return existingNames.any { existing ->
+        existing.equals(clean, ignoreCase = true) || normalizedFontStorageKey(existing) == requestedStorageKey
+    }
+}
+
 internal fun hypotSquared(a: GlyphPoint, b: GlyphPoint): Float { val dx = a.x - b.x; val dy = a.y - b.y; return dx * dx + dy * dy }
