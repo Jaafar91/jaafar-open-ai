@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.jaafar.remoteconfig.R
 
@@ -136,9 +137,7 @@ import com.jaafar.remoteconfig.R
         text = {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(5),
-                modifier = Modifier.heightIn(max = 280.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
             ) {
                 items(
                     vm.drawings.keys.sortedWith(
@@ -152,20 +151,27 @@ import com.jaafar.remoteconfig.R
                         }.thenBy { it },
                     ),
                 ) { codePoint ->
-                    OutlinedButton(
+                    FilledTonalButton(
                         onClick = {
                             showEditDrawnLetters = false
                             vm.edit(codePoint)
                         },
                         contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                        shape = RoundedCornerShape(0.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        ),
                     ) {
-                        Text(codePoint.toChar().toString())
+                        Text(codePoint.toChar().toString(), style = MaterialTheme.typography.bodyLarge)
                     }
                 }
             }
         },
         confirmButton = { TextButton(onClick = { showEditDrawnLetters = false }) { Text("Done") } },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.9f),
     )
 
     if (showPhraseDialog) AlertDialog(
