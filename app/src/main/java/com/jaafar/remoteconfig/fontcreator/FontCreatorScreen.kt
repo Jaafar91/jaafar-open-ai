@@ -147,6 +147,7 @@ fun FontCreatorApp(
             viewModel.selectedCodePoint != null -> GlyphEditorScreen(
                 codePoint = viewModel.selectedCodePoint!!,
                 initial = viewModel.drawings[viewModel.selectedCodePoint],
+                defaultStrokeWidth = viewModel.lastStrokeWidth,
                 drawings = viewModel.drawings,
                 characterOrder = viewModel.activeCharacterOrder,
                 pagingMode = viewModel.isPagingMode,
