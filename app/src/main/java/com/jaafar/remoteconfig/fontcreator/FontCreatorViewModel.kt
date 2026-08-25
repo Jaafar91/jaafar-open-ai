@@ -45,6 +45,12 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return letters + digits + symbols
     }
 
+    val phraseCharacterOrder: List<Int>
+        get() = applicablePhraseCodePoints(lastPhrase, activeCharacterOrder.toSet())
+
+    val editorCharacterOrder: List<Int>
+        get() = if (phraseModeEnabled) phraseCharacterOrder else activeCharacterOrder
+
     fun characterCount(project: FontProject): Int = project.selectedLanguages
         .flatMap { it.codePoints }
         .distinct()
