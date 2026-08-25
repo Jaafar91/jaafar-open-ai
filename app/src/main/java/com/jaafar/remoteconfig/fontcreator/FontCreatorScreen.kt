@@ -148,7 +148,7 @@ fun FontCreatorApp(
                 initial = viewModel.drawings[viewModel.selectedCodePoint],
                 defaultStrokeWidth = viewModel.lastStrokeWidth,
                 drawings = viewModel.drawings,
-                characterOrder = viewModel.activeCharacterOrder,
+                characterOrder = viewModel.editorCharacterOrder,
                 pagingMode = viewModel.isPagingMode,
                 pagingProgress = viewModel.pagingProgress,
                 canGoPrevious = viewModel.canGoToPreviousLetter,
