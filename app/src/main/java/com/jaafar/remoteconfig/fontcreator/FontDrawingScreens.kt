@@ -338,6 +338,7 @@ private fun SpacingControl(
     val char = codePoint.toChar().toString()
     val title = "Draw $char"
     val characterIndex = characterOrder.indexOf(codePoint)
+    val completedCharacterCount = characterOrder.count { it in drawings }
     val letterBarState = rememberLazyListState()
     LaunchedEffect(codePoint, characterOrder) {
         if (characterIndex >= 0) {
@@ -372,7 +373,7 @@ private fun SpacingControl(
     Scaffold(
         topBar = {
             AppTopBar(title, handleBack) {
-                if (pagingMode && canGoPrevious) {
+                if (pagingMode && !phraseModeEnabled && canGoPrevious) {
                     OutlinedButton(
                         onClick = onPrevious,
                         modifier = Modifier
@@ -410,7 +411,7 @@ private fun SpacingControl(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (!pagingMode) {
+            if (!pagingMode || phraseModeEnabled) {
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val centerPadding = ((maxWidth - 48.dp) / 2).coerceAtLeast(0.dp)
                     LazyRow(
@@ -452,14 +453,14 @@ private fun SpacingControl(
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "${drawings.size} / ${characterOrder.size} completed",
+                    "$completedCharacterCount / ${characterOrder.size} completed",
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             LinearProgressIndicator(
-                progress = if (characterOrder.isEmpty()) 0f else (drawings.size.toFloat() / characterOrder.size).coerceIn(0f, 1f),
+                progress = if (characterOrder.isEmpty()) 0f else (completedCharacterCount.toFloat() / characterOrder.size).coerceIn(0f, 1f),
                 modifier = Modifier.fillMaxWidth().height(3.dp),
             )
             Spacer(Modifier.height(4.dp))
@@ -530,7 +531,7 @@ private fun SpacingControl(
                 IconButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
                     Icon(Icons.Default.Clear, contentDescription = "Clear")
                 }
-                if (pagingMode) TextButton(onSkip) { Text("Skip") }
+                if (pagingMode && !phraseModeEnabled) TextButton(onSkip) { Text("Skip") }
                 Button(savePrimary, Modifier.weight(1f), enabled = strokes.isNotEmpty() && (isDirty || initial == null || pagingMode)) {
                     Text(saveLabel, maxLines = 1)
                 }
