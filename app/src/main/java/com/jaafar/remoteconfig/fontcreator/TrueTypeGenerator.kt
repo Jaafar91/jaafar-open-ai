@@ -46,7 +46,7 @@ class TrueTypeGenerator {
         val contours = drawing.strokes.mapNotNull { stroke ->
             val source = stroke.points.map(::convert).distinct()
             if (source.size < 2) return@mapNotNull null
-            val radius = 55.0
+            val radius = glyphStrokeRadius(drawing.strokeWidth).toDouble()
             val left = ArrayList<P>()
             val right = ArrayList<P>()
             source.forEachIndexed { index, point ->
@@ -217,3 +217,7 @@ class TrueTypeGenerator {
         fun toByteArray() = data.toByteArray()
     }
 }
+
+/** Maps the editor's 2..24 thickness scale into TTF outline radius units. */
+internal fun glyphStrokeRadius(strokeWidth: Float): Float =
+    (55f * (strokeWidth / 8f)).coerceIn(14f, 165f)
