@@ -114,7 +114,12 @@ import com.jaafar.remoteconfig.R
             Text("Use this font on an image")
         }
     } else {
-        Text("Your letter set is complete.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text("Your font is ready!", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            "You completed all characters. Now put your handwriting to use.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Button(onClick = useCurrentFont, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Image, contentDescription = null)
             Spacer(Modifier.width(8.dp))
@@ -342,8 +347,9 @@ private fun SpacingControl(
         }
     }
     val isLastInQueue = pagingProgress != null && pagingProgress.first == pagingProgress.second
+    val isFinalMissingCharacter = initial == null && codePoint !in drawings && characterOrder.count { it !in drawings } == 1
     val saveLabel = when {
-        isLastInQueue -> "Save & Finish"
+        isLastInQueue || isFinalMissingCharacter -> "Save & Finish"
         pagingMode -> "Save & Next"
         else -> "Save"
     }

@@ -273,14 +273,13 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun saveDrawingAndContinue(drawing: GlyphDrawing) {
+        val wasExisting = drawing.codePoint in drawings
         lastStrokeWidth = drawing.strokeWidth
         drawings[drawing.codePoint] = drawing
         syncActive(); persist(); status = "Letter saved."
         val order = activeCharacterOrder
-        val currentIndex = order.indexOf(drawing.codePoint).coerceAtLeast(0)
-        val charactersAfterCurrent = order.drop(currentIndex + 1) + order.take(currentIndex + 1)
-        selectedCodePoint = charactersAfterCurrent.firstOrNull { it !in drawings }
-            ?: order.takeIf { it.isNotEmpty() }?.get((currentIndex + 1) % order.size)
+        selectedCodePoint = characterAfterSave(order, drawing.codePoint, drawings.keys, wasExisting)
+        if (selectedCodePoint == null && !wasExisting) status = "Your font is ready."
         isPagingMode = false
     }
 
@@ -535,4 +534,13 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     private fun persistSignatures() { val snapshot = signatures.toList(); executor.execute { signatureRepository.save(snapshot) } }
     private fun persistImportedFonts() { val snapshot = importedFonts.toList(); executor.execute { importedFontRepository.save(snapshot) } }
     override fun onCleared() { syncActive(); executor.shutdown(); super.onCleared() }
+}
+
+internal fun characterAfterSave(order: List<Int>, current: Int, drawn: Set<Int>, wasExisting: Boolean): Int? {
+    if (order.isEmpty()) return null
+    if (!wasExisting && order.all { it in drawn }) return null
+    val currentIndex = order.indexOf(current).takeIf { it >= 0 } ?: 0
+    val charactersAfterCurrent = order.drop(currentIndex + 1) + order.take(currentIndex + 1)
+    return charactersAfterCurrent.firstOrNull { it !in drawn }
+        ?: order[(currentIndex + 1) % order.size]
 }
