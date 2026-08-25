@@ -228,7 +228,14 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return true
     }
 
-    fun startPaging() = startQueue(activeCharacterOrder.filter { it !in drawings }, "All supported characters have already been drawn.")
+    fun startPaging() {
+        if (phraseModeEnabled && phraseCharacterOrder.isNotEmpty()) {
+            val start = lastEditedCodePoint?.takeIf { it in phraseCharacterOrder } ?: phraseCharacterOrder.first()
+            edit(start)
+            return
+        }
+        startQueue(activeCharacterOrder.filter { it !in drawings }, "All supported characters have already been drawn.")
+    }
 
     fun startPhrase(phrase: String): Boolean {
         val cleanPhrase = phrase.trim()
@@ -250,8 +257,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         val missingCharacters = phraseCharacters.filter { it !in drawings }
         if (missingCharacters.isEmpty()) {
             closeEditor()
-            phraseModeEnabled = false
-            prefs.edit().putBoolean(PREFS_PHRASE_MODE, false).apply()
             status = "Phrase ready — all required characters are already available."
         } else {
             startQueue(missingCharacters, "Phrase ready — all required characters are already available.")
@@ -320,10 +325,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         selectedCodePoint = if (isPagingMode && pagingQueue.isNotEmpty()) pagingQueue.first() else null
         val phraseFinished = selectedCodePoint == null && phraseModeEnabled
         if (selectedCodePoint == null) isPagingMode = false
-        if (phraseFinished) {
-            phraseModeEnabled = false
-            prefs.edit().putBoolean(PREFS_PHRASE_MODE, false).apply()
-        }
         syncActive(); persist(); status = if (phraseFinished) "Phrase ready." else "Glyph saved."
     }
 
