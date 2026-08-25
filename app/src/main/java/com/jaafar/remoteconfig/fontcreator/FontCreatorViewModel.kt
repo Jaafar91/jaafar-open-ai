@@ -218,8 +218,9 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         syncActive(); persist(); status = "Letter saved."
         val order = activeCharacterOrder
         val currentIndex = order.indexOf(drawing.codePoint).coerceAtLeast(0)
-        selectedCodePoint = (order.drop(currentIndex + 1) + order.take(currentIndex + 1))
-            .firstOrNull { it !in drawings }
+        val charactersAfterCurrent = order.drop(currentIndex + 1) + order.take(currentIndex + 1)
+        selectedCodePoint = charactersAfterCurrent.firstOrNull { it !in drawings }
+            ?: order.getOrNull(currentIndex + 1)
         isPagingMode = false
     }
 
