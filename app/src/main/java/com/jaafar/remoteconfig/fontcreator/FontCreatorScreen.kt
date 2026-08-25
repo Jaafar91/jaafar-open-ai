@@ -153,6 +153,18 @@ fun FontCreatorApp(
                 pagingProgress = viewModel.pagingProgress,
                 canGoPrevious = viewModel.canGoToPreviousLetter,
                 referenceTypeface = referenceTypeface,
+                phraseModeEnabled = viewModel.phraseModeEnabled,
+                phraseText = viewModel.lastPhrase,
+                onCreatePhrase = { phrase ->
+                    if (viewModel.startPhrase(phrase)) {
+                        previewText = phrase.trim()
+                        preferences.edit().putString("preview_text", previewText).apply()
+                        true
+                    } else {
+                        false
+                    }
+                },
+                onDisablePhrase = viewModel::disablePhraseMode,
                 onCancel = viewModel::closeEditor,
                 onPrevious = viewModel::previousLetter,
                 onSelectCharacter = viewModel::edit,
@@ -231,7 +243,7 @@ fun FontCreatorApp(
                     adjustSpacing = { screen = Screen.Spacing },
                     useOnImage = { fontName ->
                         preferredImageFontName = fontName
-                        initialImageText = ""
+                        initialImageText = previewText
                         autoPickImage = true
                         screen = Screen.Image
                     },
