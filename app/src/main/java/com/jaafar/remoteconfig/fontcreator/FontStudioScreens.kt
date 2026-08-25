@@ -58,34 +58,85 @@ import com.jaafar.remoteconfig.R
     previewText: String,
     changePreviewText: (String) -> Unit,
     back: () -> Unit,
-    editLetters: () -> Unit,
     startDrawing: () -> Unit,
     useOnImage: (String, String) -> Unit,
 ) {
     val project = vm.activeProject
     if (project == null) {
-        Page("Font preview", back) { Text("Choose a handwriting font first.") }
+        Page("Fine-tune your font", back) { Text("Choose a handwriting font first.") }
         return
     }
+    val context = LocalContext.current
     val requiredCharacters = vm.activeCharacterOrder.toSet()
-    val total = requiredCharacters.size
     val drawnCodePoints = project.drawings.map { it.codePoint }.toSet()
     val drawn = drawnCodePoints.intersect(requiredCharacters).size
     val complete = requiredCharacters.isNotEmpty() && requiredCharacters.all { it in drawnCodePoints }
-    Page(if (complete) "Your font" else "Try your font", back, scrollable = true) {
+    var letterSpacing by remember(project.name) { mutableFloatStateOf(project.letterSpacingMm) }
+    var wordSpacing by remember(project.name) { mutableFloatStateOf(project.wordSpacingMm) }
+    val updateSpacing: (Float, Float) -> Unit = { nextLetter, nextWord ->
+        letterSpacing = nextLetter
+        wordSpacing = nextWord
+        if (vm.setSpacing(nextLetter.toString(), nextWord.toString())) vm.generate()
+    }
+
+    Page("Fine-tune your font", back, scrollable = true) {
         Text(project.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         if (vm.previewTypeface == null) {
             Text("Creating your font…", color = MaterialTheme.colorScheme.onSurfaceVariant)
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text("Turning $drawn drawn letters into a usable font preview.", style = MaterialTheme.typography.bodySmall)
         } else {
-            Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer, shape = RoundedCornerShape(12.dp)) {
-                Text(if (complete) "FONT FILE READY" else "$drawn LETTERS INCLUDED", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(
+                    if (complete) "FONT FILE READY" else "$drawn LETTERS INCLUDED",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                )
             }
-            Text(if (complete) "Your font is ready to use." else "Your preview uses the letters you have drawn so far.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(value = previewText, onValueChange = changePreviewText, modifier = Modifier.fillMaxWidth(), label = { Text("Try typing with your font") }, minLines = 3, textStyle = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(vm.previewTypeface!!)))
-            Button(onClick = { useOnImage(project.name, previewText) }, modifier = Modifier.fillMaxWidth()) { Text("Use on an image") }
-            if (!complete) OutlinedButton(onClick = startDrawing, modifier = Modifier.fillMaxWidth()) { Text("Continue drawing") }
+            Text(
+                if (complete) "Your font is ready to use." else "Preview and adjust the letters you have drawn so far.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = previewText,
+                onValueChange = changePreviewText,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Preview text") },
+                minLines = 3,
+                textStyle = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(vm.previewTypeface!!)),
+            )
+            Text("Spacing", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            SpacingControl(label = "Letter spacing", value = letterSpacing, step = 0.25f, min = -3f, max = 10f) {
+                updateSpacing(it, wordSpacing)
+            }
+            SpacingControl(label = "Word spacing", value = wordSpacing, step = 0.5f, min = 0.2f, max = 50f) {
+                updateSpacing(letterSpacing, it)
+            }
+            Text("Spacing changes are saved automatically.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Button(onClick = { useOnImage(project.name, previewText) }, modifier = Modifier.fillMaxWidth()) {
+                Text("Use on an image")
+            }
+            OutlinedButton(onClick = startDrawing, modifier = Modifier.fillMaxWidth()) {
+                Text("Continue drawing")
+            }
+            vm.generatedFont?.let { file ->
+                OutlinedButton(
+                    onClick = {
+                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                            type = "font/ttf"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }, "Share ${project.name}"))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Share font file") }
+            }
         }
         if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
     }
