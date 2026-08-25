@@ -300,6 +300,10 @@ private fun SpacingControl(
     pagingProgress: Pair<Int, Int>?,
     canGoPrevious: Boolean,
     referenceTypeface: Typeface,
+    phraseModeEnabled: Boolean,
+    phraseText: String,
+    onCreatePhrase: (String) -> Boolean,
+    onDisablePhrase: () -> Unit,
     onCancel: () -> Unit,
     onPrevious: () -> Unit,
     onSelectCharacter: (Int) -> Unit,
@@ -314,6 +318,8 @@ private fun SpacingControl(
     var strokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: defaultStrokeWidth) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
+    var showPhraseDialog by remember { mutableStateOf(false) }
+    var phraseDraft by remember(phraseText) { mutableStateOf(phraseText) }
     var showReference by remember { mutableStateOf(false) }
     var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var savedStrokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
@@ -384,6 +390,19 @@ private fun SpacingControl(
                             text = { Text("Reference letter") },
                             trailingIcon = { Checkbox(checked = showReference, onCheckedChange = null) },
                             onClick = { showReference = !showReference; showMoreMenu = false },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Phrase mode") },
+                            trailingIcon = { Checkbox(checked = phraseModeEnabled, onCheckedChange = null) },
+                            onClick = {
+                                showMoreMenu = false
+                                if (phraseModeEnabled) {
+                                    onDisablePhrase()
+                                } else {
+                                    phraseDraft = phraseText
+                                    showPhraseDialog = true
+                                }
+                            },
                         )
                     }
                 }
@@ -517,6 +536,36 @@ private fun SpacingControl(
                 }
             }
         }
+    }
+    if (showPhraseDialog) {
+        AlertDialog(
+            onDismissRequest = { showPhraseDialog = false },
+            title = { Text("Phrase mode") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter the text you want to create. Only its supported missing characters will be shown.")
+                    OutlinedTextField(
+                        value = phraseDraft,
+                        onValueChange = { phraseDraft = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Phrase") },
+                        minLines = 3,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val createPhrase = {
+                            if (onCreatePhrase(phraseDraft)) showPhraseDialog = false
+                        }
+                        navigateSafely(createPhrase)
+                    },
+                    enabled = phraseDraft.isNotBlank(),
+                ) { Text("Create phrase") }
+            },
+            dismissButton = { TextButton(onClick = { showPhraseDialog = false }) { Text("Cancel") } },
+        )
     }
     if (showDiscardDialog) ModalBottomSheet(onDismissRequest = { showDiscardDialog = false; pendingNavigation = null }) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
