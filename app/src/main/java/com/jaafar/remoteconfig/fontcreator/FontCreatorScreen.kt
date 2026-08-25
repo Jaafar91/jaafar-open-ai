@@ -172,6 +172,7 @@ fun FontCreatorApp(
                 onSave = { drawing ->
                     viewModel.saveDrawing(drawing)
                     if (viewModel.selectedCodePoint == null) {
+                        viewModel.disablePhraseMode()
                         viewModel.generate()
                         screen = Screen.FontReady
                     }
@@ -179,6 +180,7 @@ fun FontCreatorApp(
                 onSaveAndContinue = { drawing ->
                     viewModel.saveDrawingAndContinue(drawing)
                     if (viewModel.selectedCodePoint == null) {
+                        viewModel.disablePhraseMode()
                         viewModel.generate()
                         screen = Screen.FontReady
                     }
@@ -240,8 +242,10 @@ fun FontCreatorApp(
                     changePreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
                     back = { screen = Screen.Letters },
                     startDrawing = {
+                        viewModel.disablePhraseMode()
                         screen = Screen.Letters
-                        viewModel.editLetters()
+                        val nextMissing = viewModel.activeCharacterOrder.firstOrNull { it !in viewModel.drawings }
+                        if (nextMissing != null) viewModel.edit(nextMissing) else viewModel.editLetters()
                     },
                     useOnImage = { fontName, text ->
                         preferredImageFontName = fontName
