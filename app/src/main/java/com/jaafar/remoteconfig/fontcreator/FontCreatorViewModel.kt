@@ -122,6 +122,56 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun renameActiveProject(name: String): Boolean {
+        val index = activeProjectIndex ?: return false
+        val current = projects.getOrNull(index) ?: return false
+        val clean = name.trim()
+        if (clean.isBlank()) { status = "Enter a name for the font."; return false }
+        val requestedStorageKey = normalizedFontStorageKey(clean)
+        if (requestedStorageKey.isBlank()) { status = "Use letters or numbers in the font name."; return false }
+        if (projects.withIndex().any { (projectIndex, project) ->
+                projectIndex != index && (project.name.equals(clean, ignoreCase = true) || normalizedFontStorageKey(project.name) == requestedStorageKey)
+            }) {
+            status = "A font with that name already exists."
+            return false
+        }
+        if (current.name == clean) return true
+
+        syncActive()
+        val renamed = projects[index].copy(name = clean)
+        projects[index] = renamed
+        persist()
+        if (referenceFontKey == current.name) setReferenceFont(clean)
+
+        val oldFile = generatedFile(current.name)
+        if (renamed.drawings.isEmpty()) {
+            oldFile.delete()
+            generatedFont = null
+            previewTypeface = null
+            status = "Font renamed."
+            return true
+        }
+
+        status = "Renaming font…"
+        executor.execute {
+            runCatching {
+                val newFile = generatedFile(renamed.name)
+                newFile.writeBytes(TrueTypeGenerator().generate(renamed.drawings, renamed.wordSpacingMm, renamed.letterSpacingMm, renamed.name))
+                newFile to loadTypeface(newFile)
+            }.onSuccess { (newFile, typeface) ->
+                if (oldFile != newFile) oldFile.delete()
+                main.post {
+                    generatedFont = newFile
+                    previewTypeface = typeface
+                    status = "Font renamed."
+                }
+            }.onFailure { error ->
+                main.post { status = "Font renamed, but its file could not be regenerated: ${error.message ?: "unknown error"}" }
+            }
+        }
+        return true
+    }
+
     fun openProject(index: Int) {
         val project = projects.getOrNull(index) ?: return
         activeProjectIndex = index; drawings.clear(); drawings.putAll(project.drawings.associateBy { it.codePoint })

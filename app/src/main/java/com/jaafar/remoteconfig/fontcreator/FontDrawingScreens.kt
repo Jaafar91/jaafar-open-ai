@@ -69,8 +69,15 @@ import com.jaafar.remoteconfig.R
     val total = vm.activeCharacterOrder.size
     val drawn = vm.drawings.size
     val nextCode = vm.activeCharacterOrder.firstOrNull { it !in vm.drawings }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameName by remember(project?.name) { mutableStateOf(project?.name.orEmpty()) }
 
-    Text(project?.name.orEmpty(), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(project?.name.orEmpty(), modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        IconButton(onClick = { renameName = project?.name.orEmpty(); showRenameDialog = true }) {
+            Icon(Icons.Filled.Edit, contentDescription = "Rename font")
+        }
+    }
     Text("Draw one letter at a time.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(14.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -118,6 +125,43 @@ import com.jaafar.remoteconfig.R
             Spacer(Modifier.width(8.dp))
             Text("Adjust spacing")
         }
+    }
+
+    if (showRenameDialog && project != null) {
+        val cleanName = renameName.trim()
+        val invalidName = cleanName.isNotEmpty() && normalizedFontStorageKey(cleanName).isBlank()
+        val duplicateName = vm.projects.withIndex().any { (index, candidate) ->
+            index != vm.activeProjectIndex && (candidate.name.equals(cleanName, ignoreCase = true) ||
+                normalizedFontStorageKey(candidate.name) == normalizedFontStorageKey(cleanName))
+        }
+        val unchangedName = cleanName == project.name
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename font") },
+            text = {
+                OutlinedTextField(
+                    value = renameName,
+                    onValueChange = { renameName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Font name") },
+                    singleLine = true,
+                    isError = invalidName || duplicateName,
+                    supportingText = {
+                        when {
+                            duplicateName -> Text("A font with that name already exists.")
+                            invalidName -> Text("Use letters or numbers in the font name.")
+                        }
+                    },
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { if (vm.renameActiveProject(renameName)) showRenameDialog = false },
+                    enabled = cleanName.isNotEmpty() && !invalidName && !duplicateName && !unchangedName,
+                ) { Text("Rename") }
+            },
+            dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") } },
+        )
     }
 }
 
