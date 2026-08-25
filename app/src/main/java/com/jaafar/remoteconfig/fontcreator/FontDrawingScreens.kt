@@ -250,7 +250,6 @@ private fun SpacingControl(
     var showDiscardDialog by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
     var showReference by remember { mutableStateOf(false) }
-    var showSavedConfirmation by remember(codePoint) { mutableStateOf(false) }
     var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var savedStrokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var savedStrokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: defaultStrokeWidth) }
@@ -295,17 +294,7 @@ private fun SpacingControl(
         savedStrokeWidth = strokeWidth
         when {
             pagingMode -> onSave(saved)
-            initial == null -> onSaveAndContinue(saved)
-            else -> {
-                onSaveAndStay(saved)
-                showSavedConfirmation = true
-            }
-        }
-    }
-    LaunchedEffect(showSavedConfirmation) {
-        if (showSavedConfirmation) {
-            kotlinx.coroutines.delay(1600)
-            showSavedConfirmation = false
+            else -> onSaveAndContinue(saved)
         }
     }
     Scaffold(
@@ -337,9 +326,6 @@ private fun SpacingControl(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (!pagingMode) {
-                if (showSavedConfirmation) {
-                    Text("Saved ✓", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                }
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val centerPadding = ((maxWidth - 48.dp) / 2).coerceAtLeast(0.dp)
                     LazyRow(
