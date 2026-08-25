@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +70,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     var defaultSignatureName by mutableStateOf(prefs.getString(PREFS_DEFAULT_SIGNATURE, null)); private set
     var defaultStampName by mutableStateOf(prefs.getString(PREFS_DEFAULT_STAMP, null)); private set
     var lastEditedCodePoint by mutableStateOf<Int?>(null); private set
+    var lastStrokeWidth by mutableFloatStateOf(8f); private set
 
     /** Returns all available typefaces (generated + imported) with their display labels. */
     fun hasGeneratedFont(name: String): Boolean = generatedFile(name).exists()
@@ -125,6 +127,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         activeProjectIndex = index; drawings.clear(); drawings.putAll(project.drawings.associateBy { it.codePoint })
         selectedCodePoint = null; generatedFont = generatedFile(project.name).takeIf { it.exists() }
         previewTypeface = generatedFont?.let { runCatching { loadTypeface(it) }.getOrNull() }
+        lastStrokeWidth = 8f
         status = ""
     }
 
@@ -198,6 +201,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun saveDrawing(drawing: GlyphDrawing) {
+        lastStrokeWidth = drawing.strokeWidth
         drawings[drawing.codePoint] = drawing
         if (isPagingMode) {
             pagingHistory = pagingHistory + drawing.codePoint
@@ -209,16 +213,16 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun saveDrawingAndContinue(drawing: GlyphDrawing) {
+        lastStrokeWidth = drawing.strokeWidth
         drawings[drawing.codePoint] = drawing
         syncActive(); persist(); status = "Letter saved."
         val order = activeCharacterOrder
-        val currentIndex = order.indexOf(drawing.codePoint).coerceAtLeast(0)
-        selectedCodePoint = (order.drop(currentIndex + 1) + order.take(currentIndex + 1))
-            .firstOrNull { it !in drawings }
+        selectedCodePoint = nextCharacterAfterSave(order, drawing.codePoint, drawings.keys)
         isPagingMode = false
     }
 
     fun saveDrawingAndStay(drawing: GlyphDrawing) {
+        lastStrokeWidth = drawing.strokeWidth
         drawings[drawing.codePoint] = drawing
         syncActive(); persist(); status = "Letter saved."
         selectedCodePoint = drawing.codePoint
@@ -468,4 +472,12 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     private fun persistSignatures() { val snapshot = signatures.toList(); executor.execute { signatureRepository.save(snapshot) } }
     private fun persistImportedFonts() { val snapshot = importedFonts.toList(); executor.execute { importedFontRepository.save(snapshot) } }
     override fun onCleared() { syncActive(); executor.shutdown(); super.onCleared() }
+}
+
+internal fun nextCharacterAfterSave(order: List<Int>, current: Int, drawn: Set<Int>): Int? {
+    if (order.isEmpty()) return null
+    val currentIndex = order.indexOf(current).takeIf { it >= 0 } ?: 0
+    val charactersAfterCurrent = order.drop(currentIndex + 1) + order.take(currentIndex + 1)
+    return charactersAfterCurrent.firstOrNull { it !in drawn }
+        ?: order[(currentIndex + 1) % order.size]
 }
