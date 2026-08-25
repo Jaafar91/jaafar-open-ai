@@ -24,6 +24,8 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     companion object {
         private const val PREFS_DEFAULT_SIGNATURE = "default_signature_name"
         private const val PREFS_DEFAULT_STAMP = "default_stamp_name"
+        private const val PREFS_PHRASE_MODE = "phrase_mode_enabled"
+        private const val PREFS_LAST_PHRASE = "last_phrase"
         val CHARACTER_ORDER: List<Int> = buildList {
             addAll('A'.code..'Z'.code); addAll('a'.code..'z'.code); addAll('0'.code..'9'.code)
             " .,!?\'\"-:;()".forEach { add(it.code) }; addAll((33..126).filter { it !in this })
@@ -81,6 +83,8 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     var defaultStampName by mutableStateOf(prefs.getString(PREFS_DEFAULT_STAMP, null)); private set
     var lastEditedCodePoint by mutableStateOf<Int?>(null); private set
     var lastStrokeWidth by mutableFloatStateOf(8f); private set
+    var phraseModeEnabled by mutableStateOf(prefs.getBoolean(PREFS_PHRASE_MODE, false)); private set
+    var lastPhrase by mutableStateOf(prefs.getString(PREFS_LAST_PHRASE, "") ?: ""); private set
 
     /** Returns all available typefaces (generated + imported) with their display labels. */
     fun hasGeneratedFont(name: String): Boolean = generatedFile(name).exists()
@@ -219,6 +223,46 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun startPaging() = startQueue(activeCharacterOrder.filter { it !in drawings }, "All supported characters have already been drawn.")
+
+    fun startPhrase(phrase: String): Boolean {
+        val cleanPhrase = phrase.trim()
+        if (cleanPhrase.isBlank()) {
+            status = "Enter a phrase first."
+            return false
+        }
+        val phraseCharacters = applicablePhraseCodePoints(cleanPhrase, activeCharacterOrder.toSet())
+        if (phraseCharacters.isEmpty()) {
+            status = "The phrase has no characters supported by the selected languages."
+            return false
+        }
+        lastPhrase = cleanPhrase
+        phraseModeEnabled = true
+        prefs.edit()
+            .putString(PREFS_LAST_PHRASE, cleanPhrase)
+            .putBoolean(PREFS_PHRASE_MODE, true)
+            .apply()
+        val missingCharacters = phraseCharacters.filter { it !in drawings }
+        if (missingCharacters.isEmpty()) {
+            closeEditor()
+            phraseModeEnabled = false
+            prefs.edit().putBoolean(PREFS_PHRASE_MODE, false).apply()
+            status = "Phrase ready — all required characters are already available."
+        } else {
+            startQueue(missingCharacters, "Phrase ready — all required characters are already available.")
+        }
+        return true
+    }
+
+    fun disablePhraseMode() {
+        phraseModeEnabled = false
+        prefs.edit().putBoolean(PREFS_PHRASE_MODE, false).apply()
+        if (isPagingMode) {
+            isPagingMode = false
+            pagingQueue = emptyList()
+            pagingHistory = emptyList()
+        }
+    }
+
     private fun startQueue(queue: List<Int>, emptyMessage: String) {
         if (queue.isEmpty()) { status = emptyMessage; return }
         pagingQueue = queue
@@ -268,8 +312,13 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             pagingQueue = pagingQueue.filterNot { it == drawing.codePoint }
         }
         selectedCodePoint = if (isPagingMode && pagingQueue.isNotEmpty()) pagingQueue.first() else null
+        val phraseFinished = selectedCodePoint == null && phraseModeEnabled
         if (selectedCodePoint == null) isPagingMode = false
-        syncActive(); persist(); status = "Glyph saved."
+        if (phraseFinished) {
+            phraseModeEnabled = false
+            prefs.edit().putBoolean(PREFS_PHRASE_MODE, false).apply()
+        }
+        syncActive(); persist(); status = if (phraseFinished) "Phrase ready." else "Glyph saved."
     }
 
     fun saveDrawingAndContinue(drawing: GlyphDrawing) {
@@ -535,6 +584,9 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     private fun persistImportedFonts() { val snapshot = importedFonts.toList(); executor.execute { importedFontRepository.save(snapshot) } }
     override fun onCleared() { syncActive(); executor.shutdown(); super.onCleared() }
 }
+
+internal fun applicablePhraseCodePoints(phrase: String, supported: Set<Int>): List<Int> =
+    phrase.codePoints().toArray().toList().distinct().filter { it != 0x20 && it in supported }
 
 internal fun characterAfterSave(order: List<Int>, current: Int, drawn: Set<Int>, wasExisting: Boolean): Int? {
     if (order.isEmpty()) return null
