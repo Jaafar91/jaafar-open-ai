@@ -66,7 +66,6 @@ import com.jaafar.remoteconfig.R
         Page("Fine-tune your font", back) { Text("Choose a handwriting font first.") }
         return
     }
-    val context = LocalContext.current
     val requiredCharacters = vm.activeCharacterOrder.toSet()
     val drawnCodePoints = project.drawings.map { it.codePoint }.toSet()
     val drawn = drawnCodePoints.intersect(requiredCharacters).size
@@ -123,19 +122,6 @@ import com.jaafar.remoteconfig.R
             }
             OutlinedButton(onClick = startDrawing, modifier = Modifier.fillMaxWidth()) {
                 Text("Continue drawing")
-            }
-            vm.generatedFont?.let { file ->
-                OutlinedButton(
-                    onClick = {
-                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                            type = "font/ttf"
-                            putExtra(Intent.EXTRA_STREAM, uri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }, "Share ${project.name}"))
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Share font file") }
             }
         }
         if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
