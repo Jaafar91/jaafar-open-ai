@@ -24,10 +24,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Undo
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -60,6 +60,7 @@ import com.jaafar.remoteconfig.R
     back: () -> Unit,
     preview: () -> Unit,
     adjustSpacing: () -> Unit,
+    useOnImage: (String) -> Unit,
 ) = Page("Font workspace", back, actions = {
     val file = vm.generatedFont
     val project = vm.activeProject
@@ -69,6 +70,12 @@ import com.jaafar.remoteconfig.R
     val total = vm.activeCharacterOrder.size
     val drawn = vm.drawings.size
     val nextCode = vm.activeCharacterOrder.firstOrNull { it !in vm.drawings }
+    val useCurrentFont: () -> Unit = {
+        project?.let {
+            vm.generate()
+            useOnImage(it.name)
+        }
+    }
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameName by remember(project?.name) { mutableStateOf(project?.name.orEmpty()) }
 
@@ -100,23 +107,27 @@ import com.jaafar.remoteconfig.R
             Spacer(Modifier.width(8.dp))
             Text("Continue drawing")
         }
-        OutlinedButton(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Visibility, contentDescription = null)
+        OutlinedButton(onClick = useCurrentFont, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Image, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text("Try your font")
+            Text("Use this font on an image")
         }
     } else {
         Text("Your letter set is complete.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Button(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Visibility, contentDescription = null)
+        Button(onClick = useCurrentFont, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Image, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text("Try your font")
+            Text("Use this font on an image")
         }
         OutlinedButton(onClick = vm::editLetters, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Edit, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text("Edit letters")
         }
+    }
+
+    if (drawn > 0) {
+        TextButton(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) { Text("Preview font") }
     }
 
     if (drawn > 0) {

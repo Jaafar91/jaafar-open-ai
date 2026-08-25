@@ -84,9 +84,7 @@ private val ModernDarkColors = darkColorScheme(
     outlineVariant = Color(0xFF45464F),
 )
 
-internal enum class Screen { Home, Library, Fonts, FontReady, Letters, Spacing, Image, Signature, FillMark, Settings }
-internal enum class LibraryTab(val label: String) { Fonts("Fonts"), Signatures("Signatures & Stamps") }
-internal enum class LibrarySignaturePage { Hub, Draw, ImportStamp }
+internal enum class Screen { Home, Fonts, Signatures, Stamps, FontReady, Letters, Spacing, Image, Signature, FillMark, Settings }
 
 @Composable
 fun FontCreatorApp(
@@ -106,8 +104,9 @@ fun FontCreatorApp(
     var preferredImageFontName by remember { mutableStateOf<String?>(null) }
     var initialImageText by remember { mutableStateOf("") }
     var autoPickImage by remember { mutableStateOf(false) }
-    var fontEntryBack by remember { mutableStateOf(Screen.Home) }
+    var fontWorkspaceBack by remember { mutableStateOf(Screen.Home) }
     var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
+    var showCreateFontDialog by remember { mutableStateOf(false) }
 
     // A running activity receives subsequent Share-sheet requests through onNewIntent.
     // Route every request straight to the editor, including a re-shared copy of the same file.
@@ -162,33 +161,53 @@ fun FontCreatorApp(
                 onSaveAndContinue = viewModel::saveDrawingAndContinue,
                 onSaveAndStay = viewModel::saveDrawingAndStay,
             )
-            else -> when (screen) {
-                Screen.Home -> HomeScreen(viewModel, { screen = it })
-                Screen.Library -> LibraryScreen(
+            else -> {
+                when (screen) {
+                Screen.Home -> DashboardScreen(
+                    vm = viewModel,
+                    openSettings = { screen = Screen.Settings },
+                    createFont = { showCreateFontDialog = true },
+                    continueFont = { index ->
+                        viewModel.openProject(index)
+                        fontWorkspaceBack = Screen.Home
+                        screen = Screen.Letters
+                        viewModel.editLetters()
+                    },
+                    useFontOnImage = { fontName ->
+                        preferredImageFontName = fontName
+                        initialImageText = ""
+                        autoPickImage = true
+                        screen = Screen.Image
+                    },
+                    openFillMark = { screen = Screen.FillMark },
+                    openFonts = { screen = Screen.Fonts },
+                    openSignatures = { screen = Screen.Signatures },
+                    openStamps = { screen = Screen.Stamps },
+                )
+                Screen.Fonts -> FontsModuleScreen(
                     vm = viewModel,
                     back = { screen = Screen.Home },
-                    openFontManager = {
-                        fontEntryBack = Screen.Library
-                        screen = Screen.Fonts
+                    createFont = { showCreateFontDialog = true },
+                    openProject = { index ->
+                        viewModel.openProject(index)
+                        fontWorkspaceBack = Screen.Fonts
+                        screen = Screen.Letters
                     },
-                    openLetterEditor = { screen = Screen.Letters },
-                    openSignatureWithMark = { markName ->
+                )
+                Screen.Signatures -> SignaturesModuleScreen(
+                    vm = viewModel,
+                    back = { screen = Screen.Home },
+                    useInDocument = { markName ->
                         pendingSignatureMark = markName
                         screen = Screen.Signature
                     },
                 )
-                Screen.Fonts -> FontsScreen(
+                Screen.Stamps -> StampsModuleScreen(
                     vm = viewModel,
-                    back = { screen = fontEntryBack },
-                    editLetters = {
-                        screen = Screen.Letters
-                        viewModel.editLetters()
-                    },
-                    showReady = { screen = Screen.FontReady },
-                    useOnImage = { fontName ->
-                        preferredImageFontName = fontName
-                        initialImageText = ""
-                        screen = Screen.Image
+                    back = { screen = Screen.Home },
+                    useInDocument = { markName ->
+                        pendingSignatureMark = markName
+                        screen = Screen.Signature
                     },
                 )
                 Screen.FontReady -> FontReadyScreen(
@@ -207,9 +226,15 @@ fun FontCreatorApp(
                 )
                 Screen.Letters -> LettersScreen(
                     vm = viewModel,
-                    back = { screen = Screen.Library },
+                    back = { screen = fontWorkspaceBack },
                     preview = { screen = Screen.FontReady },
                     adjustSpacing = { screen = Screen.Spacing },
+                    useOnImage = { fontName ->
+                        preferredImageFontName = fontName
+                        initialImageText = ""
+                        autoPickImage = true
+                        screen = Screen.Image
+                    },
                 )
                 Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Letters }
                 Screen.Image -> ImageScreen(
@@ -238,6 +263,19 @@ fun FontCreatorApp(
                     dark = darkTheme,
                     change = { value -> darkTheme = value; preferences.edit().putBoolean("dark_theme", value).apply() },
                 ) { screen = Screen.Home }
+                }
+                if (showCreateFontDialog) {
+                    CreateFontDialog(
+                        vm = viewModel,
+                        onCreated = {
+                            showCreateFontDialog = false
+                            fontWorkspaceBack = Screen.Home
+                            screen = Screen.Letters
+                            viewModel.editLetters()
+                        },
+                        onDismiss = { showCreateFontDialog = false },
+                    )
+                }
             }
         }
     }

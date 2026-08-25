@@ -43,6 +43,16 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return letters + digits + symbols
     }
 
+    fun characterCount(project: FontProject): Int = project.selectedLanguages
+        .flatMap { it.codePoints }
+        .distinct()
+        .count { it != 0x20 }
+
+    fun isProjectComplete(project: FontProject): Boolean {
+        val required = project.selectedLanguages.flatMap { it.codePoints }.filter { it != 0x20 }.toSet()
+        return required.isNotEmpty() && project.drawings.map { it.codePoint }.toSet().containsAll(required)
+    }
+
     private val repository = GlyphRepository(application)
     private val signatureRepository = SignatureRepository(application)
     private val importedFontRepository = ImportedFontRepository(application)
