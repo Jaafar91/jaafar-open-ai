@@ -1,5 +1,6 @@
 package com.jaafar.remoteconfig.fontcreator
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -25,6 +26,9 @@ internal fun FeatureTutorial(onFinished: () -> Unit) {
     )
     var pageIndex by remember { mutableIntStateOf(0) }
     val page = pages[pageIndex]
+    BackHandler {
+        if (pageIndex > 0) pageIndex-- else onFinished()
+    }
     Scaffold { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).padding(24.dp),
