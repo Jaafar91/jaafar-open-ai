@@ -59,8 +59,7 @@ import com.jaafar.remoteconfig.R
 @Composable internal fun LettersScreen(
     vm: FontCreatorViewModel,
     back: () -> Unit,
-    preview: () -> Unit,
-    adjustSpacing: () -> Unit,
+    fineTune: () -> Unit,
     useOnImage: (String) -> Unit,
 ) = Page("Font workspace", back, actions = {
     val file = vm.generatedFont
@@ -133,18 +132,10 @@ import com.jaafar.remoteconfig.R
     }
 
     if (drawn > 0) {
-        OutlinedButton(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Visibility, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Preview font")
-        }
-    }
-
-    if (drawn > 0) {
-        OutlinedButton(onClick = adjustSpacing, modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(onClick = fineTune, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Tune, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text("Adjust spacing")
+            Text("Fine-tune your font")
         }
     }
 
@@ -269,7 +260,7 @@ internal fun SpacingScreen(
 }
 
 @Composable
-private fun SpacingControl(
+internal fun SpacingControl(
     label: String,
     value: Float,
     step: Float,
