@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -127,7 +128,11 @@ import com.jaafar.remoteconfig.R
     }
 
     if (drawn > 0) {
-        TextButton(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) { Text("Preview font") }
+        OutlinedButton(onClick = { vm.generate(); preview() }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.Visibility, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Preview font")
+        }
     }
 
     if (drawn > 0) {

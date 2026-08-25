@@ -56,31 +56,31 @@ internal fun DashboardScreen(
         )
         unfinishedIndex != null -> {
             val project = vm.projects[unfinishedIndex]
+            val total = vm.characterCount(project).coerceAtLeast(1)
+            val percentage = (project.drawings.size * 100 / total).coerceIn(0, 100)
             DashboardHero(
-                title = "Continue drawing",
-                detail = "${project.name} · ${project.drawings.size} of ${vm.characterCount(project)} characters",
+                title = "Continue ${project.name}",
+                detail = "$percentage% complete · Nice progress—keep going!",
                 icon = Icons.Filled.Edit,
                 click = { continueFont(unfinishedIndex) },
             )
         }
-        preferredFont != null -> DashboardHero(
-            title = "Use your font on an image",
-            detail = preferredFont,
+    }
+
+    if (preferredFont != null) {
+        DashboardRowAction(
+            title = "Use font on image",
+            detail = "Write with $preferredFont on a photo",
             icon = Icons.Filled.Image,
             click = { useFontOnImage(preferredFont) },
         )
     }
-
-    OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = openFillMark)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.Description, contentDescription = null)
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("Fill & Mark", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Add text, signatures, or stamps to a document", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
+    DashboardRowAction(
+        title = "Fill & Mark",
+        detail = "Add text, signatures, or stamps to a document",
+        icon = Icons.Filled.Description,
+        click = openFillMark,
+    )
 
     Text("Your assets", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     val assets = listOf(
@@ -106,6 +106,20 @@ internal fun DashboardScreen(
                     Text(action.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Text(action.detail, style = MaterialTheme.typography.labelSmall)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardRowAction(title: String, detail: String, icon: ImageVector, click: () -> Unit) {
+    OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = click)) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(detail, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
