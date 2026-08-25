@@ -84,7 +84,7 @@ private val ModernDarkColors = darkColorScheme(
     outlineVariant = Color(0xFF45464F),
 )
 
-internal enum class Screen { Home, Fonts, Signatures, Stamps, FontReady, Letters, Spacing, Image, Signature, FillMark, Settings }
+internal enum class Screen { Home, Fonts, Signatures, Stamps, FontReady, Letters, Image, Signature, FillMark, Settings }
 
 @Composable
 fun FontCreatorApp(
@@ -169,8 +169,20 @@ fun FontCreatorApp(
                 onPrevious = viewModel::previousLetter,
                 onSelectCharacter = viewModel::edit,
                 onSkip = viewModel::skipLetter,
-                onSave = viewModel::saveDrawing,
-                onSaveAndContinue = viewModel::saveDrawingAndContinue,
+                onSave = { drawing ->
+                    viewModel.saveDrawing(drawing)
+                    if (viewModel.selectedCodePoint == null) {
+                        viewModel.generate()
+                        screen = Screen.FontReady
+                    }
+                },
+                onSaveAndContinue = { drawing ->
+                    viewModel.saveDrawingAndContinue(drawing)
+                    if (viewModel.selectedCodePoint == null) {
+                        viewModel.generate()
+                        screen = Screen.FontReady
+                    }
+                },
                 onSaveAndStay = viewModel::saveDrawingAndStay,
             )
             else -> {
@@ -227,7 +239,6 @@ fun FontCreatorApp(
                     previewText = previewText,
                     changePreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
                     back = { screen = Screen.Letters },
-                    editLetters = { screen = Screen.Letters },
                     startDrawing = {
                         screen = Screen.Letters
                         viewModel.editLetters()
@@ -242,8 +253,10 @@ fun FontCreatorApp(
                 Screen.Letters -> LettersScreen(
                     vm = viewModel,
                     back = { screen = fontWorkspaceBack },
-                    preview = { screen = Screen.FontReady },
-                    adjustSpacing = { screen = Screen.Spacing },
+                    fineTune = {
+                        viewModel.generate()
+                        screen = Screen.FontReady
+                    },
                     useOnImage = { fontName ->
                         preferredImageFontName = fontName
                         initialImageText = previewText
@@ -251,7 +264,6 @@ fun FontCreatorApp(
                         screen = Screen.Image
                     },
                 )
-                Screen.Spacing -> SpacingScreen(viewModel, previewText, { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() }) { screen = Screen.Letters }
                 Screen.Image -> ImageScreen(
                     vm = viewModel,
                     back = { preferredImageFontName = null; initialImageText = ""; autoPickImage = false; screen = Screen.Home },
