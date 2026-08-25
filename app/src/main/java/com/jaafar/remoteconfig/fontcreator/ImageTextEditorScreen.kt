@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas as ComposeCanvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -74,6 +75,7 @@ fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, initialText: String
     var textPosition by remember { mutableStateOf(Offset(.5f, .85f)) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
 
+    BackHandler(onBack = onBack)
     Scaffold(topBar = { AppTopBar("Write on image", onBack) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (bitmap == null) {
