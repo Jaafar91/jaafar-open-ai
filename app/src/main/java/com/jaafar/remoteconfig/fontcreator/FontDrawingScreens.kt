@@ -271,12 +271,24 @@ internal fun SpacingControl(
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-        OutlinedButton(onClick = { change((value - step).coerceAtLeast(min)) }, enabled = value > min) { Text("−") }
-        Text("${String.format(java.util.Locale.US, "%.2f", value)} mm", style = MaterialTheme.typography.titleMedium)
-        OutlinedButton(onClick = { change((value + step).coerceAtMost(max)) }, enabled = value < max) { Text("+") }
+        OutlinedButton(
+            onClick = { change((value - step).coerceAtLeast(min)) },
+            modifier = Modifier.width(52.dp),
+            contentPadding = PaddingValues(0.dp),
+            enabled = value > min,
+        ) { Text("−") }
+        Box(Modifier.width(84.dp), contentAlignment = Alignment.Center) {
+            Text("${String.format(java.util.Locale.US, "%.2f", value)} mm", style = MaterialTheme.typography.titleMedium)
+        }
+        OutlinedButton(
+            onClick = { change((value + step).coerceAtMost(max)) },
+            modifier = Modifier.width(52.dp),
+            contentPadding = PaddingValues(0.dp),
+            enabled = value < max,
+        ) { Text("+") }
     }
 }
 
