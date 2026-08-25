@@ -383,6 +383,7 @@ private const val PREF_KEY_LAST_IMAGE_FONT = "last_font"
     change: (Boolean) -> Unit,
     back: () -> Unit,
 ) = Page("Settings", back, scrollable = true) {
+    val context = LocalContext.current
     Text("Appearance", style = MaterialTheme.typography.titleMedium)
     Row(
         horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -433,4 +434,19 @@ private const val PREF_KEY_LAST_IMAGE_FONT = "last_font"
     Text("Help & about", style = MaterialTheme.typography.titleMedium)
     Text("Use Home to start common tasks and My Library to manage saved assets.", style = MaterialTheme.typography.bodySmall)
     Text("App data stays on-device unless you explicitly share exported files.", style = MaterialTheme.typography.bodySmall)
+    OutlinedButton(
+        onClick = { openPlayStoreListing(context) },
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("Rate this app") }
+}
+
+private fun openPlayStoreListing(context: android.content.Context) {
+    val packageName = context.packageName
+    val playStoreIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")).apply {
+        setPackage("com.android.vending")
+    }
+    runCatching { context.startActivity(playStoreIntent) }
+        .onFailure {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")))
+        }
 }
