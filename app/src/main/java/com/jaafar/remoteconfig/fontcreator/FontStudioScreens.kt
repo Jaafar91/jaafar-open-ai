@@ -122,7 +122,7 @@ import com.jaafar.remoteconfig.R
                 keyboardController?.show()
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Next, you will start drawing your letters. You can return and continue any time.")
+                Text("Give your font a name. You can change it later.")
                 OutlinedTextField(
                     name,
                     { name = it },
