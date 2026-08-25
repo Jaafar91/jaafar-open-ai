@@ -228,7 +228,10 @@ fun FontCreatorApp(
                     changePreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
                     back = { screen = Screen.Letters },
                     editLetters = { screen = Screen.Letters },
-                    startDrawing = viewModel::startPaging,
+                    startDrawing = {
+                        screen = Screen.Letters
+                        viewModel.editLetters()
+                    },
                     useOnImage = { fontName, text ->
                         preferredImageFontName = fontName
                         initialImageText = text
