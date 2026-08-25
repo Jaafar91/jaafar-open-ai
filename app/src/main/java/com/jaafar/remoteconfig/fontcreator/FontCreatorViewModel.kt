@@ -220,7 +220,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         val currentIndex = order.indexOf(drawing.codePoint).coerceAtLeast(0)
         val charactersAfterCurrent = order.drop(currentIndex + 1) + order.take(currentIndex + 1)
         selectedCodePoint = charactersAfterCurrent.firstOrNull { it !in drawings }
-            ?: order.getOrNull(currentIndex + 1)
+            ?: order.takeIf { it.isNotEmpty() }?.get((currentIndex + 1) % order.size)
         isPagingMode = false
     }
 
