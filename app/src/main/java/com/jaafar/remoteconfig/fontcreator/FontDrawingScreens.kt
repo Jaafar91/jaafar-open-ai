@@ -228,6 +228,7 @@ private fun SpacingControl(
 @Composable internal fun GlyphEditorScreen(
     codePoint: Int,
     initial: GlyphDrawing?,
+    defaultStrokeWidth: Float,
     drawings: Map<Int, GlyphDrawing>,
     characterOrder: List<Int>,
     pagingMode: Boolean,
@@ -245,14 +246,14 @@ private fun SpacingControl(
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember(codePoint) { mutableStateOf(initial?.let { it.canvasWidth to it.canvasHeight } ?: (1f to 1f)) }
-    var strokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: 8f) }
+    var strokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: defaultStrokeWidth) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
     var showReference by remember { mutableStateOf(false) }
     var showSavedConfirmation by remember(codePoint) { mutableStateOf(false) }
     var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var savedStrokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
-    var savedStrokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: 8f) }
+    var savedStrokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: defaultStrokeWidth) }
     val strokesChanged = strokes != savedStrokes
     val thicknessChanged = strokes.isNotEmpty() && strokeWidth != savedStrokeWidth
     val isDirty = strokesChanged || thicknessChanged
