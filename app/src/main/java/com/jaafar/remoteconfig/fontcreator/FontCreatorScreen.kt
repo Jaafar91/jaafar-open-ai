@@ -298,6 +298,7 @@ fun FontCreatorApp(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun Page(title: String, back: (() -> Unit)? = null, scrollable: Boolean = false, actions: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
+    BackHandler(enabled = back != null) { back?.invoke() }
     Scaffold(topBar = { AppTopBar(title, back, actions) }) { padding ->
         val scrollModifier = if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier
         Column(
