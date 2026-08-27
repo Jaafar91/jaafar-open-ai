@@ -123,7 +123,9 @@ fun ImageTextEditorScreen(
                 ComposeCanvas(
                     Modifier.fillMaxWidth().weight(1f).background(Color.Black)
                         .onSizeChanged { canvasSize = it }
-                        .pointerInput(bitmap, canvasSize, text, typeface, sizePercent, textPosition) {
+                        // Position changes on every pointer event. Keeping it out of the keys prevents
+                        // Compose from cancelling and recreating this detector mid-gesture.
+                        .pointerInput(bitmap, canvasSize, text, typeface, sizePercent) {
                             var canDragText = false
                             detectDragGestures(
                                 onDragStart = { pointer ->
