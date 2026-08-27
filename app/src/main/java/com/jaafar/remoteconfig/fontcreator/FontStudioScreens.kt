@@ -121,7 +121,7 @@ import com.jaafar.remoteconfig.R
                 Text("Use on an image")
             }
             OutlinedButton(onClick = startDrawing, modifier = Modifier.fillMaxWidth()) {
-                Text("Continue drawing")
+                Text("Continue full alphabet")
             }
         }
         if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
