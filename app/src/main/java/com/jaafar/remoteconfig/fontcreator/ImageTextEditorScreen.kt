@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -32,6 +31,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -59,6 +59,7 @@ import java.io.FileOutputStream
 import kotlin.math.roundToInt
 
 private data class TextColorOption(val name: String, val value: Int, val composeColor: Color)
+private enum class EditorPanel { Text, Font, Size, Color }
 private const val PREF_KEY_LAST_IMAGE_FONT = "last_font"
 
 private val TEXT_COLORS = listOf(
@@ -97,27 +98,61 @@ fun ImageTextEditorScreen(
     var textColor by remember { mutableStateOf(TEXT_COLORS.first()) }
     var textPosition by remember { mutableStateOf(Offset(.5f, .85f)) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    var showFontPicker by remember { mutableStateOf(false) }
+    var activePanel by remember { mutableStateOf<EditorPanel?>(null) }
     var fontQuery by remember { mutableStateOf("") }
 
     BackHandler(onBack = onBack)
-    Scaffold(topBar = { AppTopBar("Write on image", onBack) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Scaffold(
+        topBar = {
+            AppTopBar("Write on image", onBack) {
+                TextButton(
+                    enabled = bitmap != null && text.isNotBlank(),
+                    onClick = {
+                        bitmap?.let { source ->
+                            shareImage(context, renderImage(source, text, typeface, sizePercent, textColor.value, textPosition))
+                        }
+                    },
+                ) { Text("Share") }
+            }
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (bitmap == null) {
                 Text("This image could not be opened.", color = MaterialTheme.colorScheme.error)
             } else {
                 ComposeCanvas(
                     Modifier.fillMaxWidth().weight(1f).background(Color.Black)
                         .onSizeChanged { canvasSize = it }
-                        .pointerInput(bitmap, canvasSize) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                val imageSize = displayedImageSize(canvasSize, bitmap.width, bitmap.height)
-                                if (imageSize.width > 0 && imageSize.height > 0) {
-                                    textPosition = Offset(
-                                        (textPosition.x + dragAmount.x / imageSize.width).coerceIn(0f, 1f),
-                                        (textPosition.y + dragAmount.y / imageSize.height).coerceIn(0f, 1f),
+                        // Position changes on every pointer event. Keeping it out of the keys prevents
+                        // Compose from cancelling and recreating this detector mid-gesture.
+                        .pointerInput(bitmap, canvasSize, text, typeface, sizePercent) {
+                            var canDragText = false
+                            detectDragGestures(
+                                onDragStart = { pointer ->
+                                    canDragText = isPointNearOverlayText(
+                                        pointer = pointer,
+                                        canvasSize = canvasSize,
+                                        imageWidth = bitmap.width,
+                                        imageHeight = bitmap.height,
+                                        text = text,
+                                        typeface = typeface,
+                                        sizePercent = sizePercent,
+                                        textPosition = textPosition,
+                                        touchPadding = 24.dp.toPx(),
                                     )
+                                },
+                                onDragEnd = { canDragText = false },
+                                onDragCancel = { canDragText = false },
+                            ) { change, dragAmount ->
+                                if (canDragText) {
+                                    change.consume()
+                                    val imageSize = displayedImageSize(canvasSize, bitmap.width, bitmap.height)
+                                    if (imageSize.width > 0 && imageSize.height > 0) {
+                                        textPosition = Offset(
+                                            (textPosition.x + dragAmount.x / imageSize.width).coerceIn(0f, 1f),
+                                            (textPosition.y + dragAmount.y / imageSize.height).coerceIn(0f, 1f),
+                                        )
+                                    }
                                 }
                             }
                         },
@@ -137,81 +172,100 @@ fun ImageTextEditorScreen(
                         )
                     }
                 }
-                Text("Drag on the image to move the text")
-                OutlinedButton(onClick = { showFontPicker = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Font: $selectedFontLabel", fontFamily = androidx.compose.ui.text.font.FontFamily(typeface))
-                }
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    label = { Text("Text") },
-                    supportingText = { Text("Use Enter to start a new line.") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 3,
-                    maxLines = 5,
-                    textStyle = MaterialTheme.typography.titleLarge.copy(
-                        fontFamily = androidx.compose.ui.text.font.FontFamily(typeface),
-                    ),
-                )
-                Text("Text size")
-                Slider(value = sizePercent, onValueChange = { sizePercent = it }, valueRange = 4f..24f)
-                Text("Text color")
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    TEXT_COLORS.forEach { option ->
-                        androidx.compose.foundation.layout.Box(
-                            Modifier.size(40.dp).background(option.composeColor, androidx.compose.foundation.shape.CircleShape)
-                                .border(if (textColor == option) 4.dp else 1.dp, MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
-                                .semantics { contentDescription = "${option.name} text" }
-                                .clickable { textColor = option },
-                            contentAlignment = Alignment.Center,
-                        ) { if (textColor == option) Text("✓", color = if (option.value == android.graphics.Color.WHITE || option.value == android.graphics.Color.YELLOW) Color.Black else Color.White) }
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        enabled = text.isNotBlank(), modifier = Modifier.fillMaxWidth(),
-                        onClick = { shareImage(context, renderImage(bitmap, text, typeface, sizePercent, textColor.value, textPosition)) },
-                    ) { Text("Share image") }
+                Text("Drag the text to reposition it", style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    EditorToolButton("Text", EditorPanel.Text) { activePanel = it }
+                    EditorToolButton("Font", EditorPanel.Font) { activePanel = it }
+                    EditorToolButton("Size", EditorPanel.Size) { activePanel = it }
+                    EditorToolButton("Color", EditorPanel.Color) { activePanel = it }
                 }
             }
         }
     }
-    if (showFontPicker) {
-        ModalBottomSheet(onDismissRequest = { showFontPicker = false }) {
+    activePanel?.let { panel ->
+        ModalBottomSheet(onDismissRequest = { activePanel = null }) {
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Choose font", style = MaterialTheme.typography.titleLarge)
-                OutlinedTextField(
-                    value = fontQuery,
-                    onValueChange = { fontQuery = it },
-                    label = { Text("Search fonts") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                val visibleFonts = fontOptions.filter { (label, _) -> label.contains(fontQuery, ignoreCase = true) }
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-                    items(visibleFonts, key = { it.first }) { (label, optionTypeface) ->
-                        OutlinedButton(
-                            onClick = {
-                                selectedFontLabel = label
-                                preferences.edit().putString(PREF_KEY_LAST_IMAGE_FONT, label).apply()
-                                showFontPicker = false
-                                fontQuery = ""
-                            },
+                when (panel) {
+                    EditorPanel.Text -> {
+                        Text("Edit text", style = MaterialTheme.typography.titleLarge)
+                        OutlinedTextField(
+                            value = text,
+                            onValueChange = { text = it },
+                            label = { Text("Text") },
+                            supportingText = { Text("Use Enter to start a new line") },
                             modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                if (label == selectedFontLabel) "✓  $label" else label,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily(optionTypeface),
-                            )
+                            minLines = 2,
+                            maxLines = 4,
+                            textStyle = MaterialTheme.typography.titleLarge.copy(
+                                fontFamily = androidx.compose.ui.text.font.FontFamily(typeface),
+                            ),
+                        )
+                    }
+                    EditorPanel.Font -> {
+                        Text("Choose font", style = MaterialTheme.typography.titleLarge)
+                        OutlinedTextField(
+                            value = fontQuery,
+                            onValueChange = { fontQuery = it },
+                            label = { Text("Search fonts") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        val visibleFonts = fontOptions.filter { (label, _) -> label.contains(fontQuery, ignoreCase = true) }
+                        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                            items(visibleFonts) { (label, optionTypeface) ->
+                                OutlinedButton(
+                                    onClick = {
+                                        selectedFontLabel = label
+                                        preferences.edit().putString(PREF_KEY_LAST_IMAGE_FONT, label).apply()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        if (label == selectedFontLabel) "✓  $label" else label,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily(optionTypeface),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    EditorPanel.Size -> {
+                        Text("Text size · ${sizePercent.roundToInt()}%", style = MaterialTheme.typography.titleLarge)
+                        Slider(value = sizePercent, onValueChange = { sizePercent = it }, valueRange = 4f..24f)
+                    }
+                    EditorPanel.Color -> {
+                        Text("Text color", style = MaterialTheme.typography.titleLarge)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            TEXT_COLORS.forEach { option ->
+                                androidx.compose.foundation.layout.Box(
+                                    Modifier.size(48.dp).background(option.composeColor, androidx.compose.foundation.shape.CircleShape)
+                                        .border(if (textColor == option) 4.dp else 1.dp, MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
+                                        .semantics { contentDescription = "${option.name} text" }
+                                        .clickable { textColor = option },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (textColor == option) {
+                                        Text("✓", color = if (option.value == android.graphics.Color.WHITE || option.value == android.graphics.Color.YELLOW) Color.Black else Color.White)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.EditorToolButton(
+    label: String,
+    panel: EditorPanel,
+    onClick: (EditorPanel) -> Unit,
+) {
+    OutlinedButton(onClick = { onClick(panel) }, modifier = Modifier.weight(1f)) { Text(label) }
 }
 
 private fun overlayPaint(typeface: Typeface, textSize: Float, textColor: Int) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -234,6 +288,34 @@ private fun displayedImageSize(canvasSize: IntSize, imageWidth: Int, imageHeight
     if (canvasSize.width == 0 || canvasSize.height == 0) return IntSize.Zero
     val scale = minOf(canvasSize.width.toFloat() / imageWidth, canvasSize.height.toFloat() / imageHeight)
     return IntSize((imageWidth * scale).roundToInt(), (imageHeight * scale).roundToInt())
+}
+
+private fun isPointNearOverlayText(
+    pointer: Offset,
+    canvasSize: IntSize,
+    imageWidth: Int,
+    imageHeight: Int,
+    text: String,
+    typeface: Typeface,
+    sizePercent: Float,
+    textPosition: Offset,
+    touchPadding: Float,
+): Boolean {
+    if (text.isBlank()) return false
+    val imageSize = displayedImageSize(canvasSize, imageWidth, imageHeight)
+    if (imageSize.width <= 0 || imageSize.height <= 0) return false
+    val left = (canvasSize.width - imageSize.width) / 2f
+    val top = (canvasSize.height - imageSize.height) / 2f
+    val centerX = left + imageSize.width * textPosition.x
+    val bottomBaseline = top + imageSize.height * textPosition.y
+    val paint = overlayPaint(typeface, imageSize.height * sizePercent / 100f, android.graphics.Color.WHITE)
+    val lines = wrapTextLines(text, imageSize.width * .9f, paint)
+    val textWidth = lines.maxOfOrNull { line -> paint.measureText(line) }?.coerceAtLeast(paint.textSize) ?: paint.textSize
+    val firstBaseline = bottomBaseline - paint.fontSpacing * (lines.size - 1)
+    val boundsTop = firstBaseline + paint.fontMetrics.top - touchPadding
+    val boundsBottom = bottomBaseline + paint.fontMetrics.bottom + touchPadding
+    return pointer.x in (centerX - textWidth / 2f - touchPadding)..(centerX + textWidth / 2f + touchPadding) &&
+        pointer.y in boundsTop..boundsBottom
 }
 
 private fun drawOverlayText(canvas: Canvas, text: String, centerX: Float, bottomBaseline: Float, maxWidth: Float, paint: Paint) {
