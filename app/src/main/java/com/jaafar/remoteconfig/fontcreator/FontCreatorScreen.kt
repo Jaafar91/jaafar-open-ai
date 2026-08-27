@@ -84,7 +84,7 @@ private val ModernDarkColors = darkColorScheme(
     outlineVariant = Color(0xFF45464F),
 )
 
-internal enum class Screen { Home, Fonts, Signatures, Stamps, FontReady, Letters, Image, Signature, FillMark, Settings }
+internal enum class Screen { Home, Fonts, Signatures, Stamps, FontReady, Letters, Signature, FillMark, Settings }
 
 @Composable
 fun FontCreatorApp(
@@ -100,13 +100,18 @@ fun FontCreatorApp(
     var screen by remember { mutableStateOf(if (sharedUri != null) Screen.FillMark else Screen.Home) }
     var fillMarkUri by remember { mutableStateOf<Uri?>(sharedUri) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
-    var imageTypeface by remember { mutableStateOf<Typeface?>(null) }
     var preferredImageFontName by remember { mutableStateOf<String?>(null) }
     var initialImageText by remember { mutableStateOf("") }
-    var autoPickImage by remember { mutableStateOf(false) }
     var fontWorkspaceBack by remember { mutableStateOf(Screen.Home) }
     var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
     var showCreateFontDialog by remember { mutableStateOf(false) }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        imageUri = uri
+        if (uri == null) {
+            preferredImageFontName = null
+            initialImageText = ""
+        }
+    }
 
     // A running activity receives subsequent Share-sheet requests through onNewIntent.
     // Route every request straight to the editor, including a re-shared copy of the same file.
@@ -131,6 +136,14 @@ fun FontCreatorApp(
         val referenceTypeface = remember(viewModel.referenceFontKey, viewModel.projects.size, viewModel.importedFonts.size) {
             viewModel.referenceTypeface()
         }
+        val imageFontOptions = remember(viewModel.projects.toList(), viewModel.importedFonts.toList(), viewModel.generatedFont) {
+            listOf(
+                "Default" to Typeface.DEFAULT,
+                "Serif" to Typeface.SERIF,
+                "Sans-Serif" to Typeface.SANS_SERIF,
+                "Monospace" to Typeface.MONOSPACE,
+            ) + viewModel.allFontOptions()
+        }
         when {
             showTutorial -> FeatureTutorial(
                 onFinished = {
@@ -138,9 +151,14 @@ fun FontCreatorApp(
                     showTutorial = false
                 },
             )
-            imageUri != null && imageTypeface != null -> ImageTextEditorScreen(imageUri!!, imageTypeface!!, initialImageText) {
+            imageUri != null -> ImageTextEditorScreen(
+                imageUri = imageUri!!,
+                fontOptions = imageFontOptions,
+                initiallySelectedFont = preferredImageFontName,
+                initialText = initialImageText,
+            ) {
                 imageUri = null
-                imageTypeface = null
+                preferredImageFontName = null
                 initialImageText = ""
             }
             viewModel.selectedCodePoint != null -> GlyphEditorScreen(
@@ -202,8 +220,7 @@ fun FontCreatorApp(
                     useFontOnImage = { fontName ->
                         preferredImageFontName = fontName
                         initialImageText = ""
-                        autoPickImage = true
-                        screen = Screen.Image
+                        imagePicker.launch("image/*")
                     },
                     openFillMark = { screen = Screen.FillMark },
                     openFonts = { screen = Screen.Fonts },
@@ -250,8 +267,7 @@ fun FontCreatorApp(
                     useOnImage = { fontName, text ->
                         preferredImageFontName = fontName
                         initialImageText = text
-                        autoPickImage = true
-                        screen = Screen.Image
+                        imagePicker.launch("image/*")
                     },
                 )
                 Screen.Letters -> LettersScreen(
@@ -264,17 +280,9 @@ fun FontCreatorApp(
                     useOnImage = { fontName ->
                         preferredImageFontName = fontName
                         initialImageText = previewText
-                        autoPickImage = true
-                        screen = Screen.Image
+                        imagePicker.launch("image/*")
                     },
                 )
-                Screen.Image -> ImageScreen(
-                    vm = viewModel,
-                    back = { preferredImageFontName = null; initialImageText = ""; autoPickImage = false; screen = Screen.Home },
-                    initiallySelectedFont = preferredImageFontName,
-                    autoPickImage = autoPickImage,
-                    onAutoPickConsumed = { autoPickImage = false },
-                ) { tf, uri -> imageTypeface = tf; imageUri = uri; preferredImageFontName = null }
                 Screen.Signature -> SignatureScreen(
                     vm = viewModel,
                     initialMarkName = pendingSignatureMark,
@@ -385,66 +393,6 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
         bodyLarge = base.bodyLarge.withSelectedFont(), bodyMedium = base.bodyMedium.withSelectedFont(), bodySmall = base.bodySmall.withSelectedFont(),
         labelLarge = base.labelLarge.withSelectedFont(), labelMedium = base.labelMedium.withSelectedFont(), labelSmall = base.labelSmall.withSelectedFont(),
     )
-}
-
-private const val PREF_KEY_LAST_IMAGE_FONT = "last_font"
-
-@Composable private fun ImageScreen(
-    vm: FontCreatorViewModel,
-    back: () -> Unit,
-    initiallySelectedFont: String? = null,
-    autoPickImage: Boolean = false,
-    onAutoPickConsumed: () -> Unit = {},
-    selected: (Typeface, Uri) -> Unit,
-) {
-    val context = LocalContext.current
-    val preferences = remember { context.getSharedPreferences("image_editor", 0) }
-    val allFonts = remember(vm.projects.toList(), vm.importedFonts.toList(), vm.generatedFont) { vm.allFontOptions() }
-    val systemFonts = listOf("Default" to Typeface.DEFAULT, "Serif" to Typeface.SERIF, "Sans-Serif" to Typeface.SANS_SERIF, "Monospace" to Typeface.MONOSPACE)
-    val allAvailable = systemFonts + allFonts
-    val lastSavedFont = remember { preferences.getString(PREF_KEY_LAST_IMAGE_FONT, null) }
-    var selectedFontLabel by remember(allAvailable, initiallySelectedFont) {
-        val resolved = when {
-            initiallySelectedFont != null && allAvailable.any { it.first == initiallySelectedFont } -> initiallySelectedFont
-            lastSavedFont != null && allAvailable.any { it.first == lastSavedFont } -> lastSavedFont
-            else -> allAvailable.firstOrNull()?.first ?: "Default"
-        }
-        mutableStateOf(resolved)
-    }
-    var expanded by remember { mutableStateOf(false) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            val tf = allAvailable.firstOrNull { it.first == selectedFontLabel }?.second ?: Typeface.DEFAULT
-            preferences.edit().putString(PREF_KEY_LAST_IMAGE_FONT, selectedFontLabel).apply()
-            selected(tf, uri)
-        }
-    }
-    LaunchedEffect(autoPickImage) {
-        if (autoPickImage) {
-            picker.launch("image/*")
-            onAutoPickConsumed()
-        }
-    }
-    Page("Edit an image", back, scrollable = true) {
-        Text("Choose a font and add styled text, a signature, or a stamp to an image.")
-        Box {
-            OutlinedButton({ expanded = true }, Modifier.fillMaxWidth()) { Text("Font: $selectedFontLabel") }
-            DropdownMenu(expanded, { expanded = false }) {
-                allAvailable.forEach { (label, _) ->
-                    DropdownMenuItem(
-                        text = { Text(label) },
-                        onClick = {
-                            selectedFontLabel = label
-                            expanded = false
-                            preferences.edit().putString(PREF_KEY_LAST_IMAGE_FONT, label).apply()
-                        },
-                        trailingIcon = { if (label == selectedFontLabel) Text("✓") },
-                    )
-                }
-            }
-        }
-        Button({ picker.launch("image/*") }, Modifier.fillMaxWidth()) { Text("Choose image") }
-    }
 }
 
 @Composable private fun SettingsScreen(
