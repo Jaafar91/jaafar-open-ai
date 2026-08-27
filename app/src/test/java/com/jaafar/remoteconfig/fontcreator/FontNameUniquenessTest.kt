@@ -39,4 +39,11 @@ class FontNameUniquenessTest {
         assertFalse(isDuplicateFontProjectName(existingNames, "   "))
         assertFalse(isDuplicateFontProjectName(existingNames, "---___***"))
     }
+
+    @Test
+    fun `created and imported names conflict across normalized variants`() {
+        assertTrue(fontNamesConflict("Test Font", "test-font"))
+        assertTrue(fontNamesConflict("test_font", "TEST FONT"))
+        assertFalse(fontNamesConflict("Test Font", "Another Font"))
+    }
 }
