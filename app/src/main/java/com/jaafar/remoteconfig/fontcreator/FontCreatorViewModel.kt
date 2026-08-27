@@ -125,22 +125,24 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         if (clean.isBlank()) { status = "Enter a name for the font."; return false }
         val requestedStorageKey = normalizedFontStorageKey(clean)
         if (requestedStorageKey.isBlank()) { status = "Use letters or numbers in the font name."; return false }
-        if (isDuplicateFontProjectName(projects.map { it.name }, clean)) {
+        if (hasFontName(clean)) {
             status = "A font with that name already exists."
             return false
         }
         projects.add(FontProject(clean)); openProject(projects.lastIndex); persist(); return true
     }
 
-    fun hasProjectName(name: String): Boolean {
+    fun hasFontName(name: String, excludingProjectIndex: Int? = null): Boolean {
         val clean = name.trim()
         if (clean.isBlank()) return false
         val requestedStorageKey = normalizedFontStorageKey(clean)
         if (requestedStorageKey.isBlank()) return false
-        return projects.any { project ->
-            project.name.equals(clean, ignoreCase = true) || normalizedFontStorageKey(project.name) == requestedStorageKey
-        }
+        return projects.withIndex().any { (index, project) ->
+            index != excludingProjectIndex && fontNamesConflict(project.name, clean)
+        } || importedFonts.any { font -> fontNamesConflict(font.displayName, clean) }
     }
+
+    fun hasProjectName(name: String): Boolean = hasFontName(name)
 
     fun renameActiveProject(name: String): Boolean {
         val index = activeProjectIndex ?: return false
@@ -149,9 +151,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         if (clean.isBlank()) { status = "Enter a name for the font."; return false }
         val requestedStorageKey = normalizedFontStorageKey(clean)
         if (requestedStorageKey.isBlank()) { status = "Use letters or numbers in the font name."; return false }
-        if (projects.withIndex().any { (projectIndex, project) ->
-                projectIndex != index && (project.name.equals(clean, ignoreCase = true) || normalizedFontStorageKey(project.name) == requestedStorageKey)
-            }) {
+        if (hasFontName(clean, excludingProjectIndex = index)) {
             status = "A font with that name already exists."
             return false
         }
@@ -250,8 +250,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         val missingCharacters = phraseCharacters.filter { it !in drawings }
         if (missingCharacters.isEmpty()) {
             closeEditor()
-            phraseModeEnabled = false
-            prefs.edit().putBoolean(PREFS_PHRASE_MODE, false).apply()
+            clearPhraseModeState()
             status = "Phrase ready — all required characters are already available."
         } else {
             startQueue(missingCharacters, "Phrase ready — all required characters are already available.")
@@ -267,6 +266,18 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             pagingQueue = emptyList()
             pagingHistory = emptyList()
         }
+    }
+
+    private fun clearPhraseModeState() {
+        phraseModeEnabled = false
+        lastPhrase = ""
+        pagingQueue = emptyList()
+        pagingHistory = emptyList()
+        pagingTotal = 0
+        prefs.edit()
+            .remove(PREFS_PHRASE_MODE)
+            .remove(PREFS_LAST_PHRASE)
+            .apply()
     }
 
     private fun startQueue(queue: List<Int>, emptyMessage: String) {
@@ -321,8 +332,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         val phraseFinished = selectedCodePoint == null && phraseModeEnabled
         if (selectedCodePoint == null) isPagingMode = false
         if (phraseFinished) {
-            phraseModeEnabled = false
-            prefs.edit().putBoolean(PREFS_PHRASE_MODE, false).apply()
+            clearPhraseModeState()
         }
         syncActive(); persist(); status = if (phraseFinished) "Phrase ready." else "Glyph saved."
     }
@@ -360,6 +370,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     fun importFont(contentResolver: ContentResolver, uri: Uri, displayName: String) {
         val cleanName = displayName.trim().ifEmpty { "Imported Font" }
+        if (hasFontName(cleanName)) {
+            importStatus = "A font with that name already exists."
+            return
+        }
         importStatus = "Importing…"
         executor.execute {
             runCatching {
@@ -593,6 +607,13 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
 internal fun applicablePhraseCodePoints(phrase: String, supported: Set<Int>): List<Int> =
     phrase.codePoints().toArray().toList().distinct().filter { it != 0x20 && it in supported }
+
+internal fun fontNamesConflict(first: String, second: String): Boolean {
+    val firstKey = normalizedFontStorageKey(first)
+    val secondKey = normalizedFontStorageKey(second)
+    return first.equals(second, ignoreCase = true) ||
+        (firstKey.isNotBlank() && firstKey == secondKey)
+}
 
 internal fun characterAfterSave(order: List<Int>, current: Int, drawn: Set<Int>, wasExisting: Boolean): Int? {
     if (order.isEmpty()) return null

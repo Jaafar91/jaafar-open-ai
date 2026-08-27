@@ -120,7 +120,7 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
     var name by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    val duplicate = name.trim().isNotEmpty() && vm.hasProjectName(name)
+    val duplicate = name.trim().isNotEmpty() && vm.hasFontName(name)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Name your font") },
