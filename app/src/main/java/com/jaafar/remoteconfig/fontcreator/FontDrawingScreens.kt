@@ -64,7 +64,7 @@ import com.jaafar.remoteconfig.R
 ) = Page("Font workspace", back, actions = {
     val file = vm.generatedFont
     val project = vm.activeProject
-    if (file != null && project != null) ShareButton(file, project.name)
+    if (file != null && project != null && vm.isProjectComplete(project)) ShareButton(file, project.name)
 }) {
     val project = vm.activeProject
     val total = vm.activeCharacterOrder.size
@@ -142,10 +142,7 @@ import com.jaafar.remoteconfig.R
     if (showRenameDialog && project != null) {
         val cleanName = renameName.trim()
         val invalidName = cleanName.isNotEmpty() && normalizedFontStorageKey(cleanName).isBlank()
-        val duplicateName = vm.projects.withIndex().any { (index, candidate) ->
-            index != vm.activeProjectIndex && (candidate.name.equals(cleanName, ignoreCase = true) ||
-                normalizedFontStorageKey(candidate.name) == normalizedFontStorageKey(cleanName))
-        }
+        val duplicateName = vm.hasFontName(cleanName, excludingProjectIndex = vm.activeProjectIndex)
         val unchangedName = cleanName == project.name
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
