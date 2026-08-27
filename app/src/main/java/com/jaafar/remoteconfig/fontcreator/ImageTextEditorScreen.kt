@@ -18,11 +18,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -54,6 +59,7 @@ import java.io.FileOutputStream
 import kotlin.math.roundToInt
 
 private data class TextColorOption(val name: String, val value: Int, val composeColor: Color)
+private const val PREF_KEY_LAST_IMAGE_FONT = "last_font"
 
 private val TEXT_COLORS = listOf(
     TextColorOption("White", android.graphics.Color.WHITE, Color.White),
@@ -66,14 +72,33 @@ private val TEXT_COLORS = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, initialText: String = "", onBack: () -> Unit) {
+fun ImageTextEditorScreen(
+    imageUri: Uri,
+    fontOptions: List<Pair<String, Typeface>>,
+    initiallySelectedFont: String? = null,
+    initialText: String = "",
+    onBack: () -> Unit,
+) {
     val context = LocalContext.current
+    val preferences = remember { context.getSharedPreferences("image_editor", 0) }
     val bitmap = remember(imageUri) { loadBitmap(context.contentResolver, imageUri) }
+    val lastSavedFont = remember { preferences.getString(PREF_KEY_LAST_IMAGE_FONT, null) }
+    var selectedFontLabel by remember(fontOptions, initiallySelectedFont) {
+        val resolved = when {
+            initiallySelectedFont != null && fontOptions.any { it.first == initiallySelectedFont } -> initiallySelectedFont
+            lastSavedFont != null && fontOptions.any { it.first == lastSavedFont } -> lastSavedFont
+            else -> fontOptions.firstOrNull()?.first ?: "Default"
+        }
+        mutableStateOf(resolved)
+    }
+    val typeface = fontOptions.firstOrNull { it.first == selectedFontLabel }?.second ?: Typeface.DEFAULT
     var text by remember(imageUri, initialText) { mutableStateOf(initialText) }
     var sizePercent by remember { mutableFloatStateOf(10f) }
     var textColor by remember { mutableStateOf(TEXT_COLORS.first()) }
     var textPosition by remember { mutableStateOf(Offset(.5f, .85f)) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    var showFontPicker by remember { mutableStateOf(false) }
+    var fontQuery by remember { mutableStateOf("") }
 
     BackHandler(onBack = onBack)
     Scaffold(topBar = { AppTopBar("Write on image", onBack) }) { padding ->
@@ -113,6 +138,9 @@ fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, initialText: String
                     }
                 }
                 Text("Drag on the image to move the text")
+                OutlinedButton(onClick = { showFontPicker = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Font: $selectedFontLabel", fontFamily = androidx.compose.ui.text.font.FontFamily(typeface))
+                }
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
@@ -144,6 +172,42 @@ fun ImageTextEditorScreen(imageUri: Uri, typeface: Typeface, initialText: String
                         enabled = text.isNotBlank(), modifier = Modifier.fillMaxWidth(),
                         onClick = { shareImage(context, renderImage(bitmap, text, typeface, sizePercent, textColor.value, textPosition)) },
                     ) { Text("Share image") }
+                }
+            }
+        }
+    }
+    if (showFontPicker) {
+        ModalBottomSheet(onDismissRequest = { showFontPicker = false }) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Choose font", style = MaterialTheme.typography.titleLarge)
+                OutlinedTextField(
+                    value = fontQuery,
+                    onValueChange = { fontQuery = it },
+                    label = { Text("Search fonts") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                val visibleFonts = fontOptions.filter { (label, _) -> label.contains(fontQuery, ignoreCase = true) }
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                    items(visibleFonts, key = { it.first }) { (label, optionTypeface) ->
+                        OutlinedButton(
+                            onClick = {
+                                selectedFontLabel = label
+                                preferences.edit().putString(PREF_KEY_LAST_IMAGE_FONT, label).apply()
+                                showFontPicker = false
+                                fontQuery = ""
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                if (label == selectedFontLabel) "✓  $label" else label,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily(optionTypeface),
+                            )
+                        }
+                    }
                 }
             }
         }
