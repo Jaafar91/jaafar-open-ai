@@ -21,9 +21,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -60,7 +64,10 @@ import kotlin.math.roundToInt
 
 private data class TextColorOption(val name: String, val value: Int, val composeColor: Color)
 private enum class EditorPanel { Text, Font, Size, Color }
+private enum class FontFilter { All, MyFonts, System }
 private const val PREF_KEY_LAST_IMAGE_FONT = "last_font"
+private const val PREF_KEY_RECENT_IMAGE_FONTS = "recent_fonts"
+private const val RECENT_FONT_SEPARATOR = "\u001F"
 
 private val TEXT_COLORS = listOf(
     TextColorOption("White", android.graphics.Color.WHITE, Color.White),
@@ -100,6 +107,22 @@ fun ImageTextEditorScreen(
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var activePanel by remember { mutableStateOf<EditorPanel?>(null) }
     var fontQuery by remember { mutableStateOf("") }
+    var showAllFonts by remember { mutableStateOf(false) }
+    var fontFilter by remember { mutableStateOf(FontFilter.All) }
+    var recentFontLabels by remember(fontOptions) {
+        val stored = preferences.getString(PREF_KEY_RECENT_IMAGE_FONTS, "").orEmpty()
+            .split(RECENT_FONT_SEPARATOR).filter { saved -> fontOptions.any { it.first == saved } }
+        mutableStateOf((listOf(selectedFontLabel) + stored).distinct().take(6))
+    }
+
+    fun selectImageFont(label: String) {
+        selectedFontLabel = label
+        recentFontLabels = (listOf(label) + recentFontLabels).distinct().take(6)
+        preferences.edit()
+            .putString(PREF_KEY_LAST_IMAGE_FONT, label)
+            .putString(PREF_KEY_RECENT_IMAGE_FONTS, recentFontLabels.joinToString(RECENT_FONT_SEPARATOR))
+            .apply()
+    }
 
     BackHandler(onBack = onBack)
     Scaffold(
@@ -183,7 +206,7 @@ fun ImageTextEditorScreen(
         }
     }
     activePanel?.let { panel ->
-        ModalBottomSheet(onDismissRequest = { activePanel = null }) {
+        ModalBottomSheet(onDismissRequest = { activePanel = null; showAllFonts = false; fontQuery = "" }) {
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -205,28 +228,67 @@ fun ImageTextEditorScreen(
                         )
                     }
                     EditorPanel.Font -> {
-                        Text("Choose font", style = MaterialTheme.typography.titleLarge)
-                        OutlinedTextField(
-                            value = fontQuery,
-                            onValueChange = { fontQuery = it },
-                            label = { Text("Search fonts") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        val visibleFonts = fontOptions.filter { (label, _) -> label.contains(fontQuery, ignoreCase = true) }
-                        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-                            items(visibleFonts) { (label, optionTypeface) ->
-                                OutlinedButton(
-                                    onClick = {
-                                        selectedFontLabel = label
-                                        preferences.edit().putString(PREF_KEY_LAST_IMAGE_FONT, label).apply()
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text(
-                                        if (label == selectedFontLabel) "✓  $label" else label,
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily(optionTypeface),
+                        if (!showAllFonts) {
+                            Text("Recent fonts", style = MaterialTheme.typography.titleLarge)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(recentFontLabels.mapNotNull { recent -> fontOptions.firstOrNull { it.first == recent } }) { (label, optionTypeface) ->
+                                    FilterChip(
+                                        selected = label == selectedFontLabel,
+                                        onClick = { selectImageFont(label) },
+                                        modifier = Modifier.width(112.dp).heightIn(min = 72.dp),
+                                        label = {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text("Aa", style = MaterialTheme.typography.titleLarge, fontFamily = androidx.compose.ui.text.font.FontFamily(optionTypeface))
+                                                Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                                            }
+                                        },
                                     )
+                                }
+                                item {
+                                    OutlinedButton(
+                                        onClick = { showAllFonts = true },
+                                        modifier = Modifier.width(112.dp).heightIn(min = 72.dp),
+                                    ) { Text("All fonts") }
+                                }
+                            }
+                            Text("Swipe to preview. Changes appear on the image immediately.", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(selected = fontFilter == FontFilter.All, onClick = { fontFilter = FontFilter.All }, label = { Text("All") })
+                                FilterChip(selected = fontFilter == FontFilter.MyFonts, onClick = { fontFilter = FontFilter.MyFonts }, label = { Text("My fonts") })
+                                FilterChip(selected = fontFilter == FontFilter.System, onClick = { fontFilter = FontFilter.System }, label = { Text("System") })
+                            }
+                            OutlinedTextField(
+                                value = fontQuery,
+                                onValueChange = { fontQuery = it },
+                                label = { Text("Search fonts") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            val filteredBySource = when (fontFilter) {
+                                FontFilter.All -> fontOptions
+                                FontFilter.System -> fontOptions.take(4)
+                                FontFilter.MyFonts -> fontOptions.drop(4)
+                            }
+                            val visibleFonts = filteredBySource.filter { (label, _) -> label.contains(fontQuery, ignoreCase = true) }
+                            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                                items(visibleFonts) { (label, optionTypeface) ->
+                                    Row(
+                                        Modifier.fillMaxWidth().clickable { selectImageFont(label) }.padding(vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(label, style = MaterialTheme.typography.labelMedium)
+                                            Text(
+                                                text.ifBlank { "Aa" },
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily(optionTypeface),
+                                                maxLines = 1,
+                                            )
+                                        }
+                                        if (label == selectedFontLabel) Text("✓", style = MaterialTheme.typography.titleLarge)
+                                    }
+                                    HorizontalDivider()
                                 }
                             }
                         }
