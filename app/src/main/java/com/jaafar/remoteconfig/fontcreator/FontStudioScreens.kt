@@ -79,7 +79,30 @@ import com.jaafar.remoteconfig.R
     }
 
     Page("Fine-tune your font", back, scrollable = true) {
-        Text(project.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .72f),
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            shape = RoundedCornerShape(24.dp),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Text(
+                    if (complete) "FINAL STEP" else "PREVIEW",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(project.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    if (complete) "Your alphabet is complete. Give the font its finishing touch."
+                    else "Preview the letters you have drawn and keep building when you are ready.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
         if (vm.previewTypeface == null) {
             Text("Creating your font…", color = MaterialTheme.colorScheme.onSurfaceVariant)
             LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -98,7 +121,8 @@ import com.jaafar.remoteconfig.R
                 )
             }
             Text(
-                if (complete) "Your font is ready to use." else "Preview and adjust the letters you have drawn so far.",
+                if (complete) "Try a real phrase below, then adjust the rhythm until it feels like your handwriting."
+                else "Preview and adjust the letters you have drawn so far.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedTextField(
