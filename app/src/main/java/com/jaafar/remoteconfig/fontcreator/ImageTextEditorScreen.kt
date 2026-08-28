@@ -243,13 +243,18 @@ fun ImageTextEditorScreen(
                         val imageTop = (canvasSize.height - imageSize.height) / 2f
                         val editorWidthPx = imageSize.width * .9f
                         val textSizePx = imageSize.height * sizePercent / 100f
+                        val editorPaint = overlayPaint(typeface, textSizePx, textColor.value)
+                        val editorLines = wrapTextLines(text, editorWidthPx, editorPaint)
+                        val editorTextSize = with(density) { textSizePx.toSp() }
+                        val editorLineHeight = with(density) { editorPaint.fontSpacing.toSp() }
                         val centerX = imageLeft + imageSize.width * textPosition.x
                         val baselineY = imageTop + imageSize.height * textPosition.y
+                        val editorTop = baselineY - editorPaint.fontSpacing * (editorLines.size - 1) - textSizePx
                         BasicTextField(
                             value = text,
                             onValueChange = { text = it },
                             modifier = Modifier
-                                .offset { IntOffset((centerX - editorWidthPx / 2f).roundToInt(), (baselineY - textSizePx).roundToInt()) }
+                                .offset { IntOffset((centerX - editorWidthPx / 2f).roundToInt(), editorTop.roundToInt()) }
                                 .width(with(density) { editorWidthPx.toDp() })
                                 .border(1.dp, MaterialTheme.colorScheme.primary)
                                 .background(MaterialTheme.colorScheme.surface.copy(alpha = .35f))
@@ -258,7 +263,8 @@ fun ImageTextEditorScreen(
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
                                 color = textColor.composeColor,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily(typeface),
-                                fontSize = with(density) { textSizePx.toSp() },
+                                fontSize = editorTextSize,
+                                lineHeight = editorLineHeight,
                                 textAlign = TextAlign.Center,
                             ),
                         )
