@@ -94,7 +94,7 @@ private val ModernDarkColors = darkColorScheme(
     outlineVariant = Color(0xFF45464F),
 )
 
-internal enum class Screen { Home, Fonts, Signatures, Stamps, FontReady, Letters, Signature, FillMark, Settings }
+internal enum class Screen { Home, Fonts, Signatures, Stamps, FontCelebration, FontReady, Letters, Signature, FillMark, Settings }
 
 @Composable
 fun FontCreatorApp(
@@ -202,7 +202,11 @@ fun FontCreatorApp(
                     if (viewModel.selectedCodePoint == null) {
                         viewModel.disablePhraseMode()
                         viewModel.generate()
-                        screen = Screen.FontReady
+                        screen = if (viewModel.activeProject?.let(viewModel::isProjectComplete) == true) {
+                            Screen.FontCelebration
+                        } else {
+                            Screen.FontReady
+                        }
                     }
                 },
                 onSaveAndContinue = { drawing ->
@@ -210,7 +214,11 @@ fun FontCreatorApp(
                     if (viewModel.selectedCodePoint == null) {
                         viewModel.disablePhraseMode()
                         viewModel.generate()
-                        screen = Screen.FontReady
+                        screen = if (viewModel.activeProject?.let(viewModel::isProjectComplete) == true) {
+                            Screen.FontCelebration
+                        } else {
+                            Screen.FontReady
+                        }
                     }
                 },
                 onSaveAndStay = viewModel::saveDrawingAndStay,
@@ -263,6 +271,21 @@ fun FontCreatorApp(
                         screen = Screen.Signature
                     },
                 )
+                Screen.FontCelebration -> {
+                    val project = viewModel.activeProject
+                    FontCelebrationScreen(
+                        fontName = project?.name.orEmpty().ifBlank { "My handwriting" },
+                        characterCount = viewModel.activeCharacterOrder.size,
+                        fineTune = {
+                            viewModel.generate()
+                            screen = Screen.FontReady
+                        },
+                        backToLetters = {
+                            screen = Screen.Letters
+                            viewModel.editLetters()
+                        },
+                    )
+                }
                 Screen.FontReady -> FontReadyScreen(
                     vm = viewModel,
                     previewText = previewText,
