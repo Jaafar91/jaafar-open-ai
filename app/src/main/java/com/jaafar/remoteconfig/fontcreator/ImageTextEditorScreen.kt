@@ -138,8 +138,8 @@ fun ImageTextEditorScreen(
             .apply()
     }
 
-    LaunchedEffect(isEditingText) {
-        if (isEditingText) {
+    LaunchedEffect(isEditingText, canvasSize) {
+        if (isEditingText && canvasSize.width > 0 && canvasSize.height > 0) {
             textFocusRequester.requestFocus()
             keyboard?.show()
         }
