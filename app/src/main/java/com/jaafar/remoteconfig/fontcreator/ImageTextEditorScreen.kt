@@ -119,7 +119,7 @@ fun ImageTextEditorScreen(
     var textPosition by remember { mutableStateOf(Offset(.5f, .85f)) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var activePanel by remember { mutableStateOf<EditorPanel?>(null) }
-    var isEditingText by remember { mutableStateOf(initialText.isBlank()) }
+    var isEditingText by remember { mutableStateOf(false) }
     var fontQuery by remember { mutableStateOf("") }
     var showAllFonts by remember { mutableStateOf(false) }
     var fontFilter by remember { mutableStateOf(FontFilter.All) }
@@ -140,8 +140,10 @@ fun ImageTextEditorScreen(
 
     LaunchedEffect(isEditingText, canvasSize) {
         if (isEditingText && canvasSize.width > 0 && canvasSize.height > 0) {
-            textFocusRequester.requestFocus()
-            keyboard?.show()
+            runCatching {
+                textFocusRequester.requestFocus()
+                keyboard?.show()
+            }
         }
     }
 
