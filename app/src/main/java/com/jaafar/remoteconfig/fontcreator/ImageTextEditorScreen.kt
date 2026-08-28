@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -38,6 +39,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -304,30 +306,51 @@ fun ImageTextEditorScreen(
                     }
                     EditorPanel.Font -> {
                         if (!showAllFonts) {
-                            Text("Recent fonts", style = MaterialTheme.typography.titleLarge)
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(recentFontLabels.mapNotNull { recent -> fontOptions.firstOrNull { it.first == recent } }) { (label, optionTypeface) ->
-                                    FilterChip(
-                                        selected = label == selectedFontLabel,
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Fonts", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { showAllFonts = true }) { Text("Browse all") }
+                            }
+                            val carouselLabels = (
+                                recentFontLabels + fontOptions.drop(4).map { it.first } + fontOptions.take(4).map { it.first }
+                            ).distinct().take(10)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(carouselLabels.mapNotNull { name -> fontOptions.firstOrNull { it.first == name } }) { (label, optionTypeface) ->
+                                    val selected = label == selectedFontLabel
+                                    Surface(
                                         onClick = { selectImageFont(label) },
-                                        modifier = Modifier.width(112.dp).heightIn(min = 72.dp),
-                                        label = {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Text("Aa", style = MaterialTheme.typography.titleLarge, fontFamily = androidx.compose.ui.text.font.FontFamily(optionTypeface))
-                                                Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                        shape = RoundedCornerShape(18.dp),
+                                        modifier = Modifier.width(128.dp).heightIn(min = 86.dp),
+                                    ) {
+                                        Column(
+                                            Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center,
+                                        ) {
+                                            Text(
+                                                text.ifBlank { "Aa" }.replace('\n', ' ').take(14),
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily(optionTypeface),
+                                                maxLines = 1,
+                                            )
+                                            Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                                            if (selected) {
+                                                HorizontalDivider(
+                                                    modifier = Modifier.width(28.dp).padding(top = 5.dp),
+                                                    thickness = 3.dp,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                )
                                             }
-                                        },
-                                    )
-                                }
-                                item {
-                                    OutlinedButton(
-                                        onClick = { showAllFonts = true },
-                                        modifier = Modifier.width(112.dp).heightIn(min = 72.dp),
-                                    ) { Text("All fonts") }
+                                        }
+                                    }
                                 }
                             }
-                            Text("Swipe to preview. Changes appear on the image immediately.", style = MaterialTheme.typography.bodySmall)
                         } else {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("All fonts", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { showAllFonts = false; fontQuery = "" }) { Text("Recent") }
+                            }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FilterChip(selected = fontFilter == FontFilter.All, onClick = { fontFilter = FontFilter.All }, label = { Text("All") })
                                 FilterChip(selected = fontFilter == FontFilter.MyFonts, onClick = { fontFilter = FontFilter.MyFonts }, label = { Text("My fonts") })
@@ -348,22 +371,30 @@ fun ImageTextEditorScreen(
                             val visibleFonts = filteredBySource.filter { (label, _) -> label.contains(fontQuery, ignoreCase = true) }
                             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
                                 items(visibleFonts) { (label, optionTypeface) ->
-                                    Row(
-                                        Modifier.fillMaxWidth().clickable { selectImageFont(label) }.padding(vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
+                                    val selected = label == selectedFontLabel
+                                    Surface(
+                                        onClick = { selectImageFont(label) },
+                                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                        shape = RoundedCornerShape(16.dp),
+                                        modifier = Modifier.fillMaxWidth(),
                                     ) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(label, style = MaterialTheme.typography.labelMedium)
-                                            Text(
-                                                text.ifBlank { "Aa" },
-                                                style = MaterialTheme.typography.titleLarge,
-                                                fontFamily = androidx.compose.ui.text.font.FontFamily(optionTypeface),
-                                                maxLines = 1,
-                                            )
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Column(Modifier.weight(1f)) {
+                                                Text(label, style = MaterialTheme.typography.labelSmall)
+                                                Text(
+                                                    text.ifBlank { "Aa" }.replace('\n', ' '),
+                                                    style = MaterialTheme.typography.titleLarge,
+                                                    fontFamily = androidx.compose.ui.text.font.FontFamily(optionTypeface),
+                                                    maxLines = 1,
+                                                )
+                                            }
+                                            if (selected) Text("✓", style = MaterialTheme.typography.titleLarge)
                                         }
-                                        if (label == selectedFontLabel) Text("✓", style = MaterialTheme.typography.titleLarge)
                                     }
-                                    HorizontalDivider()
                                 }
                             }
                         }
