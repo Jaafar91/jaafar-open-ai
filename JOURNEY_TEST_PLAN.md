@@ -7,16 +7,16 @@ This checklist is for every release APK. It separates checks verified by reading
 | ID | Journey | Result | Notes |
 | --- | --- | --- | --- |
 | FONT-03 | Complete a selected character set | Fixed in this PR | Completion previously counted all saved drawings, including optional characters. It now checks every required character. |
-| DOC-01 | Add a text mark | Pass — code checked | The flow is Text → tap location → type → Add text. |
-| DOC-02 | Select, edit, move, and delete a mark | Pass — code checked | Selected marks expose Edit and Delete; dragging updates position. |
-| NAV-01 | Home navigation | Pass — code checked | Home routes to documents, images, fonts, library, restyle, and settings. |
+| DOC-01 | Add a text mark | Pass â€” code checked | The flow is Text â†’ tap location â†’ type â†’ Add text. |
+| DOC-02 | Select, edit, move, and delete a mark | Pass â€” code checked | Selected marks expose Edit and Delete; dragging updates position. |
+| NAV-01 | Home navigation | Pass â€” code checked | Home routes to documents, images, fonts, library, restyle, and settings. |
 | DEVICE-01 to DEVICE-10 | Files, sharing, rendering, and updates | Manual device test required | These depend on Android storage, installed apps, and real PDF/image files. |
 
 ## 1. Home and navigation
 
 | ID | Steps | Expected result | Status |
 | --- | --- | --- | --- |
-| NAV-01 | Open the app. | Home title is **Font Creator**. | Code checked |
+| NAV-01 | Open the app. | Home title is **Font Maker**. | Code checked |
 | NAV-02 | Open each home card, then use Back. | Page opens and Back returns to Home without losing the app state. | Manual |
 | NAV-03 | Open Settings, switch dark mode, close and reopen the app. | Theme choice remains selected. | Manual |
 | NAV-04 | Open My Library with no saved assets. | Clear empty-state information is shown; no crash. | Code checked |
@@ -25,7 +25,7 @@ This checklist is for every release APK. It separates checks verified by reading
 
 | ID | Steps | Expected result | Status |
 | --- | --- | --- | --- |
-| FONT-01 | Fonts → Create a handwriting font → name it → choose letters. | New project opens the drawing journey. | Manual |
+| FONT-01 | Fonts â†’ Create a handwriting font â†’ name it â†’ choose letters. | New project opens the drawing journey. | Manual |
 | FONT-02 | Draw a character, Save & Next, then return to Fonts. | Progress increases by one required character. | Code checked |
 | FONT-03 | Draw required letters plus extra phrase letters. | The font is complete only when every selected character has been drawn. | Fixed / code checked |
 | FONT-04 | Finish all selected letters. | Completion screen says the font is ready; it does not offer duplicate continuation actions. | Manual |
@@ -55,9 +55,9 @@ This checklist is for every release APK. It separates checks verified by reading
 
 | ID | Steps | Expected result | Status |
 | --- | --- | --- | --- |
-| DOC-01 | Choose a PDF or image → Text → tap a location → type text → Add text. | Text appears at the selected location. | Code checked |
+| DOC-01 | Choose a PDF or image â†’ Text â†’ tap a location â†’ type text â†’ Add text. | Text appears at the selected location. | Code checked |
 | DOC-02 | Select added text. Edit its content, drag it, then Delete it. | Each change is visible immediately; Delete removes the mark. | Code checked |
-| DOC-03 | Choose Quick → Approved/Paid/Received/Confidential → tap a location. | Preset is placed at that location. | Code checked |
+| DOC-03 | Choose Quick â†’ Approved/Paid/Received/Confidential â†’ tap a location. | Preset is placed at that location. | Code checked |
 | DOC-04 | Add Date and Check marks. | Each mark uses the selected style and color. | Manual |
 | DOC-05 | Add a signature or stamp. | A visible saved asset is placed, can be moved, edited, and deleted. | Manual |
 | DOC-06 | Use a multi-page PDF. Add a mark to one page, then choose All pages. | Mark appears only on selected page first, then on every page after All pages. | Manual |
@@ -99,3 +99,4 @@ This checklist is for every release APK. It separates checks verified by reading
 2. Run every Manual item on a physical phone using a PDF, an image, a valid TTF/OTF, and one invalid file.
 3. Record the test ID and attach a screenshot for any failure.
 4. Do not publish a release until all required manual tests pass.
+
