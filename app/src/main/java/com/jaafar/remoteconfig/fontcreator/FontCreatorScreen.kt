@@ -381,7 +381,7 @@ fun FontCreatorApp(
                         Text("Aa", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                 }
-                Text(if (title == "Studio") "Font Creator" else title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(if (title == "Studio") "Font Maker" else title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
         },
         navigationIcon = {
@@ -469,7 +469,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
                 DropdownMenuItem(
                     text = { Text(key) },
                     onClick = { vm.setReferenceFont(key); refExpanded = false },
-                    trailingIcon = { if (key == vm.referenceFontKey) Text("✓") },
+                    trailingIcon = { if (key == vm.referenceFontKey) Text("âœ“") },
                 )
             }
         }
@@ -501,3 +501,4 @@ private fun openPlayStoreListing(context: android.content.Context) {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")))
         }
 }
+
