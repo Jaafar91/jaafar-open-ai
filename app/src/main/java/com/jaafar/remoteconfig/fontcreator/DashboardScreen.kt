@@ -40,9 +40,16 @@ internal fun DashboardScreen(
         IconButton(onClick = openSettings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
     },
 ) {
-    val unfinishedIndex = vm.projects.indexOfFirst { !vm.isProjectComplete(it) }.takeIf { it >= 0 }
+    // Picked by lastModifiedAt, matching the iOS app's equivalent defaults -- createProject
+    // appends new projects at the end of the list, so indexOfFirst/lastOrNull only ever
+    // reflected creation order and went stale the moment an *older* project was edited
+    // instead of a brand new one being added.
+    val unfinishedIndex = vm.projects.withIndex()
+        .filter { (_, project) -> !vm.isProjectComplete(project) }
+        .maxByOrNull { (_, project) -> project.lastModifiedAt }
+        ?.index
     val preferredFont = vm.activeProject?.name
-        ?: vm.projects.lastOrNull()?.name
+        ?: vm.projects.maxByOrNull { it.lastModifiedAt }?.name
         ?: vm.importedFonts.firstOrNull()?.displayName
     val hasAnyFont = vm.projects.isNotEmpty() || vm.importedFonts.isNotEmpty()
 

@@ -9,7 +9,8 @@ class TrueTypeGenerator {
     fun generate(drawings: Collection<GlyphDrawing>, spaceWidthMm: Float = 3f, letterSpacingMm: Float = 0f, fontName: String = "My Hand Font"): ByteArray {
         val space = GlyphDrawing(32, emptyList(), 1f, 1f)
         val ordered = (drawings.filter { it.codePoint in 33..126 } + space).sortedBy { it.codePoint }
-        val glyphs = listOf(notdefGlyph()) + ordered.map(::drawingGlyph)
+        val orderedContours = ordered.map(::glyphContours)
+        val glyphs = listOf(notdefGlyph()) + orderedContours.map(::simpleGlyph)
         val glyf = Bytes()
         val offsets = mutableListOf(0)
         glyphs.forEach {
@@ -24,7 +25,7 @@ class TrueTypeGenerator {
         tables["glyf"] = glyf.toByteArray()
         tables["head"] = head()
         tables["hhea"] = hhea(glyphs.size)
-        tables["hmtx"] = hmtx(ordered, spaceWidthMm, letterSpacingMm)
+        tables["hmtx"] = hmtx(ordered, orderedContours, spaceWidthMm, letterSpacingMm)
         tables["loca"] = Bytes().apply { offsets.forEach(::u32) }.toByteArray()
         tables["maxp"] = maxp(glyphs.size, glyphs.maxOfOrNull(::contourCount) ?: 0)
         tables["name"] = name(fontName)
@@ -34,7 +35,9 @@ class TrueTypeGenerator {
 
     private data class P(val x: Int, val y: Int)
 
-    private fun drawingGlyph(drawing: GlyphDrawing): ByteArray {
+    /** The glyph's outline contours in font-unit space -- used both to build its `glyf` entry
+     *  and (via their ink bounding box) to size its `hmtx` advance width proportionally. */
+    private fun glyphContours(drawing: GlyphDrawing): List<List<P>> {
         val width = drawing.canvasWidth.coerceAtLeast(1f)
         val height = drawing.canvasHeight.coerceAtLeast(1f)
         val baseline = height * .78f
@@ -43,7 +46,7 @@ class TrueTypeGenerator {
             (p.x / width * 1600 + 180).roundToInt().coerceIn(-32768, 32767),
             ((baseline - p.y) * scale).roundToInt().coerceIn(-450, 1900),
         )
-        val contours = drawing.strokes.mapNotNull { stroke ->
+        return drawing.strokes.mapNotNull { stroke ->
             val source = stroke.points.map(::convert).distinct()
             if (source.size < 2) return@mapNotNull null
             val radius = glyphStrokeRadius(drawing.strokeWidth).toDouble()
@@ -62,7 +65,6 @@ class TrueTypeGenerator {
             }
             ensureClockwise(left + right.asReversed())
         }
-        return simpleGlyph(contours)
     }
 
     private fun notdefGlyph(): ByteArray = simpleGlyph(listOf(ensureClockwise(listOf(
@@ -117,12 +119,22 @@ class TrueTypeGenerator {
         u16(0); u16(0); u16(0); u16(0)
     }.toByteArray()
 
-    private fun hmtx(drawings: List<GlyphDrawing>, spaceWidthMm: Float, letterSpacingMm: Float) = Bytes().apply {
+    private fun hmtx(drawings: List<GlyphDrawing>, contours: List<List<List<P>>>, spaceWidthMm: Float, letterSpacingMm: Float) = Bytes().apply {
         u16(2048); s16(0) // .notdef
-        drawings.forEach {
+        // Margin kept on each side of a glyph's actual ink, in font units -- so a narrow "i"
+        // or "r" advances only as far as its own drawn width needs, instead of every glyph
+        // (previously a flat 2048, the full em) reserving the same space regardless of how
+        // little of it a narrow letter's ink actually uses.
+        val sideBearing = 130f
+        drawings.zip(contours).forEach { (drawing, glyphContours) ->
             // At the font's nominal 12 pt size, 1 mm is approximately 484 font units.
-            val advance = if (it.codePoint == 32) (spaceWidthMm * 484f).roundToInt().coerceIn(100, 4096)
-                else (2048 + letterSpacingMm * 484f).roundToInt().coerceIn(500, 4096)
+            val advance = if (drawing.codePoint == 32) {
+                (spaceWidthMm * 484f).roundToInt().coerceIn(100, 4096)
+            } else {
+                val xs = glyphContours.flatten().map { it.x }
+                val inkWidth = ((xs.maxOrNull() ?: 0) - (xs.minOrNull() ?: 0)).toFloat()
+                (inkWidth + sideBearing * 2 + letterSpacingMm * 484f).roundToInt().coerceIn(500, 4096)
+            }
             u16(advance); s16(0)
         }
     }.toByteArray()
