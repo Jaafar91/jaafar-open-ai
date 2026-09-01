@@ -31,6 +31,10 @@ class GlyphRepository(context: Context) {
                     letterSpacingMm = item.optDouble("letterSpacingMm", 0.0).toFloat(),
                     wordSpacingMm = item.optDouble("wordSpacingMm", 3.0).toFloat(),
                     selectedLanguages = selectedLanguages,
+                    // Projects saved before this field existed have no recorded edit time --
+                    // 0 sorts them before anything with a real timestamp, same as iOS's
+                    // decodeIfPresent-with-createdAt-fallback does for its equivalent field.
+                    lastModifiedAt = item.optLong("lastModifiedAt", 0L),
                 ))
             }
         }
@@ -48,6 +52,7 @@ class GlyphRepository(context: Context) {
                 put("letterSpacingMm", project.letterSpacingMm.toDouble())
                 put("wordSpacingMm", project.wordSpacingMm.toDouble())
                 put("selectedLanguages", JSONArray().apply { project.selectedLanguages.forEach { put(it.name) } })
+                put("lastModifiedAt", project.lastModifiedAt)
                 put("drawings", JSONArray().apply {
                     project.drawings.sortedBy { it.codePoint }.forEach { put(it.toJson()) }
                 })

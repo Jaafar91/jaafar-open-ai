@@ -38,6 +38,12 @@ data class FontProject(
     val letterSpacingMm: Float = 0f,
     val wordSpacingMm: Float = 3f,
     val selectedLanguages: Set<LanguageScript> = setOf(LanguageScript.BASIC_LATIN),
+    /** When this project was created or last edited -- matches the iOS app's
+     *  `SavedAsset.lastModifiedAt`, used to find "the most recently created or modified
+     *  font" for defaults like the dashboard's "Continue" card and "Use font on image",
+     *  instead of relying on list order (which `createProject` only happens to preserve
+     *  as a recency proxy for *creation*, and never reflects a later edit). */
+    val lastModifiedAt: Long = System.currentTimeMillis(),
 )
 
 data class GlyphPoint(val x: Float, val y: Float, val onCurve: Boolean = true)

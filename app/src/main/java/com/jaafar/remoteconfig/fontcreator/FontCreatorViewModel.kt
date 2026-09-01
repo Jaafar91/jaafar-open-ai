@@ -158,7 +158,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         if (current.name == clean) return true
 
         syncActive()
-        val renamed = projects[index].copy(name = clean)
+        val renamed = projects[index].copy(name = clean, lastModifiedAt = System.currentTimeMillis())
         projects[index] = renamed
         persist()
         if (referenceFontKey == current.name) setReferenceFont(clean)
@@ -597,8 +597,18 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun loadTypeface(file: File) = if (Build.VERSION.SDK_INT >= 26) Typeface.Builder(file).build() else Typeface.createFromFile(file)
     private fun generatedFile(name: String) = File(getApplication<Application>().filesDir, "font-${normalizedFontStorageKey(name)}.ttf")
-    private fun updateActive(transform: (FontProject) -> FontProject) { val index = activeProjectIndex ?: return; projects[index] = transform(projects[index]); persist() }
-    private fun syncActive() { val index = activeProjectIndex ?: return; projects[index] = projects[index].copy(drawings = drawings.values.toList()) }
+    // Both helpers stamp lastModifiedAt centrally (matching the iOS app's updateFont()) so
+    // every edit path -- rename, spacing, language selection, saving a drawn letter -- keeps
+    // it current without each call site having to remember to.
+    private fun updateActive(transform: (FontProject) -> FontProject) {
+        val index = activeProjectIndex ?: return
+        projects[index] = transform(projects[index]).copy(lastModifiedAt = System.currentTimeMillis())
+        persist()
+    }
+    private fun syncActive() {
+        val index = activeProjectIndex ?: return
+        projects[index] = projects[index].copy(drawings = drawings.values.toList(), lastModifiedAt = System.currentTimeMillis())
+    }
     private fun persist() { val snapshot = projects.toList(); executor.execute { repository.save(snapshot) } }
     private fun persistSignatures() { val snapshot = signatures.toList(); executor.execute { signatureRepository.save(snapshot) } }
     private fun persistImportedFonts() { val snapshot = importedFonts.toList(); executor.execute { importedFontRepository.save(snapshot) } }
