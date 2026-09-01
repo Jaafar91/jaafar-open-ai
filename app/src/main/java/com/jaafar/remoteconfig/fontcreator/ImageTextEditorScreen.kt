@@ -30,9 +30,15 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FontDownload
+import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -274,10 +280,10 @@ fun ImageTextEditorScreen(
                 }
                 Text("Drag the text to reposition it", style = MaterialTheme.typography.bodySmall)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    EditorToolButton("Text", EditorPanel.Text) { activePanel = null; isEditingText = true }
-                    EditorToolButton("Font", EditorPanel.Font) { isEditingText = false; keyboard?.hide(); activePanel = it }
-                    EditorToolButton("Size", EditorPanel.Size) { isEditingText = false; keyboard?.hide(); activePanel = it }
-                    EditorToolButton("Color", EditorPanel.Color) { isEditingText = false; keyboard?.hide(); activePanel = it }
+                    EditorToolButton("Text", Icons.Filled.TextFields, EditorPanel.Text) { activePanel = null; isEditingText = true }
+                    EditorToolButton("Font", Icons.Filled.FontDownload, EditorPanel.Font) { isEditingText = false; keyboard?.hide(); activePanel = it }
+                    EditorToolButton("Size", Icons.Filled.FormatSize, EditorPanel.Size) { isEditingText = false; keyboard?.hide(); activePanel = it }
+                    EditorToolButton("Color", Icons.Filled.Palette, EditorPanel.Color) { isEditingText = false; keyboard?.hide(); activePanel = it }
                 }
             }
         }
@@ -427,13 +433,22 @@ fun ImageTextEditorScreen(
     }
 }
 
+// Icon above a small label, matching the iOS app's write-on-image toolbar (SF Symbols
+// plus/textformat/textformat.size/paintpalette there; the closest standard Material
+// icons here), instead of plain text-only buttons.
 @Composable
 private fun androidx.compose.foundation.layout.RowScope.EditorToolButton(
     label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     panel: EditorPanel,
     onClick: (EditorPanel) -> Unit,
 ) {
-    OutlinedButton(onClick = { onClick(panel) }, modifier = Modifier.weight(1f)) { Text(label) }
+    OutlinedButton(onClick = { onClick(panel) }, modifier = Modifier.weight(1f)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall)
+        }
+    }
 }
 
 private fun overlayPaint(typeface: Typeface, textSize: Float, textColor: Int) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
