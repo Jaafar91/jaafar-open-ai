@@ -157,9 +157,11 @@ import com.jaafar.remoteconfig.R
     IconButton(onClick = { val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file); context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "font/ttf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Share $name")) }) { ActionIcon(ActionIconType.Share, "Share $name") }
 }
 
-private enum class ActionIconType { Add, Edit, Share, Import }
+internal enum class ActionIconType { Add, Edit, Share, Import }
 
-@Composable private fun ActionIcon(type: ActionIconType, description: String) {
+/** Hand-drawn action glyph (this app's own icon set, not Material Icons) -- reused wherever
+ *  an add/edit/share/import action needs an icon-only control instead of a text button. */
+@Composable internal fun ActionIcon(type: ActionIconType, description: String) {
     val color = LocalContentColor.current
     Canvas(Modifier.size(24.dp).semantics { contentDescription = description }) {
         val stroke = 2.dp.toPx()

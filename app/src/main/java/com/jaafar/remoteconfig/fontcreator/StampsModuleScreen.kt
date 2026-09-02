@@ -17,9 +17,12 @@ internal fun StampsModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useI
         return
     }
     val stamps = vm.signatures.filter { it.imageFileName != null }
-    Page("Stamps", back) {
-        Button(onClick = { importing = true }, modifier = Modifier.fillMaxWidth()) { Text("Add stamp") }
-        if (stamps.isEmpty()) Text("No stamps yet. Import an image once and reuse it on documents.")
+    Page(
+        "Stamps",
+        back,
+        actions = { IconButton(onClick = { importing = true }) { ActionIcon(ActionIconType.Add, "Add stamp") } },
+    ) {
+        if (stamps.isEmpty()) Text("No stamps yet. Tap + to import an image and reuse it on documents.")
         else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(stamps, key = { it.name }) { stamp ->
                 SavedMarkCard(stamp, vm.defaultStampName == stamp.name) { selected = stamp }

@@ -39,6 +39,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -168,14 +169,16 @@ fun ImageTextEditorScreen(
                 if (isEditingText) {
                     TextButton(onClick = { isEditingText = false; keyboard?.hide() }) { Text("Done") }
                 } else {
-                    TextButton(
+                    // Icon-only, matching ShareButton's use elsewhere in the app (the font
+                    // workspace's own share action) instead of a text label here.
+                    IconButton(
                         enabled = bitmap != null && text.isNotBlank(),
                         onClick = {
                             bitmap?.let { source ->
                                 shareImage(context, renderImage(source, text, typeface, sizePercent, textColor.value, textPosition))
                             }
                         },
-                    ) { Text("Share") }
+                    ) { ActionIcon(ActionIconType.Share, "Share image") }
                 }
             }
         },

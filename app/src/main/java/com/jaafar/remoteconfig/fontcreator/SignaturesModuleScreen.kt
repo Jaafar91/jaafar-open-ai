@@ -17,9 +17,12 @@ internal fun SignaturesModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, 
         return
     }
     val signatures = vm.signatures.filter { it.imageFileName == null }
-    Page("Signatures", back) {
-        Button(onClick = { creating = true }, modifier = Modifier.fillMaxWidth()) { Text("Create signature") }
-        if (signatures.isEmpty()) Text("No signatures yet. Draw one once and reuse it whenever you sign a document.")
+    Page(
+        "Signatures",
+        back,
+        actions = { IconButton(onClick = { creating = true }) { ActionIcon(ActionIconType.Add, "Create signature") } },
+    ) {
+        if (signatures.isEmpty()) Text("No signatures yet. Tap + to draw one and reuse it whenever you sign a document.")
         else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(signatures, key = { it.name }) { signature ->
                 SavedMarkCard(signature, vm.defaultSignatureName == signature.name) { selected = signature }

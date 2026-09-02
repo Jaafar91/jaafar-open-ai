@@ -42,6 +42,7 @@ internal fun FontsModuleScreen(
     var importName by remember { mutableStateOf("") }
     var projectToDelete by remember { mutableStateOf<FontProject?>(null) }
     var importedToDelete by remember { mutableStateOf<ImportedFont?>(null) }
+    var showAddMenu by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             val raw = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -53,14 +54,23 @@ internal fun FontsModuleScreen(
         }
     }
 
-    Page("Fonts", back) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = createFont, modifier = Modifier.weight(1f)) { Text("Create font") }
-            OutlinedButton(
-                onClick = { picker.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream", "*/*")) },
-                modifier = Modifier.weight(1f),
-            ) { Text("Import font") }
-        }
+    Page(
+        "Fonts",
+        back,
+        actions = {
+            IconButton(onClick = { showAddMenu = true }) { ActionIcon(ActionIconType.Add, "Add font") }
+            DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
+                DropdownMenuItem(text = { Text("Draw new font") }, onClick = { showAddMenu = false; createFont() })
+                DropdownMenuItem(
+                    text = { Text("Import font file") },
+                    onClick = {
+                        showAddMenu = false
+                        picker.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream", "*/*"))
+                    },
+                )
+            }
+        },
+    ) {
         if (vm.projects.isEmpty() && vm.importedFonts.isEmpty()) {
             Column(
                 Modifier.fillMaxWidth().padding(vertical = 32.dp),
@@ -75,7 +85,7 @@ internal fun FontsModuleScreen(
                 )
                 Text("No fonts yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "Create your handwriting font or import a font you own.",
+                    "Tap + to draw your handwriting font or import one you own.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
