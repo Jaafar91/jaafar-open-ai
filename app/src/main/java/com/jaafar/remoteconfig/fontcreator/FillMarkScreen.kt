@@ -33,8 +33,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Approval
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
@@ -744,7 +753,7 @@ private fun FillMarkEditorScreen(
                             activeTool = null
                             selectedMarkId = null
                             showTextEntry = false
-                        }) { Text("Text") }
+                        }) { MarkToolContent("Text", Icons.Filled.TextFields) }
                     } else {
                         TextButton(onClick = {
                             configText = ""
@@ -752,19 +761,26 @@ private fun FillMarkEditorScreen(
                             showMarkOptions = false
                             activeTool = MarkType.Text
                             showTextEntry = true
-                        }) { Text("Text") }
+                        }) { MarkToolContent("Text", Icons.Filled.TextFields) }
                     }
                     availableTools.filter { it != MarkType.Text }.forEach { tool ->
                         val compactLabel = when (tool) {
                             MarkType.Date -> "Date"
-                            MarkType.Check -> "✓"
+                            MarkType.Check -> "Check"
                             MarkType.Signature -> "Sign"
                             MarkType.Stamp -> "Stamp"
                             MarkType.Text -> error("Text is handled above")
                         }
+                        val icon = when (tool) {
+                            MarkType.Date -> Icons.Filled.CalendarToday
+                            MarkType.Check -> Icons.Filled.Check
+                            MarkType.Signature -> Icons.Filled.Draw
+                            MarkType.Stamp -> Icons.Filled.Approval
+                            MarkType.Text -> error("Text is handled above")
+                        }
                         val isActive = activeTool == tool
                         if (isActive) {
-                            OutlinedButton(onClick = { activeTool = null; selectedMarkId = null }) { Text(compactLabel) }
+                            OutlinedButton(onClick = { activeTool = null; selectedMarkId = null }) { MarkToolContent(compactLabel, icon) }
                         } else {
                             TextButton(onClick = {
                                 activeTool = tool
@@ -775,7 +791,7 @@ private fun FillMarkEditorScreen(
                                 }
                                 selectedMarkId = null
                                 showMarkOptions = true
-                            }) { Text(compactLabel) }
+                            }) { MarkToolContent(compactLabel, icon) }
                         }
                     }
                 }
@@ -789,8 +805,18 @@ private fun FillMarkEditorScreen(
                 }
                 if (selectedMark != null) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { activeTool = selectedMark.type; showMarkOptions = true }, modifier = Modifier.weight(1f)) { Text("Edit") }
-                        TextButton(onClick = { marks.removeIf { it.id == selectedMarkId }; selectedMarkId = null; activeTool = null }, modifier = Modifier.weight(1f)) { Text("Delete") }
+                        OutlinedButton(onClick = { activeTool = selectedMark.type; showMarkOptions = true }, modifier = Modifier.weight(1f)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Text("Edit")
+                            }
+                        }
+                        TextButton(onClick = { marks.removeIf { it.id == selectedMarkId }; selectedMarkId = null; activeTool = null }, modifier = Modifier.weight(1f)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Text("Delete")
+                            }
+                        }
                     }
                 }
 
@@ -813,6 +839,16 @@ private fun FillMarkEditorScreen(
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+    }
+}
+
+/** Icon above a small label, used by the tool-selector toolbar so each mark type reads by
+ *  icon first instead of by a plain text button. */
+@Composable
+private fun MarkToolContent(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall)
     }
 }
 
