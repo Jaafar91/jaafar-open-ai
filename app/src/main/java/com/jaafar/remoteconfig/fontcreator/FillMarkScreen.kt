@@ -692,11 +692,16 @@ private fun FillMarkEditorScreen(
                                             hitMark != null -> {
                                                 selectedMarkId = hitMark.id
                                                 drag(down.id) { change ->
+                                                    // positionChange() returns Offset.Zero once the
+                                                    // change is consumed, so it must be read before
+                                                    // consume() -- reading it after (as an earlier
+                                                    // version of this code did) silently zeroed out
+                                                    // every drag delta and made dragging a no-op.
+                                                    val delta = change.positionChange()
                                                     change.consume()
                                                     val idx = marks.indexOfFirst { it.id == hitMark.id }
                                                     if (idx >= 0) {
                                                         val m = marks[idx]
-                                                        val delta = change.positionChange()
                                                         marks[idx] = m.copy(
                                                             offsetX = (m.offsetX + delta.x / w).coerceIn(0f, 1f),
                                                             offsetY = (m.offsetY + delta.y / h).coerceIn(0f, 1f),
