@@ -291,12 +291,6 @@ fun FontCreatorApp(
                     previewText = previewText,
                     changePreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
                     back = { screen = Screen.Letters },
-                    startDrawing = {
-                        viewModel.disablePhraseMode()
-                        screen = Screen.Letters
-                        val nextMissing = viewModel.activeCharacterOrder.firstOrNull { it !in viewModel.drawings }
-                        if (nextMissing != null) viewModel.edit(nextMissing) else viewModel.editLetters()
-                    },
                     useOnImage = { fontName, text ->
                         preferredImageFontName = fontName
                         initialImageText = text

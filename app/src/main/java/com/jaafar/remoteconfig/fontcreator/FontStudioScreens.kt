@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,7 +45,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,7 +59,6 @@ import com.jaafar.remoteconfig.R
     previewText: String,
     changePreviewText: (String) -> Unit,
     back: () -> Unit,
-    startDrawing: () -> Unit,
     useOnImage: (String, String) -> Unit,
 ) {
     val project = vm.activeProject
@@ -66,10 +66,6 @@ import com.jaafar.remoteconfig.R
         Page("Fine-tune your font", back) { Text("Choose a handwriting font first.") }
         return
     }
-    val requiredCharacters = vm.activeCharacterOrder.toSet()
-    val drawnCodePoints = project.drawings.map { it.codePoint }.toSet()
-    val drawn = drawnCodePoints.intersect(requiredCharacters).size
-    val complete = requiredCharacters.isNotEmpty() && requiredCharacters.all { it in drawnCodePoints }
     var letterSpacing by remember(project.name) { mutableFloatStateOf(project.letterSpacingMm) }
     var wordSpacing by remember(project.name) { mutableFloatStateOf(project.wordSpacingMm) }
     val updateSpacing: (Float, Float) -> Unit = { nextLetter, nextWord ->
@@ -78,77 +74,96 @@ import com.jaafar.remoteconfig.R
         if (vm.setSpacing(nextLetter.toString(), nextWord.toString())) vm.generate()
     }
 
+    // Matches the iOS app's "Fine-tune your font" screen: the preview *is* the screen --
+    // a big live-rendered card with the text field woven directly into it, a single
+    // slider-based spacing card, and one primary action -- instead of a status banner,
+    // a completion badge, +/- spacing steppers, and two competing buttons.
     Page("Fine-tune your font", back, scrollable = true) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .72f),
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f),
             shape = RoundedCornerShape(24.dp),
         ) {
             Column(
                 Modifier.fillMaxWidth().padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text(
-                    if (complete) "FINAL STEP" else "PREVIEW",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(project.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(
-                    if (complete) "Your alphabet is complete. Give the font its finishing touch."
-                    else "Preview the letters you have drawn and keep building when you are ready.",
-                    style = MaterialTheme.typography.bodyMedium,
+                Box(Modifier.fillMaxWidth().heightIn(min = 130.dp), contentAlignment = Alignment.Center) {
+                    val typeface = vm.previewTypeface
+                    if (typeface == null) {
+                        CircularProgressIndicator()
+                    } else {
+                        Text(
+                            previewText.ifBlank { " " },
+                            style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(typeface)),
+                            textAlign = TextAlign.Center,
+                            maxLines = 4,
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = previewText,
+                    onValueChange = changePreviewText,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Type something to preview") },
+                    textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
                 )
             }
         }
-        if (vm.previewTypeface == null) {
-            Text("Creating your font…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            LinearProgressIndicator(Modifier.fillMaxWidth())
-            Text("Turning $drawn drawn letters into a usable font preview.", style = MaterialTheme.typography.bodySmall)
-        } else {
+        if (vm.previewTypeface != null) {
             Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Text(
-                    if (complete) "FONT FILE READY" else "$drawn LETTERS INCLUDED",
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            Text(
-                if (complete) "Try a real phrase below, then adjust the rhythm until it feels like your handwriting."
-                else "Preview and adjust the letters you have drawn so far.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedTextField(
-                value = previewText,
-                onValueChange = changePreviewText,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Preview text") },
-                minLines = 3,
-                textStyle = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(vm.previewTypeface!!)),
-            )
-            Text("Spacing", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            SpacingControl(label = "Letter spacing", value = letterSpacing, step = 0.25f, min = -3f, max = 10f) {
-                updateSpacing(it, wordSpacing)
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .3f),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // These ranges match what TrueTypeGenerator actually produces (its hmtx
+                    // advance widths are clamped to 500..4096 / 100..4096 font units) --
+                    // the previous wider ranges mostly got silently clamped to the same
+                    // value, so dragging looked like it did something but had no effect.
+                    SpacingSlider("Letter spacing", letterSpacing, -3f..4f, 0.25f) { updateSpacing(it, wordSpacing) }
+                    SpacingSlider("Word spacing", wordSpacing, 0.25f..8f, 0.25f) { updateSpacing(letterSpacing, it) }
+                    Text(
+                        "Changes save automatically.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            SpacingControl(label = "Word spacing", value = wordSpacing, step = 0.5f, min = 0.2f, max = 50f) {
-                updateSpacing(letterSpacing, it)
-            }
-            Text("Spacing changes are saved automatically.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(onClick = { useOnImage(project.name, previewText) }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.Image, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
                 Text("Use on an image")
-            }
-            OutlinedButton(onClick = startDrawing, modifier = Modifier.fillMaxWidth()) {
-                Text("Continue full alphabet")
             }
         }
         if (vm.status.isNotBlank()) Text(vm.status, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun SpacingSlider(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    step: Float,
+    onChange: (Float) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, style = MaterialTheme.typography.titleMedium)
+            Text(
+                "${String.format(java.util.Locale.US, "%.2f", value)} mm",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onChange,
+            valueRange = range,
+            steps = ((range.endInclusive - range.start) / step).toInt() - 1,
+        )
     }
 }
 
