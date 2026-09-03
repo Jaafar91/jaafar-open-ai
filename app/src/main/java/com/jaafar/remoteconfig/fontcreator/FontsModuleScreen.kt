@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -25,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** Matches iOS's "Complete" green -- Material has no built-in success color. */
@@ -99,25 +101,42 @@ internal fun FontsModuleScreen(
                         val complete = vm.isProjectComplete(project)
                         val total = vm.characterCount(project).coerceAtLeast(1)
                         val drawn = project.drawings.size.coerceAtMost(total)
-                        val thumbnail = project.drawings.filter { it.strokes.isNotEmpty() }.minByOrNull { it.codePoint }
+                        val byCode = remember(project.drawings) {
+                            project.drawings.filter { it.strokes.isNotEmpty() }.associateBy { it.codePoint }
+                        }
+                        // Only spell the name out in the user's own handwriting once the font is
+                        // complete AND every character the name actually needs has been drawn --
+                        // otherwise fall back to the system font like any other row.
+                        val canSpellName = complete && project.name.any { !it.isWhitespace() } &&
+                            project.name.all { it.isWhitespace() || byCode.containsKey(it.code) }
                         OutlinedCard(Modifier.fillMaxWidth().clickable { openProject(vm.projects.indexOf(project)) }) {
                             Row(
                                 Modifier.fillMaxWidth().padding(12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                FontThumbnail(thumbnail, placeholderIcon = Icons.Filled.Edit)
+                                AaThumbnail(byCode)
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Text(
-                                            project.name,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.weight(1f, fill = false),
-                                        )
+                                        if (canSpellName) {
+                                            HandwrittenText(
+                                                project.name,
+                                                byCode,
+                                                MaterialTheme.colorScheme.onSurface,
+                                                glyphSize = 24.dp,
+                                                modifier = Modifier.weight(1f, fill = false),
+                                            )
+                                        } else {
+                                            Text(
+                                                project.name,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1f, fill = false),
+                                            )
+                                        }
                                         FontStatusBadge(if (complete) "Complete" else "$drawn of $total", showCheck = complete)
                                     }
                                     Text(
@@ -228,6 +247,46 @@ private fun FontThumbnail(
             GlyphBarPreview(drawing, MaterialTheme.colorScheme.primary, Modifier.fillMaxSize().padding(10.dp))
         } else {
             Icon(placeholderIcon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+/** 56dp rounded thumbnail for a drawn font: "Aa" in the user's own handwriting once both
+ *  letters are drawn, else an edit icon prompting them to keep drawing. */
+@Composable
+private fun AaThumbnail(byCode: Map<Int, GlyphDrawing>) {
+    val upperA = byCode['A'.code]
+    val lowerA = byCode['a'.code]
+    Box(
+        Modifier
+            .size(56.dp)
+            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(14.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (upperA != null && lowerA != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                GlyphBarPreview(upperA, MaterialTheme.colorScheme.primary, Modifier.size(24.dp))
+                GlyphBarPreview(lowerA, MaterialTheme.colorScheme.primary, Modifier.size(24.dp))
+            }
+        } else {
+            Icon(Icons.Filled.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+/** Spells out [text] using the user's own hand-drawn letter strokes instead of a system
+ *  font -- shown for a font's name once every character it needs has actually been drawn. */
+@Composable
+private fun HandwrittenText(text: String, byCode: Map<Int, GlyphDrawing>, color: Color, glyphSize: Dp, modifier: Modifier = Modifier) {
+    Row(modifier.clipToBounds(), verticalAlignment = Alignment.CenterVertically) {
+        text.forEach { ch ->
+            if (ch.isWhitespace()) {
+                Spacer(Modifier.width(glyphSize * .4f))
+            } else {
+                byCode[ch.code]?.let { drawing ->
+                    GlyphBarPreview(drawing, color, Modifier.size(glyphSize))
+                }
+            }
         }
     }
 }
