@@ -352,7 +352,6 @@ private fun FillMarkEditorScreen(
         ?: vm.signatures.firstOrNull { it.imageFileName != null }?.name
     var configSignatureName by remember { mutableStateOf<String?>(defaultSignatureName) }
     var configApplyToAll by remember { mutableStateOf(false) }
-    var showTextEntry by remember { mutableStateOf(false) }
 
     val textColors = remember {
         listOf(
@@ -536,25 +535,6 @@ private fun FillMarkEditorScreen(
                 status = "Export failed."
             }
         }
-    }
-
-    if (showTextEntry) {
-        val textFieldFocusRequester = remember { FocusRequester() }
-        ModalBottomSheet(onDismissRequest = { showTextEntry = false; activeTool = null }) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = configText,
-                    onValueChange = { configText = it },
-                    modifier = Modifier.fillMaxWidth().focusRequester(textFieldFocusRequester),
-                    placeholder = { Text("Type text") },
-                    singleLine = true,
-                )
-                Button(onClick = { showTextEntry = false }, modifier = Modifier.fillMaxWidth()) { Text("Place on document") }
-            }
-        }
-        // Open the sheet with the keyboard already up so the user can start typing
-        // immediately instead of having to tap the field first.
-        LaunchedEffect(Unit) { textFieldFocusRequester.requestFocus() }
     }
 
     if (showMarkOptions && activeTool != null) {
@@ -801,15 +781,16 @@ private fun FillMarkEditorScreen(
                         OutlinedButton(onClick = {
                             activeTool = null
                             selectedMarkId = null
-                            showTextEntry = false
                         }) { MarkToolContent("Text", Icons.Filled.TextFields) }
                     } else {
+                        // Same full config panel (color/size/font) as every other tool below,
+                        // instead of the old bare text-only sheet, so styling is available
+                        // right away instead of only after the mark is placed and re-edited.
                         TextButton(onClick = {
                             configText = ""
                             selectedMarkId = null
-                            showMarkOptions = false
                             activeTool = MarkType.Text
-                            showTextEntry = true
+                            showMarkOptions = true
                         }) { MarkToolContent("Text", Icons.Filled.TextFields) }
                     }
                     availableTools.filter { it != MarkType.Text }.forEach { tool ->
@@ -940,13 +921,19 @@ private fun MarkConfigPanel(
     ) {
         when (tool) {
             MarkType.Text -> {
+                val textFieldFocusRequester = remember { FocusRequester() }
                 OutlinedTextField(
                     value = configText,
                     onValueChange = onConfigTextChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(textFieldFocusRequester),
                     label = { Text("Text") },
                     singleLine = true,
                 )
+                if (selectedMark == null) {
+                    // Open with the keyboard already up when placing a new text mark, so the
+                    // user can start typing immediately instead of having to tap the field first.
+                    LaunchedEffect(Unit) { textFieldFocusRequester.requestFocus() }
+                }
                 TextMarkStyleControls(
                     configColorIdx, onColorChange, textColors,
                     configFontIdx, onFontChange, fontOptions,
