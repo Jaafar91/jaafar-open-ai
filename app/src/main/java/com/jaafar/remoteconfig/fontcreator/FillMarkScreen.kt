@@ -40,7 +40,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -335,7 +334,6 @@ private fun FillMarkEditorScreen(
     var selectedMarkId by remember { mutableStateOf<Long?>(null) }
     var activeTool by remember { mutableStateOf<MarkType?>(null) }
     var showMarkOptions by remember { mutableStateOf(false) }
-    var showMarkActionsSheet by remember { mutableStateOf(false) }
 
     // Per-tool config state (shared across marks for ergonomics)
     var configText by remember { mutableStateOf(initialText ?: "") }
@@ -615,42 +613,6 @@ private fun FillMarkEditorScreen(
         }
     }
 
-    if (showMarkActionsSheet && selectedMark != null) {
-        val mark = selectedMark
-        ModalBottomSheet(onDismissRequest = { showMarkActionsSheet = false }) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${mark.type.label} mark", style = MaterialTheme.typography.titleMedium)
-                OutlinedButton(
-                    onClick = {
-                        activeTool = mark.type
-                        showMarkOptions = true
-                        showMarkActionsSheet = false
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Text("Edit")
-                    }
-                }
-                TextButton(
-                    onClick = {
-                        marks.removeIf { it.id == mark.id }
-                        selectedMarkId = null
-                        activeTool = null
-                        showMarkActionsSheet = false
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Text("Delete")
-                    }
-                }
-            }
-        }
-    }
-
     Page(
         title = "Fill & Mark Document",
         back = back,
@@ -754,6 +716,25 @@ private fun FillMarkEditorScreen(
                     .padding(bottom = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                // Edit/Delete for the selected mark -- placed directly under the document,
+                // above the tool selector row, so it sits right next to what it acts on.
+                if (selectedMark != null) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { activeTool = selectedMark.type; showMarkOptions = true }, modifier = Modifier.weight(1f)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Text("Edit")
+                            }
+                        }
+                        TextButton(onClick = { marks.removeIf { it.id == selectedMarkId }; selectedMarkId = null; activeTool = null }, modifier = Modifier.weight(1f)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Text("Delete")
+                            }
+                        }
+                    }
+                }
+
                 // PDF page navigation
                 if (isPdf && pageCount > 0) {
                     Row(
@@ -841,29 +822,6 @@ private fun FillMarkEditorScreen(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
-                // Fixed slot (not conditional on selection) so selecting/deselecting a mark
-                // doesn't shift this toolbar's height -- only enabled once something is
-                // selected. Opens a small actions sheet instead of inline Edit/Delete buttons,
-                // matching the same tap-for-actions pattern already used for saved
-                // signatures/stamps elsewhere in the app.
-                if (marks.isNotEmpty()) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            selectedMark?.let { "Selected: ${it.type.label}" } ?: "Tap a mark to select it",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (selectedMark != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                        IconButton(onClick = { showMarkActionsSheet = true }, enabled = selectedMark != null) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "Mark actions")
-                        }
-                    }
-                }
-
                 HorizontalDivider()
             }
 
