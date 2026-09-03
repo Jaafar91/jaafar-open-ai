@@ -824,14 +824,9 @@ private fun FillMarkEditorScreen(
             }
 
             // ── FIXED BOTTOM (export status) ─────────────────────────────────────
-            if (marks.isNotEmpty() && !isProcessing) {
-                Button(
-                    onClick = ::triggerExport,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                ) {
-                    Text("Export & Share")
-                }
-            }
+            // Export/share is triggered from the top app bar's icon button only -- this
+            // full-width "Export & Share" button called the exact same triggerExport(),
+            // just as a second, redundant way to do it.
             if (isProcessing) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (status.isNotBlank()) Text(
                 status,
