@@ -15,8 +15,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
@@ -76,6 +78,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -633,7 +636,7 @@ private fun FillMarkEditorScreen(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .weight(1f, fill = false)
                     .heightIn(min = 200.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
@@ -658,37 +661,47 @@ private fun FillMarkEditorScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .pointerInput(activeTool, currentPage) {
-                                    detectTapGestures { offset ->
+                                    // A single combined gesture handler -- tap to select/place,
+                                    // then drag the same finger to move a just-selected mark.
+                                    // Previously tap-select and drag-move were two independent
+                                    // pointerInput detectors on the same Canvas; the drag
+                                    // detector's touch-slop handling could consume small,
+                                    // natural finger jitter during a "tap", which cancelled the
+                                    // sibling tap detector and made reselecting an existing mark
+                                    // unreliable.
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown()
                                         val w = canvasDisplaySize.width.toFloat().coerceAtLeast(1f)
                                         val h = canvasDisplaySize.height.toFloat().coerceAtLeast(1f)
-                                        val hit = visibleMarks.lastOrNull { mark ->
-                                            markContainsPoint(mark, offset, w, h)
+                                        val hitMark = visibleMarks.lastOrNull { mark ->
+                                            markContainsPoint(mark, down.position, w, h)
                                         }
                                         when {
-                                            hit != null -> {
-                                                selectedMarkId = hit.id
+                                            hitMark != null -> {
+                                                selectedMarkId = hitMark.id
+                                                drag(down.id) { change ->
+                                                    change.consume()
+                                                    val idx = marks.indexOfFirst { it.id == hitMark.id }
+                                                    if (idx >= 0) {
+                                                        val m = marks[idx]
+                                                        val delta = change.positionChange()
+                                                        marks[idx] = m.copy(
+                                                            offsetX = (m.offsetX + delta.x / w).coerceIn(0f, 1f),
+                                                            offsetY = (m.offsetY + delta.y / h).coerceIn(0f, 1f),
+                                                        )
+                                                    }
+                                                }
                                             }
                                             activeTool != null -> {
-                                                val xFrac = (offset.x / w).coerceIn(0f, 0.85f)
-                                                val yFrac = (offset.y / h).coerceIn(0f, 0.85f)
-                                                addOrUpdateMark(xFrac, yFrac)
+                                                if (waitForUpOrCancellation() != null) {
+                                                    val xFrac = (down.position.x / w).coerceIn(0f, 0.85f)
+                                                    val yFrac = (down.position.y / h).coerceIn(0f, 0.85f)
+                                                    addOrUpdateMark(xFrac, yFrac)
+                                                }
                                             }
-                                            else -> selectedMarkId = null
-                                        }
-                                    }
-                                }
-                                .pointerInput(selectedMarkId) {
-                                    detectDragGestures { change, dragAmount ->
-                                        change.consume()
-                                        val w = canvasDisplaySize.width.toFloat().coerceAtLeast(1f)
-                                        val h = canvasDisplaySize.height.toFloat().coerceAtLeast(1f)
-                                        val idx = marks.indexOfFirst { it.id == selectedMarkId }
-                                        if (idx >= 0) {
-                                            val m = marks[idx]
-                                            marks[idx] = m.copy(
-                                                offsetX = (m.offsetX + dragAmount.x / w).coerceIn(0f, 1f),
-                                                offsetY = (m.offsetY + dragAmount.y / h).coerceIn(0f, 1f),
-                                            )
+                                            else -> {
+                                                if (waitForUpOrCancellation() != null) selectedMarkId = null
+                                            }
                                         }
                                     }
                                 },
