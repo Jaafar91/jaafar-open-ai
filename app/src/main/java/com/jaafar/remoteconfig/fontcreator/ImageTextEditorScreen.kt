@@ -128,7 +128,7 @@ fun ImageTextEditorScreen(
     var textPosition by remember { mutableStateOf(Offset(.5f, .85f)) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var activePanel by remember { mutableStateOf<EditorPanel?>(null) }
-    var isEditingText by remember { mutableStateOf(false) }
+    var isEditingText by remember(imageUri, initialText) { mutableStateOf(initialText.isBlank()) }
     var fontQuery by remember { mutableStateOf("") }
     var showAllFonts by remember { mutableStateOf(false) }
     var fontFilter by remember { mutableStateOf(FontFilter.All) }
@@ -237,15 +237,21 @@ fun ImageTextEditorScreen(
                         val left = ((size.width - width) / 2f).roundToInt()
                         val top = ((size.height - height) / 2f).roundToInt()
                         drawImage(bitmap.asImageBitmap(), dstOffset = IntOffset(left, top), dstSize = IntSize(width, height))
-                        if (!isEditingText) {
-                            drawIntoCanvas { canvas ->
-                                val paint = overlayPaint(typeface, height * sizePercent / 100f, textColor.value)
-                                drawOverlayText(
-                                    canvas.nativeCanvas, text,
-                                    left + width * textPosition.x, top + height * textPosition.y,
-                                    width * .9f, paint,
-                                )
-                            }
+                        // Always draw the same Paint-based wrapped text that renderImage() uses for
+                        // the exported file, during editing too -- this is the single source of
+                        // truth for how the text wraps. The BasicTextField below (shown only while
+                        // editing) renders its own text invisibly and exists purely to host the
+                        // cursor and keyboard input: letting Compose's own soft-wrap draw the
+                        // *visible* glyphs there could disagree with this Paint-based wrap for the
+                        // app's custom-generated fonts, which is what made lengthy text collapse
+                        // onto a single line as soon as editing ended.
+                        drawIntoCanvas { canvas ->
+                            val paint = overlayPaint(typeface, height * sizePercent / 100f, textColor.value)
+                            drawOverlayText(
+                                canvas.nativeCanvas, text,
+                                left + width * textPosition.x, top + height * textPosition.y,
+                                width * .9f, paint,
+                            )
                         }
                     }
                     if (isEditingText && canvasSize.width > 0 && canvasSize.height > 0) {
@@ -271,13 +277,16 @@ fun ImageTextEditorScreen(
                                 .background(MaterialTheme.colorScheme.surface.copy(alpha = .35f))
                                 .padding(6.dp)
                                 .focusRequester(textFocusRequester),
+                            // Text itself is invisible -- the Canvas above already draws the real,
+                            // correctly-wrapped text -- so only the cursor is visible here.
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                color = textColor.composeColor,
+                                color = Color.Transparent,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily(typeface),
                                 fontSize = editorTextSize,
                                 lineHeight = editorLineHeight,
                                 textAlign = TextAlign.Center,
                             ),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(textColor.composeColor),
                         )
                     }
                 }
