@@ -71,6 +71,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -537,12 +539,22 @@ private fun FillMarkEditorScreen(
     }
 
     if (showTextEntry) {
+        val textFieldFocusRequester = remember { FocusRequester() }
         ModalBottomSheet(onDismissRequest = { showTextEntry = false; activeTool = null }) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(value = configText, onValueChange = { configText = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Type text") }, singleLine = true)
+                OutlinedTextField(
+                    value = configText,
+                    onValueChange = { configText = it },
+                    modifier = Modifier.fillMaxWidth().focusRequester(textFieldFocusRequester),
+                    placeholder = { Text("Type text") },
+                    singleLine = true,
+                )
                 Button(onClick = { showTextEntry = false }, modifier = Modifier.fillMaxWidth()) { Text("Place on document") }
             }
         }
+        // Open the sheet with the keyboard already up so the user can start typing
+        // immediately instead of having to tap the field first.
+        LaunchedEffect(Unit) { textFieldFocusRequester.requestFocus() }
     }
 
     if (showMarkOptions && activeTool != null) {
