@@ -41,6 +41,10 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.FontDownload
+import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -860,6 +864,9 @@ private fun FillMarkShareIcon() {
 // Mark configuration panel
 // ---------------------------------------------------------------------------
 
+/** Which single control's UI is currently expanded below the icon row. */
+private enum class MarkControl { Color, Font, Size, CheckStyle, Asset, ApplyToAll }
+
 @Composable
 private fun MarkConfigPanel(
     tool: MarkType,
@@ -883,6 +890,13 @@ private fun MarkConfigPanel(
     onApplyToAllChange: (Boolean) -> Unit,
     selectedMark: DocumentMark?,
 ) {
+    // Which control (if any) is expanded below the icon row -- only one at a time, so this
+    // panel stays compact instead of showing color+font+size+... all at once.
+    var expandedControl by remember(tool) { mutableStateOf<MarkControl?>(null) }
+    fun toggle(control: MarkControl) {
+        expandedControl = if (expandedControl == control) null else control
+    }
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -890,6 +904,8 @@ private fun MarkConfigPanel(
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        // Content that's always visible for this mark type, regardless of which control (if
+        // any) is expanded below.
         when (tool) {
             MarkType.Text -> {
                 val textFieldFocusRequester = remember { FocusRequester() }
@@ -905,78 +921,84 @@ private fun MarkConfigPanel(
                     // user can start typing immediately instead of having to tap the field first.
                     LaunchedEffect(Unit) { textFieldFocusRequester.requestFocus() }
                 }
-                TextMarkStyleControls(
-                    configColorIdx, onColorChange, textColors,
-                    configFontIdx, onFontChange, fontOptions,
-                    configSizeFraction, onSizeChange,
-                )
             }
             MarkType.Date -> {
                 val today = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()) }
                 Text("Date: $today", style = MaterialTheme.typography.bodySmall)
-                TextMarkStyleControls(
-                    configColorIdx, onColorChange, textColors,
-                    configFontIdx, onFontChange, fontOptions,
-                    configSizeFraction, onSizeChange,
-                )
             }
-            MarkType.Check -> {
-                Text("Check style", style = MaterialTheme.typography.labelMedium)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CheckStyle.entries.forEach { style ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(
-                                selected = configCheckStyle == style,
-                                onClick = { onCheckStyleChange(style) },
-                            )
-                            Text("${style.symbol} ${style.name}", style = MaterialTheme.typography.bodyMedium)
-                        }
+            MarkType.Check, MarkType.Signature, MarkType.Stamp -> Unit
+        }
+
+        // Icon toolbar -- one icon per control; tapping one reveals just that control below,
+        // e.g. tapping the font icon shows the font list, instead of a fixed block of every
+        // control at once.
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            when (tool) {
+                MarkType.Text, MarkType.Date, MarkType.Check -> {
+                    if (tool == MarkType.Check) {
+                        ControlIconButton(Icons.Filled.Check, "Check style", expandedControl == MarkControl.CheckStyle) { toggle(MarkControl.CheckStyle) }
+                    }
+                    ControlIconButton(Icons.Filled.Palette, "Colour", expandedControl == MarkControl.Color) { toggle(MarkControl.Color) }
+                    if (tool != MarkType.Check) {
+                        // Check's symbol is drawn without a typeface, so a font control here
+                        // wouldn't actually change anything -- left out rather than shown inert.
+                        ControlIconButton(Icons.Filled.FontDownload, "Font", expandedControl == MarkControl.Font) { toggle(MarkControl.Font) }
+                    }
+                    ControlIconButton(Icons.Filled.FormatSize, "Size", expandedControl == MarkControl.Size) { toggle(MarkControl.Size) }
+                }
+                MarkType.Signature, MarkType.Stamp -> {
+                    val assetIcon = if (tool == MarkType.Signature) Icons.Filled.Draw else Icons.Filled.Approval
+                    val assetLabel = if (tool == MarkType.Signature) "Choose signature" else "Choose stamp"
+                    ControlIconButton(assetIcon, assetLabel, expandedControl == MarkControl.Asset) { toggle(MarkControl.Asset) }
+                    ControlIconButton(Icons.Filled.FormatSize, "Size", expandedControl == MarkControl.Size) { toggle(MarkControl.Size) }
+                    if (isPdf) {
+                        ControlIconButton(Icons.Filled.Layers, "Apply to all pages", expandedControl == MarkControl.ApplyToAll) { toggle(MarkControl.ApplyToAll) }
                     }
                 }
-                TextMarkStyleControls(
-                    configColorIdx, onColorChange, textColors,
-                    configFontIdx, onFontChange, fontOptions,
-                    configSizeFraction, onSizeChange,
-                )
             }
-            MarkType.Signature -> {
-                val sigs = vm.signatures.filter { it.imageFileName == null }
+        }
+
+        // The single expanded control's own UI.
+        when (expandedControl) {
+            MarkControl.Color -> ColorRow(configColorIdx, onColorChange, textColors)
+            MarkControl.Font -> FontRow(configFontIdx, onFontChange, fontOptions)
+            MarkControl.Size -> SizeControl(configSizeFraction, onSizeChange)
+            MarkControl.CheckStyle -> CheckStyleRow(configCheckStyle, onCheckStyleChange)
+            MarkControl.Asset -> {
+                val items = if (tool == MarkType.Signature) {
+                    vm.signatures.filter { it.imageFileName == null }
+                } else {
+                    vm.signatures.filter { it.imageFileName != null }
+                }
                 SignatureStampSelector(
-                    label = "Select a signature",
-                    items = sigs,
+                    label = if (tool == MarkType.Signature) "Select a signature" else "Select a stamp",
+                    items = items,
                     selectedName = configSignatureName,
                     onSelect = onSignatureChange,
                 )
-                SizeControl(configSizeFraction, onSizeChange)
-                if (isPdf) ApplyToAllToggle(configApplyToAll, onApplyToAllChange)
             }
-            MarkType.Stamp -> {
-                val stamps = vm.signatures.filter { it.imageFileName != null }
-                SignatureStampSelector(
-                    label = "Select a stamp",
-                    items = stamps,
-                    selectedName = configSignatureName,
-                    onSelect = onSignatureChange,
-                )
-                SizeControl(configSizeFraction, onSizeChange)
-                if (isPdf) ApplyToAllToggle(configApplyToAll, onApplyToAllChange)
-            }
+            MarkControl.ApplyToAll -> ApplyToAllToggle(configApplyToAll, onApplyToAllChange)
+            null -> Unit
         }
     }
 }
 
+/** Icon button for one control in [MarkConfigPanel]'s toolbar; tinted primary while its own
+ *  section is the one expanded below. */
 @Composable
-private fun TextMarkStyleControls(
-    colorIdx: Int, onColorChange: (Int) -> Unit, colors: List<Pair<String, Int>>,
-    fontIdx: Int, onFontChange: (Int) -> Unit, fontOptions: List<Pair<String, Typeface>>,
-    sizeFraction: Float, onSizeChange: (Float) -> Unit,
-) {
+private fun ControlIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(icon, contentDescription = label, tint = if (selected) MaterialTheme.colorScheme.primary else LocalContentColor.current)
+    }
+}
+
+@Composable
+private fun ColorRow(colorIdx: Int, onColorChange: (Int) -> Unit, colors: List<Pair<String, Int>>) {
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Colour", style = MaterialTheme.typography.labelMedium)
         colors.forEachIndexed { idx, (_, argb) ->
             Box(
                 Modifier
@@ -991,29 +1013,46 @@ private fun TextMarkStyleControls(
             )
         }
     }
-    if (fontOptions.isNotEmpty()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            val defaultLabel = "Default"
-            if (fontIdx < 0) {
-                Button(onClick = {}) { Text(defaultLabel) }
+}
+
+@Composable
+private fun FontRow(fontIdx: Int, onFontChange: (Int) -> Unit, fontOptions: List<Pair<String, Typeface>>) {
+    if (fontOptions.isEmpty()) return
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        val defaultLabel = "Default"
+        if (fontIdx < 0) {
+            Button(onClick = {}) { Text(defaultLabel) }
+        } else {
+            OutlinedButton(onClick = { onFontChange(-1) }) { Text(defaultLabel) }
+        }
+        fontOptions.forEachIndexed { idx, (name, _) ->
+            if (idx == fontIdx) {
+                Button(onClick = {}) { Text(name, maxLines = 1) }
             } else {
-                OutlinedButton(onClick = { onFontChange(-1) }) { Text(defaultLabel) }
-            }
-            fontOptions.forEachIndexed { idx, (name, _) ->
-                if (idx == fontIdx) {
-                    Button(onClick = {}) { Text(name, maxLines = 1) }
-                } else {
-                    OutlinedButton(onClick = { onFontChange(idx) }) { Text(name, maxLines = 1) }
-                }
+                OutlinedButton(onClick = { onFontChange(idx) }) { Text(name, maxLines = 1) }
             }
         }
     }
-    SizeControl(sizeFraction, onSizeChange)
+}
+
+@Composable
+private fun CheckStyleRow(checkStyle: CheckStyle, onCheckStyleChange: (CheckStyle) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        CheckStyle.entries.forEach { style ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(
+                    selected = checkStyle == style,
+                    onClick = { onCheckStyleChange(style) },
+                )
+                Text("${style.symbol} ${style.name}", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
 }
 
 @Composable
