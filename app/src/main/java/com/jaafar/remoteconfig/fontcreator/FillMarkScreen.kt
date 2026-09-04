@@ -34,8 +34,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -104,8 +102,6 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -145,70 +141,6 @@ internal data class DocumentMark(
 )
 
 // ---------------------------------------------------------------------------
-// Recent documents (local-only, stored in SharedPreferences as JSON)
-// ---------------------------------------------------------------------------
-
-private const val PREFS_RECENT_DOCS = "fill_mark_recent_docs"
-private const val PREFS_KEY_LIST = "list"
-private const val MAX_RECENT = 5
-
-private data class RecentDoc(val uriString: String, val displayName: String, val lastUsed: Long)
-
-private fun loadRecentDocs(context: android.content.Context): List<RecentDoc> {
-    val prefs = context.getSharedPreferences(PREFS_RECENT_DOCS, 0)
-    val json = prefs.getString(PREFS_KEY_LIST, null) ?: return emptyList()
-    return runCatching {
-        val arr = JSONArray(json)
-        buildList {
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                add(RecentDoc(obj.getString("uri"), obj.getString("name"), obj.getLong("lastUsed")))
-            }
-        }.sortedByDescending { it.lastUsed }
-    }.getOrDefault(emptyList())
-}
-
-private fun saveRecentDoc(context: android.content.Context, uriString: String, displayName: String) {
-    val existing = loadRecentDocs(context).filter { it.uriString != uriString }.take(MAX_RECENT - 1)
-    val updated = listOf(RecentDoc(uriString, displayName, System.currentTimeMillis())) + existing
-    val arr = JSONArray()
-    updated.forEach { doc ->
-        arr.put(JSONObject().apply {
-            put("uri", doc.uriString)
-            put("name", doc.displayName)
-            put("lastUsed", doc.lastUsed)
-        })
-    }
-    context.getSharedPreferences(PREFS_RECENT_DOCS, 0)
-        .edit().putString(PREFS_KEY_LIST, arr.toString()).apply()
-}
-
-private fun removeRecentDoc(context: android.content.Context, uriString: String) {
-    val updated = loadRecentDocs(context).filter { it.uriString != uriString }
-    val arr = JSONArray()
-    updated.forEach { doc ->
-        arr.put(JSONObject().apply {
-            put("uri", doc.uriString)
-            put("name", doc.displayName)
-            put("lastUsed", doc.lastUsed)
-        })
-    }
-    context.getSharedPreferences(PREFS_RECENT_DOCS, 0)
-        .edit().putString(PREFS_KEY_LIST, arr.toString()).apply()
-}
-
-private fun canOpenRecentDoc(context: android.content.Context, uri: Uri): Boolean {
-    return runCatching {
-        val hasPersistedRead = context.contentResolver.persistedUriPermissions.any {
-            it.uri == uri && it.isReadPermission
-        }
-        if (!hasPersistedRead) return@runCatching false
-        context.contentResolver.openFileDescriptor(uri, "r")?.use { }
-        true
-    }.getOrDefault(false)
-}
-
-// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
@@ -244,14 +176,7 @@ internal fun FillMarkScreen(
 
 
     if (documentUri == null) {
-        FillMarkLandingScreen(
-            onDocumentChosen = { uri -> documentUri = uri },
-            back = back,
-            // Arriving with a mark already chosen (Signatures/Stamps' "Use in Fill & Mark")
-            // means the document picker is the only thing left to do here -- skip the "Choose
-            // PDF or image" tap-through and open the system picker immediately instead.
-            autoLaunchPicker = initialMarkName != null,
-        )
+        FillMarkDocumentPicker(onDocumentChosen = { uri -> documentUri = uri }, back = back)
     } else {
         FillMarkEditorScreen(
             vm = vm,
@@ -263,75 +188,38 @@ internal fun FillMarkScreen(
 }
 
 // ---------------------------------------------------------------------------
-// Landing screen
+// Document picker
 // ---------------------------------------------------------------------------
 
+/**
+ * Opens the system document/image picker immediately -- there's no separate "choose a
+ * document" landing screen in between, since the system picker already does that job.
+ * Cancelling it goes back to wherever Fill & Mark was opened from.
+ */
 @Composable
-private fun FillMarkLandingScreen(
-    onDocumentChosen: (Uri) -> Unit,
-    back: () -> Unit,
-    autoLaunchPicker: Boolean = false,
-) {
+private fun FillMarkDocumentPicker(onDocumentChosen: (Uri) -> Unit, back: () -> Unit) {
     val context = LocalContext.current
-    var recentDocs by remember { mutableStateOf(loadRecentDocs(context)) }
-
+    var launched by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        // Persist read access so the document can be re-opened from the recent list.
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
-        }
-        val name = displayNameForUri(context, uri) ?: uri.lastPathSegment ?: "Document"
-        saveRecentDoc(context, uri.toString(), name)
-        recentDocs = loadRecentDocs(context)
-        onDocumentChosen(uri)
-    }
-
-    // Opens the system picker immediately instead of waiting for the button tap below --
-    // only if the picker gets cancelled does this screen's own UI end up being needed.
-    LaunchedEffect(autoLaunchPicker) {
-        if (autoLaunchPicker) picker.launch(arrayOf("application/pdf", "image/*"))
-    }
-
-    Page("Complete a document", back) {
-        Button(
-            onClick = { picker.launch(arrayOf("application/pdf", "image/*")) },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Choose PDF or image")
-        }
-
-        if (recentDocs.isNotEmpty()) {
-            HorizontalDivider()
-            Text("Recent documents", style = MaterialTheme.typography.titleSmall)
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                items(recentDocs, key = { it.uriString }) { doc ->
-                    OutlinedButton(
-                        onClick = {
-                            val uri = Uri.parse(doc.uriString)
-                            // Check that we still have read access before opening.
-                            val canOpen = canOpenRecentDoc(context, uri)
-                            if (canOpen) {
-                                saveRecentDoc(context, doc.uriString, doc.displayName)
-                                recentDocs = loadRecentDocs(context)
-                                onDocumentChosen(uri)
-                            } else {
-                                // URI no longer accessible – remove it from the list.
-                                removeRecentDoc(context, doc.uriString)
-                                recentDocs = loadRecentDocs(context)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(doc.displayName, maxLines = 1)
-                    }
-                }
+        if (uri == null) {
+            back()
+        } else {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
             }
+            onDocumentChosen(uri)
         }
     }
+    LaunchedEffect(Unit) {
+        if (!launched) {
+            launched = true
+            picker.launch(arrayOf("application/pdf", "image/*"))
+        }
+    }
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
 }
 
 // ---------------------------------------------------------------------------
@@ -473,7 +361,6 @@ private fun FillMarkEditorScreen(
                 previewBitmap = bmp
             }
         }.onFailure {
-            removeRecentDoc(context, documentUri.toString())
             previewBitmap = null
             isPdf = false
             pageCount = 0
@@ -634,7 +521,6 @@ private fun FillMarkEditorScreen(
             }
             isProcessing = false
             if (result != null) {
-                saveRecentDoc(context, documentUri.toString(), displayNameForUri(context, documentUri) ?: "Document")
                 shareDocument(context, result.file, result.mimeType)
                 status = "Export ready to share."
             } else {
