@@ -109,6 +109,7 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 // ---------------------------------------------------------------------------
@@ -718,7 +719,13 @@ private fun FillMarkEditorScreen(
                                         when {
                                             hitMark != null -> {
                                                 selectedMarkId = hitMark.id
-                                                var moved = false
+                                                // Total displacement from the initial touch-down,
+                                                // used below to tell a genuine drag from a tap --
+                                                // drag() itself has no slop tolerance, so even the
+                                                // tiny sensor jitter a real finger-tap produces
+                                                // would otherwise count as "moved" on every tap,
+                                                // permanently defeating single/double-tap detection.
+                                                var totalDrag = Offset.Zero
                                                 drag(down.id) { change ->
                                                     // positionChange() returns Offset.Zero once the
                                                     // change is consumed, so it must be read before
@@ -727,7 +734,7 @@ private fun FillMarkEditorScreen(
                                                     // every drag delta and made dragging a no-op.
                                                     val delta = change.positionChange()
                                                     change.consume()
-                                                    if (delta != Offset.Zero) moved = true
+                                                    totalDrag += delta
                                                     val idx = marks.indexOfFirst { it.id == hitMark.id }
                                                     if (idx >= 0) {
                                                         val m = marks[idx]
@@ -737,6 +744,7 @@ private fun FillMarkEditorScreen(
                                                         )
                                                     }
                                                 }
+                                                val moved = hypot(totalDrag.x, totalDrag.y) > viewConfiguration.touchSlop
                                                 // A plain tap (no movement) on a text mark either
                                                 // opens it for editing (double-tap) or just selects
                                                 // it to show the config panel (single tap) -- a drag
