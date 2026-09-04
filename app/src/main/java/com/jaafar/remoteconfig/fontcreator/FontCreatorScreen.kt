@@ -151,12 +151,7 @@ fun FontCreatorApp(
             viewModel.referenceTypeface()
         }
         val imageFontOptions = remember(viewModel.projects.toList(), viewModel.importedFonts.toList(), viewModel.generatedFont) {
-            listOf(
-                "Default" to Typeface.DEFAULT,
-                "Serif" to Typeface.SERIF,
-                "Sans-Serif" to Typeface.SANS_SERIF,
-                "Monospace" to Typeface.MONOSPACE,
-            ) + viewModel.allFontOptions()
+            listOf("Default" to Typeface.DEFAULT) + viewModel.allFontOptions()
         }
         when {
             showTutorial -> FeatureTutorial(

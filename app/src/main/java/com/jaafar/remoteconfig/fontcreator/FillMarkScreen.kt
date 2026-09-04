@@ -403,17 +403,16 @@ private fun FillMarkEditorScreen(
     var configSignatureName by remember { mutableStateOf<String?>(defaultSignatureName) }
     var configApplyToAll by remember { mutableStateOf(false) }
 
+    // Same palette as "Use your font on image" -- Black stays first so newly placed marks keep
+    // defaulting to a color that's actually visible on a plain document.
     val textColors = remember {
         listOf(
             "Black" to Color.BLACK,
-            "Blue" to Color.BLUE,
+            "White" to Color.WHITE,
             "Red" to Color.RED,
-            "Green" to 0xFF006400.toInt(),
-            "Orange" to 0xFFFF8C00.toInt(),
-            "Yellow" to 0xFFF9A825.toInt(),
-            "Purple" to 0xFF9C27B0.toInt(),
-            "Gray" to Color.GRAY,
-            "Brown" to 0xFF795548.toInt(),
+            "Yellow" to Color.YELLOW,
+            "Blue" to Color.BLUE,
+            "Green" to Color.rgb(0, 160, 70),
         )
     }
 
