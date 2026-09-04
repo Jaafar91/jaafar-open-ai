@@ -320,7 +320,7 @@ internal fun SpacingControl(
     var showMoreMenu by remember { mutableStateOf(false) }
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phraseDraft by remember(phraseText) { mutableStateOf(phraseText) }
-    var showReference by remember { mutableStateOf(false) }
+    var showReference by remember { mutableStateOf(true) }
     var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var savedStrokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var savedStrokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: defaultStrokeWidth) }

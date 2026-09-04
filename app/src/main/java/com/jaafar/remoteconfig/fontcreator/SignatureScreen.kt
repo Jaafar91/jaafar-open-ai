@@ -60,19 +60,32 @@ internal fun ImportStampFromImageScreen(
     vm: FontCreatorViewModel,
     onSaved: (String) -> Unit,
     back: () -> Unit,
+    existing: SavedSignature? = null,
+    useInFillMark: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf(vm.suggestedSignatureName("My stamp")) }
+    var name by remember { mutableStateOf(existing?.name ?: vm.suggestedSignatureName("My stamp")) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var rawBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var removeWhiteBackground by remember { mutableStateOf(true) }
     var status by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
-    val duplicateName = name.trim().isNotEmpty() && vm.hasSavedSignatureName(name)
+    // Excludes the stamp's own current name -- editing it back to what it already was isn't a
+    // duplicate, unlike creating a brand new one under a name already in use.
+    val duplicateName = name.trim().isNotEmpty() &&
+        !name.trim().equals(existing?.name, ignoreCase = true) &&
+        vm.hasSavedSignatureName(name)
     DisposableEffect(rawBitmap) {
         val bitmapToRecycle = rawBitmap
         onDispose { bitmapToRecycle?.recycle() }
+    }
+    // Shows the stamp's already-saved image until a new one is picked, so editing doesn't open
+    // on an empty "select an image" state.
+    val existingImageBitmap = if (existing != null && rawBitmap == null) {
+        rememberImageBitmap(vm.signatureImageFile(existing))
+    } else {
+        null
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -106,7 +119,7 @@ internal fun ImportStampFromImageScreen(
         onDispose { processedPreview?.recycle() }
     }
 
-    Page("Import Stamp", back, scrollable = true) {
+    Page(if (existing != null) "Edit Stamp" else "Import Stamp", back, scrollable = true) {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
@@ -147,21 +160,55 @@ internal fun ImportStampFromImageScreen(
                 )
                 Text("Remove white background", style = MaterialTheme.typography.bodyMedium)
             }
+        } else if (existingImageBitmap != null) {
+            Box(
+                Modifier.fillMaxWidth()
+                    .aspectRatio(existingImageBitmap.width.toFloat() / existingImageBitmap.height.toFloat())
+                    .border(1.dp, ComposeColor.Gray)
+            ) {
+                Image(
+                    bitmap = existingImageBitmap.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+            }
         } else {
             Text("Select an image to preview and import it as a reusable stamp.", style = MaterialTheme.typography.bodySmall)
         }
         Button(
             onClick = {
-                val uri = selectedUri ?: return@Button
                 if (duplicateName) {
                     status = "A saved signature or stamp already uses that name."
+                    return@Button
+                }
+                val uri = selectedUri
+                if (uri == null) {
+                    // Editing without picking a new image -- rename only, image unchanged.
+                    val existingName = existing ?: return@Button
+                    if (vm.renameSignature(existingName.name, name)) {
+                        status = "Saved."
+                        onSaved(name.trim().ifEmpty { existingName.name })
+                    } else {
+                        status = "Could not save this stamp."
+                    }
                     return@Button
                 }
                 scope.launch {
                     saving = true
                     status = "Saving stamp\u2026"
                     val savedName = withContext(Dispatchers.IO) {
-                        runCatching { vm.saveSignatureFromImage(context.contentResolver, uri, name, removeWhiteBackground) }.getOrNull()
+                        runCatching {
+                            if (existing != null) {
+                                if (vm.updateSignatureImage(existing.name, name, context.contentResolver, uri, removeWhiteBackground)) {
+                                    name.trim().ifEmpty { existing.name }
+                                } else {
+                                    null
+                                }
+                            } else {
+                                vm.saveSignatureFromImage(context.contentResolver, uri, name, removeWhiteBackground)
+                            }
+                        }.getOrNull()
                     }
                     saving = false
                     if (savedName != null) {
@@ -173,8 +220,15 @@ internal fun ImportStampFromImageScreen(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !saving && selectedUri != null && !duplicateName,
-        ) { Text("Save stamp") }
+            enabled = !saving && (selectedUri != null || existing != null) && !duplicateName,
+        ) { Text(if (existing != null) "Save changes" else "Save stamp") }
+        // Stamping a document is now Fill & Mark's job -- this just gets you there with this
+        // stamp ready to place, instead of a separate bespoke sign-a-document screen.
+        if (existing != null && useInFillMark != null) {
+            OutlinedButton(onClick = { useInFillMark(existing.name) }, modifier = Modifier.fillMaxWidth()) {
+                Text("Use in Fill & Mark")
+            }
+        }
         if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall)
     }
