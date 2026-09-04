@@ -626,8 +626,12 @@ private fun FillMarkEditorScreen(
         },
     ) {
         // The outer Column does NOT scroll — only the document area and the config panel
-        // (each independently) do.
-        Column(Modifier.fillMaxSize()) {
+        // (each independently) do. Deliberately NOT fillMaxSize(): the document and config
+        // panel below both shrink to their own content (weight(fill = false)), and forcing
+        // this Column to the full available height left the leftover space as a blank gap
+        // between the config panel and the pinned bottomBar. Sizing to actual content instead
+        // means the column ends exactly where its content ends.
+        Column(Modifier.fillMaxWidth()) {
 
             // ── DOCUMENT WORKSPACE ───────────────────────────────────────────── ─────────────────────────────────────────
             Box(
@@ -781,10 +785,6 @@ private fun FillMarkEditorScreen(
                         .padding(vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(
-                        if (selectedMark == null) "Add ${configuringTool.label}" else "Edit ${configuringTool.label}",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
                     MarkConfigPanel(
                         tool = configuringTool,
                         configColorIdx = configColorIdx,
@@ -828,12 +828,6 @@ private fun FillMarkEditorScreen(
                                 Text("Delete mark")
                             }
                         }
-                    } else {
-                        Text(
-                            "Tap the document to place ${configuringTool.label.lowercase()}.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
                     }
                 }
             }
