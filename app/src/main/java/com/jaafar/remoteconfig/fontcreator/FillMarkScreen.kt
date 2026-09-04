@@ -182,7 +182,11 @@ internal fun FillMarkScreen(
             vm = vm,
             documentUri = documentUri!!,
             initialMarkName = initialMarkName,
-            back = { documentUri = null },
+            // Exits Fill & Mark entirely, matching this back button everywhere else in the
+            // app -- previously this reset to the document picker instead, which (now that
+            // picker auto-launches immediately, with no landing screen to land on) meant back
+            // just bounced straight into the system file picker again.
+            back = back,
         )
     }
 }
