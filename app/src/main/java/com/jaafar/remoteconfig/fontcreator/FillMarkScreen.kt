@@ -41,12 +41,10 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Draw
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -338,7 +336,6 @@ private fun FillMarkEditorScreen(
     val marks = remember { mutableStateListOf<DocumentMark>() }
     var selectedMarkId by remember { mutableStateOf<Long?>(null) }
     var activeTool by remember { mutableStateOf<MarkType?>(null) }
-    var showMarkOptions by remember { mutableStateOf(false) }
 
     // Per-tool config state (shared across marks for ergonomics)
     var configText by remember { mutableStateOf(initialText ?: "") }
@@ -537,76 +534,11 @@ private fun FillMarkEditorScreen(
         }
     }
 
-    if (showMarkOptions && activeTool != null) {
-        ModalBottomSheet(onDismissRequest = { showMarkOptions = false }) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(
-                    if (selectedMark == null) "Add ${activeTool!!.label}" else "Edit ${activeTool!!.label}",
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                MarkConfigPanel(
-                        tool = activeTool!!,
-                        configText = configText,
-                        onConfigTextChange = { configText = it },
-                        configColorIdx = configColorIdx,
-                        onColorChange = { configColorIdx = it; updateSelectedMark() },
-                        textColors = textColors,
-                        configFontIdx = configFontIdx,
-                        onFontChange = { configFontIdx = it; updateSelectedMark() },
-                        fontOptions = fontOptions,
-                        configSizeFraction = configSizeFraction,
-                        onSizeChange = { configSizeFraction = it; updateSelectedMark() },
-                        configCheckStyle = configCheckStyle,
-                        onCheckStyleChange = { configCheckStyle = it; updateSelectedMark() },
-                        configSignatureName = configSignatureName,
-                        onSignatureChange = {
-                            configSignatureName = it
-                            when (activeTool) {
-                                MarkType.Signature -> it?.takeIf { name ->
-                                    vm.signatures.any { signature -> signature.imageFileName == null && signature.name == name }
-                                }?.let(vm::setDefaultSignature)
-                                MarkType.Stamp -> it?.takeIf { name ->
-                                    vm.signatures.any { signature -> signature.imageFileName != null && signature.name == name }
-                                }?.let(vm::setDefaultStamp)
-                                else -> Unit
-                            }
-                            updateSelectedMark()
-                        },
-                        vm = vm,
-                        isPdf = isPdf,
-                        configApplyToAll = configApplyToAll,
-                        onApplyToAllChange = { configApplyToAll = it; updateSelectedMark() },
-                        selectedMark = selectedMark,
-                    )
-                if (selectedMark != null) {
-                    TextButton(onClick = {
-                        marks.removeIf { it.id == selectedMarkId }
-                        selectedMarkId = null
-                        activeTool = null
-                        showMarkOptions = false
-                    }) { Text("Delete mark") }
-                }
-                Button(
-                    onClick = {
-                        updateSelectedMark()
-                        if (selectedMark != null) activeTool = null
-                        showMarkOptions = false
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        if (selectedMark == null) "Place on document" else "Done",
-                    )
-                }
-            }
-        }
-    }
+    // The active tool (adding a new mark) or the selected mark (editing an existing one) --
+    // whichever applies decides what MarkConfigPanel below configures. Shown inline in the
+    // screen itself (under the document, above the pinned tool row) instead of in a bottom
+    // sheet, so color/size/font are visible and adjustable without covering the canvas.
+    val configuringTool = activeTool ?: selectedMark?.type
 
     Page(
         title = "Fill & Mark Document",
@@ -620,8 +552,67 @@ private fun FillMarkEditorScreen(
                 FillMarkShareIcon()
             }
         },
+        bottomBar = {
+            // Text/Date/Check/Sign/Stamp stay pinned to the very bottom of the screen at all
+            // times, regardless of how much the document or the config panel above take up.
+            Column(Modifier.fillMaxWidth()) {
+                HorizontalDivider()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    val isTextMode = activeTool == MarkType.Text
+                    if (isTextMode) {
+                        OutlinedButton(onClick = {
+                            activeTool = null
+                            selectedMarkId = null
+                        }) { MarkToolContent("Text", Icons.Filled.TextFields) }
+                    } else {
+                        TextButton(onClick = {
+                            configText = ""
+                            selectedMarkId = null
+                            activeTool = MarkType.Text
+                        }) { MarkToolContent("Text", Icons.Filled.TextFields) }
+                    }
+                    availableTools.filter { it != MarkType.Text }.forEach { tool ->
+                        val compactLabel = when (tool) {
+                            MarkType.Date -> "Date"
+                            MarkType.Check -> "Check"
+                            MarkType.Signature -> "Sign"
+                            MarkType.Stamp -> "Stamp"
+                            MarkType.Text -> error("Text is handled above")
+                        }
+                        val icon = when (tool) {
+                            MarkType.Date -> Icons.Filled.CalendarToday
+                            MarkType.Check -> Icons.Filled.Check
+                            MarkType.Signature -> Icons.Filled.Draw
+                            MarkType.Stamp -> Icons.Filled.Approval
+                            MarkType.Text -> error("Text is handled above")
+                        }
+                        val isActive = activeTool == tool
+                        if (isActive) {
+                            OutlinedButton(onClick = { activeTool = null; selectedMarkId = null }) { MarkToolContent(compactLabel, icon) }
+                        } else {
+                            TextButton(onClick = {
+                                activeTool = tool
+                                configSignatureName = when (tool) {
+                                    MarkType.Signature -> defaultSignatureName
+                                    MarkType.Stamp -> defaultStampName
+                                    else -> configSignatureName
+                                }
+                                selectedMarkId = null
+                            }) { MarkToolContent(compactLabel, icon) }
+                        }
+                    }
+                }
+            }
+        },
     ) {
-        // The outer Column does NOT scroll — only the document area scrolls.
+        // The outer Column does NOT scroll — only the document area and the config panel
+        // (each independently) do.
         Column(Modifier.fillMaxSize()) {
 
             // ── DOCUMENT WORKSPACE ───────────────────────────────────────────── ─────────────────────────────────────────
@@ -719,121 +710,101 @@ private fun FillMarkEditorScreen(
                 }
             }
 
-            // ── COMPACT MARK BAR ─────────────────────────────────────────────── ────────────────────────────────────────────
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                // Edit/Delete for the selected mark -- placed directly under the document,
-                // above the tool selector row, so it sits right next to what it acts on.
-                if (selectedMark != null) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { activeTool = selectedMark.type; showMarkOptions = true }, modifier = Modifier.weight(1f)) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Text("Edit")
-                            }
-                        }
-                        TextButton(onClick = { marks.removeIf { it.id == selectedMarkId }; selectedMarkId = null; activeTool = null }, modifier = Modifier.weight(1f)) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Text("Delete")
-                            }
-                        }
-                    }
-                }
-
-                // PDF page navigation
-                if (isPdf && pageCount > 0) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OutlinedButton(
-                            onClick = { if (currentPage > 0) currentPage-- },
-                            enabled = currentPage > 0,
-                        ) { Text("\u2190") }
-                        Text(
-                            "Page ${currentPage + 1} of $pageCount",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        OutlinedButton(
-                            onClick = { if (currentPage < pageCount - 1) currentPage++ },
-                            enabled = currentPage < pageCount - 1,
-                        ) { Text("\u2192") }
-                    }
-                }
-
-                // Tool selector toolbar
-                HorizontalDivider()
+            // PDF page navigation
+            if (isPdf && pageCount > 0) {
                 Row(
+                    Modifier.fillMaxWidth().padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = { if (currentPage > 0) currentPage-- },
+                        enabled = currentPage > 0,
+                    ) { Text("\u2190") }
+                    Text(
+                        "Page ${currentPage + 1} of $pageCount",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    OutlinedButton(
+                        onClick = { if (currentPage < pageCount - 1) currentPage++ },
+                        enabled = currentPage < pageCount - 1,
+                    ) { Text("\u2192") }
+                }
+            }
+
+            // ── CONFIG PANEL ───────────────────────────────────────
+            // Color/size/font (and everything else specific to the active tool or the
+            // selected mark) live here, inline, right under the document -- not behind an
+            // Edit tap or a bottom sheet. Its own weight+scroll is independent of the
+            // document's above, so a long list (e.g. many saved signatures) scrolls in place
+            // instead of pushing the pinned tool row off-screen.
+            if (configuringTool != null) {
+                Column(
                     Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .padding(vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    val isTextMode = activeTool == MarkType.Text
-                    if (isTextMode) {
-                        OutlinedButton(onClick = {
-                            activeTool = null
-                            selectedMarkId = null
-                        }) { MarkToolContent("Text", Icons.Filled.TextFields) }
-                    } else {
-                        // Same full config panel (color/size/font) as every other tool below,
-                        // instead of the old bare text-only sheet, so styling is available
-                        // right away instead of only after the mark is placed and re-edited.
-                        TextButton(onClick = {
-                            configText = ""
-                            selectedMarkId = null
-                            activeTool = MarkType.Text
-                            showMarkOptions = true
-                        }) { MarkToolContent("Text", Icons.Filled.TextFields) }
-                    }
-                    availableTools.filter { it != MarkType.Text }.forEach { tool ->
-                        val compactLabel = when (tool) {
-                            MarkType.Date -> "Date"
-                            MarkType.Check -> "Check"
-                            MarkType.Signature -> "Sign"
-                            MarkType.Stamp -> "Stamp"
-                            MarkType.Text -> error("Text is handled above")
-                        }
-                        val icon = when (tool) {
-                            MarkType.Date -> Icons.Filled.CalendarToday
-                            MarkType.Check -> Icons.Filled.Check
-                            MarkType.Signature -> Icons.Filled.Draw
-                            MarkType.Stamp -> Icons.Filled.Approval
-                            MarkType.Text -> error("Text is handled above")
-                        }
-                        val isActive = activeTool == tool
-                        if (isActive) {
-                            OutlinedButton(onClick = { activeTool = null; selectedMarkId = null }) { MarkToolContent(compactLabel, icon) }
-                        } else {
-                            TextButton(onClick = {
-                                activeTool = tool
-                                configSignatureName = when (tool) {
-                                    MarkType.Signature -> defaultSignatureName
-                                    MarkType.Stamp -> defaultStampName
-                                    else -> configSignatureName
-                                }
-                                selectedMarkId = null
-                                showMarkOptions = true
-                            }) { MarkToolContent(compactLabel, icon) }
-                        }
-                    }
-                }
-
-                if (activeTool != null && activeTool != MarkType.Text) {
                     Text(
-                        "Tap the document to place ${activeTool!!.label.lowercase()}.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        if (selectedMark == null) "Add ${configuringTool.label}" else "Edit ${configuringTool.label}",
+                        style = MaterialTheme.typography.titleMedium,
                     )
+                    MarkConfigPanel(
+                        tool = configuringTool,
+                        configText = configText,
+                        onConfigTextChange = { configText = it },
+                        configColorIdx = configColorIdx,
+                        onColorChange = { configColorIdx = it; updateSelectedMark() },
+                        textColors = textColors,
+                        configFontIdx = configFontIdx,
+                        onFontChange = { configFontIdx = it; updateSelectedMark() },
+                        fontOptions = fontOptions,
+                        configSizeFraction = configSizeFraction,
+                        onSizeChange = { configSizeFraction = it; updateSelectedMark() },
+                        configCheckStyle = configCheckStyle,
+                        onCheckStyleChange = { configCheckStyle = it; updateSelectedMark() },
+                        configSignatureName = configSignatureName,
+                        onSignatureChange = {
+                            configSignatureName = it
+                            when (configuringTool) {
+                                MarkType.Signature -> it?.takeIf { name ->
+                                    vm.signatures.any { signature -> signature.imageFileName == null && signature.name == name }
+                                }?.let(vm::setDefaultSignature)
+                                MarkType.Stamp -> it?.takeIf { name ->
+                                    vm.signatures.any { signature -> signature.imageFileName != null && signature.name == name }
+                                }?.let(vm::setDefaultStamp)
+                                else -> Unit
+                            }
+                            updateSelectedMark()
+                        },
+                        vm = vm,
+                        isPdf = isPdf,
+                        configApplyToAll = configApplyToAll,
+                        onApplyToAllChange = { configApplyToAll = it; updateSelectedMark() },
+                        selectedMark = selectedMark,
+                    )
+                    if (selectedMark != null) {
+                        TextButton(onClick = {
+                            marks.removeIf { it.id == selectedMarkId }
+                            selectedMarkId = null
+                            activeTool = null
+                        }) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Text("Delete mark")
+                            }
+                        }
+                    } else {
+                        Text(
+                            "Tap the document to place ${configuringTool.label.lowercase()}.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
-                HorizontalDivider()
             }
 
             // ── FIXED BOTTOM (export status) ─────────────────────────────────────
