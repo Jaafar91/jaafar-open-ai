@@ -247,6 +247,10 @@ internal fun FillMarkScreen(
         FillMarkLandingScreen(
             onDocumentChosen = { uri -> documentUri = uri },
             back = back,
+            // Arriving with a mark already chosen (Signatures/Stamps' "Use in Fill & Mark")
+            // means the document picker is the only thing left to do here -- skip the "Choose
+            // PDF or image" tap-through and open the system picker immediately instead.
+            autoLaunchPicker = initialMarkName != null,
         )
     } else {
         FillMarkEditorScreen(
@@ -266,6 +270,7 @@ internal fun FillMarkScreen(
 private fun FillMarkLandingScreen(
     onDocumentChosen: (Uri) -> Unit,
     back: () -> Unit,
+    autoLaunchPicker: Boolean = false,
 ) {
     val context = LocalContext.current
     var recentDocs by remember { mutableStateOf(loadRecentDocs(context)) }
@@ -283,6 +288,12 @@ private fun FillMarkLandingScreen(
         saveRecentDoc(context, uri.toString(), name)
         recentDocs = loadRecentDocs(context)
         onDocumentChosen(uri)
+    }
+
+    // Opens the system picker immediately instead of waiting for the button tap below --
+    // only if the picker gets cancelled does this screen's own UI end up being needed.
+    LaunchedEffect(autoLaunchPicker) {
+        if (autoLaunchPicker) picker.launch(arrayOf("application/pdf", "image/*"))
     }
 
     Page("Complete a document", back) {
