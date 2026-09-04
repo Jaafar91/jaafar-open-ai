@@ -348,6 +348,14 @@ private fun FillMarkEditorScreen(
     val marks = remember { mutableStateListOf<DocumentMark>() }
     var selectedMarkId by remember { mutableStateOf<Long?>(null) }
     var activeTool by remember { mutableStateOf<MarkType?>(null) }
+    // Which text mark (if any) currently has its on-document text field open for editing.
+    // Distinct from selectedMarkId: a single tap selects a mark (shows the config panel)
+    // without opening this; only a fresh placement or a double-tap opens it.
+    var editingTextMarkId by remember { mutableStateOf<Long?>(null) }
+    // Tracks the last plain tap on a text mark so a second tap shortly after, on the same
+    // mark, can be recognized as a double-tap rather than two independent single taps.
+    var lastTextTapMarkId by remember { mutableStateOf<Long?>(null) }
+    var lastTextTapTimeMs by remember { mutableStateOf(0L) }
 
     // Per-tool config state (shared across marks for ergonomics)
     var configText by remember { mutableStateOf(initialText ?: "") }
@@ -466,9 +474,9 @@ private fun FillMarkEditorScreen(
             offsetY = offsetY,
             sizeFraction = configSizeFraction,
             text = when (tool) {
-                // Starts empty -- the on-canvas overlay opens focused right after placement,
-                // ready for the user to type into, like a fresh input field.
-                MarkType.Text -> configText
+                // Text is placed via placeTextMarkAtCenter() below, straight from the
+                // toolbar -- it never goes through this tap-to-place path.
+                MarkType.Text -> error("Text is placed via placeTextMarkAtCenter")
                 MarkType.Date -> todayText
                 MarkType.Check -> ""
                 MarkType.Signature, MarkType.Stamp -> ""
@@ -488,6 +496,28 @@ private fun FillMarkEditorScreen(
         }
         selectedMarkId = newMark.id
         activeTool = null
+    }
+
+    // Tapping the Text tool places a mark immediately at the center of the document and opens
+    // its on-document text field there -- no separate canvas tap to choose a spot, matching
+    // "Use font on image"'s direct-entry experience.
+    fun placeTextMarkAtCenter() {
+        val width = configSizeFraction
+        val height = width * 0.5f
+        val newMark = DocumentMark(
+            type = MarkType.Text,
+            offsetX = ((1f - width) / 2f).coerceIn(0f, 0.85f),
+            offsetY = ((1f - height) / 2f).coerceIn(0f, 0.85f),
+            sizeFraction = configSizeFraction,
+            text = "",
+            colorArgb = textColors.getOrNull(configColorIdx)?.second ?: Color.BLACK,
+            fontKey = fontOptions.getOrNull(configFontIdx)?.first,
+            applyToAllPages = configApplyToAll,
+            targetPage = currentPage,
+        )
+        marks.add(newMark)
+        selectedMarkId = newMark.id
+        editingTextMarkId = newMark.id
     }
 
     fun updateSelectedMark() {
@@ -581,19 +611,14 @@ private fun FillMarkEditorScreen(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    val isTextMode = activeTool == MarkType.Text
-                    if (isTextMode) {
-                        OutlinedButton(onClick = {
-                            activeTool = null
-                            selectedMarkId = null
-                        }) { MarkToolContent("Text", Icons.Filled.TextFields) }
-                    } else {
-                        TextButton(onClick = {
-                            configText = ""
-                            selectedMarkId = null
-                            activeTool = MarkType.Text
-                        }) { MarkToolContent("Text", Icons.Filled.TextFields) }
-                    }
+                    // Text acts immediately -- unlike the other tools, there's no "armed" state
+                    // to tap the canvas into. Each tap places a fresh mark at the center of the
+                    // document and opens its text field right there.
+                    TextButton(onClick = {
+                        activeTool = null
+                        configText = ""
+                        placeTextMarkAtCenter()
+                    }) { MarkToolContent("Text", Icons.Filled.TextFields) }
                     availableTools.filter { it != MarkType.Text }.forEach { tool ->
                         val compactLabel = when (tool) {
                             MarkType.Date -> "Date"
@@ -611,7 +636,7 @@ private fun FillMarkEditorScreen(
                         }
                         val isActive = activeTool == tool
                         if (isActive) {
-                            OutlinedButton(onClick = { activeTool = null; selectedMarkId = null }) { MarkToolContent(compactLabel, icon) }
+                            OutlinedButton(onClick = { activeTool = null; selectedMarkId = null; editingTextMarkId = null }) { MarkToolContent(compactLabel, icon) }
                         } else {
                             TextButton(onClick = {
                                 activeTool = tool
@@ -621,6 +646,7 @@ private fun FillMarkEditorScreen(
                                     else -> configSignatureName
                                 }
                                 selectedMarkId = null
+                                editingTextMarkId = null
                             }) { MarkToolContent(compactLabel, icon) }
                         }
                     }
@@ -680,6 +706,7 @@ private fun FillMarkEditorScreen(
                                         when {
                                             hitMark != null -> {
                                                 selectedMarkId = hitMark.id
+                                                var moved = false
                                                 drag(down.id) { change ->
                                                     // positionChange() returns Offset.Zero once the
                                                     // change is consumed, so it must be read before
@@ -688,6 +715,7 @@ private fun FillMarkEditorScreen(
                                                     // every drag delta and made dragging a no-op.
                                                     val delta = change.positionChange()
                                                     change.consume()
+                                                    if (delta != Offset.Zero) moved = true
                                                     val idx = marks.indexOfFirst { it.id == hitMark.id }
                                                     if (idx >= 0) {
                                                         val m = marks[idx]
@@ -696,6 +724,25 @@ private fun FillMarkEditorScreen(
                                                             offsetY = (m.offsetY + delta.y / h).coerceIn(0f, 1f),
                                                         )
                                                     }
+                                                }
+                                                // A plain tap (no movement) on a text mark either
+                                                // opens it for editing (double-tap) or just selects
+                                                // it to show the config panel (single tap) -- a drag
+                                                // does neither, it only repositions the mark above.
+                                                if (!moved && hitMark.type == MarkType.Text) {
+                                                    val now = System.currentTimeMillis()
+                                                    val isDoubleTap = hitMark.id == lastTextTapMarkId &&
+                                                        (now - lastTextTapTimeMs) < 300L
+                                                    if (isDoubleTap) {
+                                                        editingTextMarkId = hitMark.id
+                                                        lastTextTapMarkId = null
+                                                    } else {
+                                                        editingTextMarkId = null
+                                                        lastTextTapMarkId = hitMark.id
+                                                        lastTextTapTimeMs = now
+                                                    }
+                                                } else {
+                                                    lastTextTapMarkId = null
                                                 }
                                             }
                                             activeTool != null -> {
@@ -706,7 +753,10 @@ private fun FillMarkEditorScreen(
                                                 }
                                             }
                                             else -> {
-                                                if (waitForUpOrCancellation() != null) selectedMarkId = null
+                                                if (waitForUpOrCancellation() != null) {
+                                                    selectedMarkId = null
+                                                    editingTextMarkId = null
+                                                }
                                             }
                                         }
                                     }
@@ -717,18 +767,21 @@ private fun FillMarkEditorScreen(
                             visibleMarks.forEach { mark ->
                                 // The actively-edited text mark is skipped here -- the overlay
                                 // below renders its live text directly instead, so drawing it
-                                // here too would just double it up underneath the overlay.
-                                if (mark.type == MarkType.Text && mark.id == selectedMarkId) return@forEach
+                                // here too would just double it up underneath the overlay. A
+                                // merely-selected (not editing) text mark is still drawn normally.
+                                if (mark.type == MarkType.Text && mark.id == editingTextMarkId) return@forEach
                                 val isSelected = mark.id == selectedMarkId
                                 drawMarkOnCanvas(mark, w, h, isSelected, fontOptions, sigBitmapCache)
                             }
                         }
                         // Text is typed directly on the document, right where it will appear --
                         // matching "Use font on image" -- instead of in a separate field in the
-                        // config panel below.
-                        if (selectedMark != null && selectedMark.type == MarkType.Text && canvasDisplaySize.width > 0) {
+                        // config panel below. Only shown right after placement or a double-tap
+                        // (editingTextMarkId), not on every plain selection.
+                        val editingMark = selectedMark?.takeIf { it.id == editingTextMarkId }
+                        if (editingMark != null && editingMark.type == MarkType.Text && canvasDisplaySize.width > 0) {
                             TextMarkOverlay(
-                                mark = selectedMark,
+                                mark = editingMark,
                                 canvasSize = canvasDisplaySize,
                                 text = configText,
                                 onTextChange = { configText = it; updateSelectedMark() },
@@ -822,6 +875,7 @@ private fun FillMarkEditorScreen(
                             marks.removeIf { it.id == selectedMarkId }
                             selectedMarkId = null
                             activeTool = null
+                            editingTextMarkId = null
                         }) {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
