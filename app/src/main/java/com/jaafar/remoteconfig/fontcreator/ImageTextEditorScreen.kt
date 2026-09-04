@@ -329,7 +329,7 @@ fun ImageTextEditorScreen(
                                 TextButton(onClick = { showAllFonts = true }) { Text("Browse all") }
                             }
                             val carouselLabels = (
-                                recentFontLabels + fontOptions.drop(4).map { it.first } + fontOptions.take(4).map { it.first }
+                                recentFontLabels + fontOptions.drop(1).map { it.first } + fontOptions.take(1).map { it.first }
                             ).distinct().take(10)
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 items(carouselLabels.mapNotNull { name -> fontOptions.firstOrNull { it.first == name } }) { (label, optionTypeface) ->
@@ -383,8 +383,8 @@ fun ImageTextEditorScreen(
                             )
                             val filteredBySource = when (fontFilter) {
                                 FontFilter.All -> fontOptions
-                                FontFilter.System -> fontOptions.take(4)
-                                FontFilter.MyFonts -> fontOptions.drop(4)
+                                FontFilter.System -> fontOptions.take(1)
+                                FontFilter.MyFonts -> fontOptions.drop(1)
                             }
                             val visibleFonts = filteredBySource.filter { (label, _) -> label.contains(fontQuery, ignoreCase = true) }
                             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
