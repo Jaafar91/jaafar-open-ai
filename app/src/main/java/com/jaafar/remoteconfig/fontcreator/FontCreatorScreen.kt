@@ -463,31 +463,6 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
         }
     }
     HorizontalDivider()
-    // Letter reference font picker
-    val referenceFontOptions = remember(vm.projects, vm.importedFonts) {
-        val builtIn = listOf("Default", "Sans-serif", "Serif", "Monospace")
-        val userFontNames = vm.allFontOptions().map { it.first }
-        builtIn + userFontNames
-    }
-    var refExpanded by remember { mutableStateOf(false) }
-    Text("Letter reference font", style = MaterialTheme.typography.titleMedium)
-    Text(
-        "A faint guide glyph shown while drawing letters. Does not affect the app font.",
-        style = MaterialTheme.typography.bodySmall,
-    )
-    Box {
-        OutlinedButton({ refExpanded = true }, Modifier.fillMaxWidth()) { Text(vm.referenceFontKey) }
-        DropdownMenu(refExpanded, { refExpanded = false }) {
-            referenceFontOptions.forEach { key ->
-                DropdownMenuItem(
-                    text = { Text(key) },
-                    onClick = { vm.setReferenceFont(key); refExpanded = false },
-                    trailingIcon = { if (key == vm.referenceFontKey) Text("âœ“") },
-                )
-            }
-        }
-    }
-    HorizontalDivider()
     Text("Privacy & storage", style = MaterialTheme.typography.titleMedium)
     Text(
         "All fonts, signatures, and generated files are stored locally on this device.",

@@ -97,14 +97,23 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     /** Returns all available typefaces (generated + imported) with their display labels. */
     fun hasGeneratedFont(name: String): Boolean = generatedFile(name).exists()
 
-    fun allFontOptions(): List<Pair<String, Typeface>> {
+    /**
+     * All usable typefaces (generated + imported), most recently modified/imported first --
+     * so a caller that just wants "one sensible default font" (Fill & Mark, or "Use font on
+     * image"'s own fallback) can simply take the first entry instead of getting creation order.
+     *
+     * [completeOnly] excludes a created font missing glyphs for some of its own selected
+     * characters. Fill & Mark passes true, since arbitrary typed text there could hit an
+     * undrawn glyph; "Use font on image" leaves it false because an incomplete (phrase-mode)
+     * font can still render the specific phrase it was drawn for. Either way, the fonts library
+     * screen is unaffected and still lists an incomplete font with its own "x of y" progress.
+     */
+    fun allFontOptions(completeOnly: Boolean = false): List<Pair<String, Typeface>> {
         val app = getApplication<Application>()
+        data class Entry(val name: String, val typeface: Typeface, val modifiedAt: Long)
         val generated = projects.mapNotNull { project ->
-            // An incomplete font is missing glyphs for some of its own selected characters --
-            // offering it here would let it be picked to write arbitrary text that then renders
-            // with gaps for whatever hasn't been drawn yet. The fonts library screen still shows
-            // it (with its "x of y" progress), just not as a usable font elsewhere until done.
-            if (!isProjectComplete(project)) return@mapNotNull null
+            if (project.drawings.isEmpty()) return@mapNotNull null
+            if (completeOnly && !isProjectComplete(project)) return@mapNotNull null
             val file = generatedFile(project.name)
             runCatching {
                 // Keep Library fonts usable and current even if the user has not opened Preview.
@@ -116,14 +125,14 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
                         project.name,
                     ),
                 )
-                project.name to loadTypeface(file)
+                Entry(project.name, loadTypeface(file), project.lastModifiedAt)
             }.getOrNull()
         }
         val imported = importedFonts.mapNotNull { font ->
             val file = File(app.filesDir, font.fileName)
-            if (file.exists()) runCatching { font.displayName to loadTypeface(file) }.getOrNull() else null
+            if (file.exists()) runCatching { Entry(font.displayName, loadTypeface(file), font.importedAt) }.getOrNull() else null
         }
-        return generated + imported
+        return (generated + imported).sortedByDescending { it.modifiedAt }.map { it.name to it.typeface }
     }
 
     fun createProject(name: String): Boolean {
