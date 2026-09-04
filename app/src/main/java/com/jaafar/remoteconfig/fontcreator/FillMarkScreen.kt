@@ -654,18 +654,21 @@ private fun FillMarkEditorScreen(
             }
         },
     ) {
-        // This Column does NOT scroll — only the document area and the config panel (each
-        // independently) do. fillAvailableHeight = false above already stops Page's own
-        // column from forcing full height; this one just wraps its content the same way.
-        Column(Modifier.fillMaxWidth()) {
+        // A single scroll for the whole thing (document + page nav + config panel), instead of
+        // separate weight(1f, fill=false) regions for the document and the config panel: even
+        // with fill=false, Compose's Column still reserves each weighted child's full share of
+        // the Scaffold's bounded content height when sizing the Column itself, so a short config
+        // panel left the rest of its reserved share as blank space above the pinned toolbar.
+        // Plain sequential children wrapped in one shared scroll size to their actual content
+        // instead, and fillAvailableHeight = false above already stops Page's own column from
+        // forcing full height on top of that.
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
 
             // ── DOCUMENT WORKSPACE ───────────────────────────────────────────── ─────────────────────────────────────────
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .weight(1f, fill = false)
-                    .heightIn(min = 200.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .heightIn(min = 200.dp),
             ) {
                 val bitmap = previewBitmap
                 if (bitmap != null) {
@@ -826,15 +829,12 @@ private fun FillMarkEditorScreen(
             // ── CONFIG PANEL ───────────────────────────────────────
             // Color/size/font (and everything else specific to the active tool or the
             // selected mark) live here, inline, right under the document -- not behind an
-            // Edit tap or a bottom sheet. Its own weight+scroll is independent of the
-            // document's above, so a long list (e.g. many saved signatures) scrolls in place
-            // instead of pushing the pinned tool row off-screen.
+            // Edit tap or a bottom sheet. It shares the single scroll above with the document,
+            // so it sizes to its own content instead of reserving a fixed share of the screen.
             if (configuringTool != null) {
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState())
                         .padding(vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
