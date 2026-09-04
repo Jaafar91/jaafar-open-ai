@@ -329,8 +329,10 @@ private fun FillMarkEditorScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // completeOnly = true: arbitrary typed text here could hit a glyph an in-progress font
+    // hasn't drawn yet, unlike "Use font on image" which only ever writes a fixed phrase.
     val fontOptions = remember(vm.projects.toList(), vm.importedFonts.toList(), vm.generatedFont) {
-        vm.allFontOptions()
+        vm.allFontOptions(completeOnly = true)
     }
 
     // Document state
@@ -362,7 +364,11 @@ private fun FillMarkEditorScreen(
     // Per-tool config state (shared across marks for ergonomics)
     var configText by remember { mutableStateOf(initialText ?: "") }
     var configColorIdx by remember { mutableIntStateOf(0) }
-    var configFontIdx by remember { mutableIntStateOf(-1) }
+    // Defaults to the user's own most recently modified font (fontOptions is already sorted
+    // that way) instead of the generic system font, so a fresh Text/Date mark reads in their
+    // own handwriting from the start -- falls back to -1 (system Default) only when they have
+    // no usable font yet.
+    var configFontIdx by remember { mutableIntStateOf(if (fontOptions.isNotEmpty()) 0 else -1) }
     var configSizeFraction by remember { mutableFloatStateOf(0.20f) }
     var configCheckStyle by remember { mutableStateOf(CheckStyle.Check) }
     val defaultSignatureName = vm.signatures.firstOrNull { it.imageFileName == null && it.name == vm.defaultSignatureName }?.name
@@ -563,7 +569,7 @@ private fun FillMarkEditorScreen(
 
     // Export action – captured in a lambda so the icon button in the top bar can trigger it.
     fun triggerExport() {
-        val fontOptionsSnapshot = vm.allFontOptions()
+        val fontOptionsSnapshot = vm.allFontOptions(completeOnly = true)
         val signaturesSnapshot = vm.signatures.toList()
         scope.launch {
             isProcessing = true
