@@ -29,11 +29,14 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Approval
@@ -55,7 +58,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -77,6 +79,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -86,11 +89,15 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -101,6 +108,7 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -458,7 +466,9 @@ private fun FillMarkEditorScreen(
             offsetY = offsetY,
             sizeFraction = configSizeFraction,
             text = when (tool) {
-                MarkType.Text -> configText.ifBlank { "Text" }
+                // Starts empty -- the on-canvas overlay opens focused right after placement,
+                // ready for the user to type into, like a fresh input field.
+                MarkType.Text -> configText
                 MarkType.Date -> todayText
                 MarkType.Check -> ""
                 MarkType.Signature, MarkType.Stamp -> ""
@@ -495,7 +505,7 @@ private fun FillMarkEditorScreen(
         }
         marks[idx] = m.copy(
             text = when (m.type) {
-                MarkType.Text -> configText.ifBlank { "Text" }
+                MarkType.Text -> configText
                 MarkType.Date -> m.text
                 MarkType.Check -> ""
                 MarkType.Signature, MarkType.Stamp -> ""
@@ -701,9 +711,26 @@ private fun FillMarkEditorScreen(
                             val w = size.width
                             val h = size.height
                             visibleMarks.forEach { mark ->
+                                // The actively-edited text mark is skipped here -- the overlay
+                                // below renders its live text directly instead, so drawing it
+                                // here too would just double it up underneath the overlay.
+                                if (mark.type == MarkType.Text && mark.id == selectedMarkId) return@forEach
                                 val isSelected = mark.id == selectedMarkId
                                 drawMarkOnCanvas(mark, w, h, isSelected, fontOptions, sigBitmapCache)
                             }
+                        }
+                        // Text is typed directly on the document, right where it will appear --
+                        // matching "Use font on image" -- instead of in a separate field in the
+                        // config panel below.
+                        if (selectedMark != null && selectedMark.type == MarkType.Text && canvasDisplaySize.width > 0) {
+                            TextMarkOverlay(
+                                mark = selectedMark,
+                                canvasSize = canvasDisplaySize,
+                                text = configText,
+                                onTextChange = { configText = it; updateSelectedMark() },
+                                color = textColors.getOrNull(configColorIdx)?.second ?: Color.BLACK,
+                                typeface = fontOptions.getOrNull(configFontIdx)?.second,
+                            )
                         }
                     }
                 } else {
@@ -714,8 +741,10 @@ private fun FillMarkEditorScreen(
                 }
             }
 
-            // PDF page navigation
-            if (isPdf && pageCount > 0) {
+            // PDF page navigation -- hidden for a single-page PDF (or a plain image, where
+            // pageCount is 0), since a "Page 1 of 1" row with two disabled arrows was just
+            // wasted space; the document area is already scrollable on its own.
+            if (isPdf && pageCount > 1) {
                 Row(
                     Modifier.fillMaxWidth().padding(top = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -758,8 +787,6 @@ private fun FillMarkEditorScreen(
                     )
                     MarkConfigPanel(
                         tool = configuringTool,
-                        configText = configText,
-                        onConfigTextChange = { configText = it },
                         configColorIdx = configColorIdx,
                         onColorChange = { configColorIdx = it; updateSelectedMark() },
                         textColors = textColors,
@@ -836,6 +863,53 @@ private fun MarkToolContent(label: String, icon: androidx.compose.ui.graphics.ve
 }
 
 /**
+ * A live text field positioned and sized to match exactly where [drawMarkOnCanvas] would draw
+ * this text mark, so typing happens directly on the document -- the same "Use font on image"
+ * experience -- instead of in a separate field elsewhere on the screen. The mark it belongs to
+ * is skipped in the Canvas draw loop while this is on screen, so there's no double-render.
+ */
+@Composable
+private fun TextMarkOverlay(
+    mark: DocumentMark,
+    canvasSize: IntSize,
+    text: String,
+    onTextChange: (String) -> Unit,
+    color: Int,
+    typeface: Typeface?,
+) {
+    val density = LocalDensity.current
+    val focusRequester = remember(mark.id) { FocusRequester() }
+    val w = canvasSize.width.toFloat()
+    val h = canvasSize.height.toFloat()
+    val left = mark.offsetX * w
+    val top = mark.offsetY * h
+    // Matches drawMarkOnCanvas's own textSizePx/left/top so the live field lines up with where
+    // the static text would otherwise have been drawn.
+    val textSizePx = mark.sizeFraction * w * 0.25f
+    val maxWidthPx = (w - left).coerceAtLeast(textSizePx * 4f)
+    BasicTextField(
+        value = text,
+        onValueChange = onTextChange,
+        singleLine = true,
+        textStyle = TextStyle(
+            color = ComposeColor(color),
+            fontSize = with(density) { textSizePx.toSp() },
+            fontFamily = typeface?.let { FontFamily(it) },
+        ),
+        cursorBrush = SolidColor(ComposeColor(color)),
+        modifier = Modifier
+            .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+            .widthIn(
+                min = with(density) { (textSizePx * 3f).toDp() },
+                max = with(density) { maxWidthPx.toDp() },
+            )
+            .background(ComposeColor.White.copy(alpha = .6f))
+            .focusRequester(focusRequester),
+    )
+    LaunchedEffect(mark.id) { focusRequester.requestFocus() }
+}
+
+/**
  * Draws a three-node share/network graph icon (three dots connected by two lines)
  * without requiring the material-icons-extended library.
  */
@@ -870,8 +944,6 @@ private enum class MarkControl { Color, Font, Size, CheckStyle, Asset, ApplyToAl
 @Composable
 private fun MarkConfigPanel(
     tool: MarkType,
-    configText: String,
-    onConfigTextChange: (String) -> Unit,
     configColorIdx: Int,
     onColorChange: (Int) -> Unit,
     textColors: List<Pair<String, Int>>,
@@ -904,30 +976,10 @@ private fun MarkConfigPanel(
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        // Content that's always visible for this mark type, regardless of which control (if
-        // any) is expanded below.
-        when (tool) {
-            MarkType.Text -> {
-                val textFieldFocusRequester = remember { FocusRequester() }
-                OutlinedTextField(
-                    value = configText,
-                    onValueChange = onConfigTextChange,
-                    modifier = Modifier.fillMaxWidth().focusRequester(textFieldFocusRequester),
-                    label = { Text("Text") },
-                    singleLine = true,
-                )
-                if (selectedMark == null) {
-                    // Open with the keyboard already up when placing a new text mark, so the
-                    // user can start typing immediately instead of having to tap the field first.
-                    LaunchedEffect(Unit) { textFieldFocusRequester.requestFocus() }
-                }
-            }
-            MarkType.Date -> {
-                val today = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()) }
-                Text("Date: $today", style = MaterialTheme.typography.bodySmall)
-            }
-            MarkType.Check, MarkType.Signature, MarkType.Stamp -> Unit
-        }
+        // Text has no field here anymore -- typing happens directly on the document itself,
+        // in a text field overlaid right where the mark sits (same as "Use font on image").
+        // Date needs nothing here either: the placed mark on the document already shows
+        // today's date, so a second preview of it in this panel was redundant.
 
         // Icon toolbar -- one icon per control; tapping one reveals just that control below,
         // e.g. tapping the font icon shows the font list, instead of a fixed block of every
