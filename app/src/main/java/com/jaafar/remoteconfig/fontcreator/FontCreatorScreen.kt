@@ -94,7 +94,7 @@ private val ModernDarkColors = darkColorScheme(
     outlineVariant = Color(0xFF45464F),
 )
 
-internal enum class Screen { Home, Fonts, Signatures, Stamps, FontCelebration, FontReady, Letters, Signature, FillMark, Settings }
+internal enum class Screen { Home, Fonts, Signatures, Stamps, FontCelebration, FontReady, Letters, FillMark, Settings }
 
 @Composable
 fun FontCreatorApp(
@@ -129,6 +129,10 @@ fun FontCreatorApp(
         sharedUri ?: return@LaunchedEffect
         showTutorial = false
         fillMarkUri = sharedUri
+        // A pending mark from an earlier "use in Fill & Mark" visit could otherwise still be
+        // set if that visit was backed out of internally (picker -> Home was never reached),
+        // which would auto-place it on this unrelated newly shared document too.
+        pendingSignatureMark = null
         screen = Screen.FillMark
     }
 
@@ -240,7 +244,11 @@ fun FontCreatorApp(
                         initialImageText = ""
                         imagePicker.launch("image/*")
                     },
-                    openFillMark = { screen = Screen.FillMark },
+                    openFillMark = {
+                        fillMarkUri = null
+                        pendingSignatureMark = null
+                        screen = Screen.FillMark
+                    },
                     openFonts = { screen = Screen.Fonts },
                     openSignatures = { screen = Screen.Signatures },
                     openStamps = { screen = Screen.Stamps },
@@ -260,7 +268,8 @@ fun FontCreatorApp(
                     back = { screen = Screen.Home },
                     useInDocument = { markName ->
                         pendingSignatureMark = markName
-                        screen = Screen.Signature
+                        fillMarkUri = null
+                        screen = Screen.FillMark
                     },
                 )
                 Screen.Stamps -> StampsModuleScreen(
@@ -268,7 +277,8 @@ fun FontCreatorApp(
                     back = { screen = Screen.Home },
                     useInDocument = { markName ->
                         pendingSignatureMark = markName
-                        screen = Screen.Signature
+                        fillMarkUri = null
+                        screen = Screen.FillMark
                     },
                 )
                 Screen.FontCelebration -> {
@@ -310,17 +320,13 @@ fun FontCreatorApp(
                         imagePicker.launch("image/*")
                     },
                 )
-                Screen.Signature -> SignatureScreen(
-                    vm = viewModel,
-                    initialMarkName = pendingSignatureMark,
-                    onInitialMarkConsumed = { pendingSignatureMark = null },
-                    back = { pendingSignatureMark = null; screen = Screen.Home },
-                )
                 Screen.FillMark -> FillMarkScreen(
                     vm = viewModel,
                     initialUri = fillMarkUri,
+                    initialMarkName = pendingSignatureMark,
                     back = {
                         fillMarkUri = null
+                        pendingSignatureMark = null
                         screen = Screen.Home
                     },
                 )
@@ -454,31 +460,6 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
         Row(Modifier.clickable { change(true) }, verticalAlignment = Alignment.CenterVertically) {
             RadioButton(selected = dark, onClick = { change(true) })
             Text("Dark")
-        }
-    }
-    HorizontalDivider()
-    // Letter reference font picker
-    val referenceFontOptions = remember(vm.projects, vm.importedFonts) {
-        val builtIn = listOf("Default", "Sans-serif", "Serif", "Monospace")
-        val userFontNames = vm.allFontOptions().map { it.first }
-        builtIn + userFontNames
-    }
-    var refExpanded by remember { mutableStateOf(false) }
-    Text("Letter reference font", style = MaterialTheme.typography.titleMedium)
-    Text(
-        "A faint guide glyph shown while drawing letters. Does not affect the app font.",
-        style = MaterialTheme.typography.bodySmall,
-    )
-    Box {
-        OutlinedButton({ refExpanded = true }, Modifier.fillMaxWidth()) { Text(vm.referenceFontKey) }
-        DropdownMenu(refExpanded, { refExpanded = false }) {
-            referenceFontOptions.forEach { key ->
-                DropdownMenuItem(
-                    text = { Text(key) },
-                    onClick = { vm.setReferenceFont(key); refExpanded = false },
-                    trailingIcon = { if (key == vm.referenceFontKey) Text("âœ“") },
-                )
-            }
         }
     }
     HorizontalDivider()

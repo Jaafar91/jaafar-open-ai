@@ -223,11 +223,16 @@ private fun canOpenRecentDoc(context: android.content.Context, uri: Uri): Boolea
  *
  * @param initialUri  URI passed in via the Android Share sheet (ACTION_SEND).
  *                    When non-null the editor opens immediately with this document.
+ * @param initialMarkName  A saved signature/stamp's name to place automatically once a
+ *                    document is loaded -- the entry point from Signatures/Stamps' own
+ *                    "use in a document" action: choose a document here first, then land in
+ *                    the editor with that mark already placed at the center.
  */
 @Composable
 internal fun FillMarkScreen(
     vm: FontCreatorViewModel,
     initialUri: Uri? = null,
+    initialMarkName: String? = null,
     back: () -> Unit,
 ) {
     var documentUri by remember { mutableStateOf(initialUri) }
@@ -247,6 +252,7 @@ internal fun FillMarkScreen(
         FillMarkEditorScreen(
             vm = vm,
             documentUri = documentUri!!,
+            initialMarkName = initialMarkName,
             back = { documentUri = null },
         )
     }
@@ -327,12 +333,15 @@ private fun FillMarkEditorScreen(
     vm: FontCreatorViewModel,
     documentUri: Uri,
     initialText: String? = null,
+    initialMarkName: String? = null,
     back: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // completeOnly = true: arbitrary typed text here could hit a glyph an in-progress font
+    // hasn't drawn yet, unlike "Use font on image" which only ever writes a fixed phrase.
     val fontOptions = remember(vm.projects.toList(), vm.importedFonts.toList(), vm.generatedFont) {
-        vm.allFontOptions()
+        vm.allFontOptions(completeOnly = true)
     }
 
     // Document state
@@ -369,7 +378,11 @@ private fun FillMarkEditorScreen(
     // Per-tool config state (shared across marks for ergonomics)
     var configText by remember { mutableStateOf(initialText ?: "") }
     var configColorIdx by remember { mutableIntStateOf(0) }
-    var configFontIdx by remember { mutableIntStateOf(-1) }
+    // Defaults to the user's own most recently modified font (fontOptions is already sorted
+    // that way) instead of the generic system font, so a fresh Text/Date mark reads in their
+    // own handwriting from the start -- falls back to -1 (system Default) only when they have
+    // no usable font yet.
+    var configFontIdx by remember { mutableIntStateOf(if (fontOptions.isNotEmpty()) 0 else -1) }
     var configSizeFraction by remember { mutableFloatStateOf(0.20f) }
     var configCheckStyle by remember { mutableStateOf(CheckStyle.Check) }
     val defaultSignatureName = vm.signatures.firstOrNull { it.imageFileName == null && it.name == vm.defaultSignatureName }?.name
@@ -529,6 +542,17 @@ private fun FillMarkEditorScreen(
         addOrUpdateMark(offsetX, offsetY)
     }
 
+    // Arriving here from Signatures/Stamps' "Use in Fill & Mark" action: place that saved
+    // mark at the center immediately, same as tapping its tool in the toolbar when there's
+    // only one to choose from -- initialMarkName doesn't change over this screen's lifetime,
+    // so this runs once.
+    LaunchedEffect(initialMarkName) {
+        val name = initialMarkName ?: return@LaunchedEffect
+        val asset = vm.signatures.firstOrNull { it.name == name } ?: return@LaunchedEffect
+        val tool = if (asset.imageFileName == null) MarkType.Signature else MarkType.Stamp
+        placeMarkAtCenter(tool, name)
+    }
+
     // Tapping the Text tool places a mark immediately at the center of the document and opens
     // its on-document text field there -- no separate canvas tap to choose a spot, matching
     // "Use font on image"'s direct-entry experience.
@@ -587,7 +611,7 @@ private fun FillMarkEditorScreen(
 
     // Export action – captured in a lambda so the icon button in the top bar can trigger it.
     fun triggerExport() {
-        val fontOptionsSnapshot = vm.allFontOptions()
+        val fontOptionsSnapshot = vm.allFontOptions(completeOnly = true)
         val signaturesSnapshot = vm.signatures.toList()
         scope.launch {
             isProcessing = true

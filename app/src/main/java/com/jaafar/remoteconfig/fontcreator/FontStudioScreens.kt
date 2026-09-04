@@ -66,13 +66,19 @@ import com.jaafar.remoteconfig.R
         Page("Fine-tune your font", back) { Text("Choose a handwriting font first.") }
         return
     }
-    var letterSpacing by remember(project.name) { mutableFloatStateOf(project.letterSpacingMm) }
-    var wordSpacing by remember(project.name) { mutableFloatStateOf(project.wordSpacingMm) }
+    // Clamped to the sliders' own ranges below, not just setSpacing's wider validity check --
+    // a font saved with a spacing value from before these ranges were narrowed (or otherwise
+    // outside them) would hand the Slider a value past its valueRange, which crashed it.
+    var letterSpacing by remember(project.name) { mutableFloatStateOf(project.letterSpacingMm.coerceIn(LETTER_SPACING_RANGE)) }
+    var wordSpacing by remember(project.name) { mutableFloatStateOf(project.wordSpacingMm.coerceIn(WORD_SPACING_RANGE)) }
     val updateSpacing: (Float, Float) -> Unit = { nextLetter, nextWord ->
         letterSpacing = nextLetter
         wordSpacing = nextWord
         if (vm.setSpacing(nextLetter.toString(), nextWord.toString())) vm.generate()
     }
+    // Word spacing has no visible effect with only one word in the preview -- there's nothing
+    // to space apart -- so its control is disabled rather than left inertly interactive.
+    val previewWordCount = previewText.trim().split(Regex("\\s+")).count { it.isNotBlank() }
 
     // Matches the iOS app's "Fine-tune your font" screen: the preview *is* the screen --
     // a big live-rendered card with the text field woven directly into it, a single
@@ -122,8 +128,11 @@ import com.jaafar.remoteconfig.R
                     // advance widths are clamped to 500..4096 / 100..4096 font units) --
                     // the previous wider ranges mostly got silently clamped to the same
                     // value, so dragging looked like it did something but had no effect.
-                    SpacingSlider("Letter spacing", letterSpacing, -3f..4f, 0.25f) { updateSpacing(it, wordSpacing) }
-                    SpacingSlider("Word spacing", wordSpacing, 0.25f..8f, 0.25f) { updateSpacing(letterSpacing, it) }
+                    SpacingSlider("Letter spacing", letterSpacing, LETTER_SPACING_RANGE, 0.25f) { updateSpacing(it, wordSpacing) }
+                    SpacingSlider(
+                        "Word spacing", wordSpacing, WORD_SPACING_RANGE, 0.25f,
+                        enabled = previewWordCount > 1,
+                    ) { updateSpacing(letterSpacing, it) }
                     Text(
                         "Changes save automatically.",
                         style = MaterialTheme.typography.bodySmall,
@@ -141,28 +150,40 @@ import com.jaafar.remoteconfig.R
     }
 }
 
+private val LETTER_SPACING_RANGE = -3f..4f
+private val WORD_SPACING_RANGE = 0.25f..8f
+
 @Composable
 private fun SpacingSlider(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     step: Float,
+    enabled: Boolean = true,
     onChange: (Float) -> Unit,
 ) {
+    val contentAlpha = if (enabled) 1f else 0.38f
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, style = MaterialTheme.typography.titleMedium)
+            Text(
+                label,
+                style = MaterialTheme.typography.titleMedium,
+                color = LocalContentColor.current.copy(alpha = contentAlpha),
+            )
             Text(
                 "${String.format(java.util.Locale.US, "%.2f", value)} mm",
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
             )
         }
         Slider(
             value = value,
             onValueChange = onChange,
             valueRange = range,
-            steps = ((range.endInclusive - range.start) / step).toInt() - 1,
+            // coerceAtLeast(0): Slider requires steps >= 0 -- defensive against a range/step
+            // combination that would otherwise compute negative and crash it.
+            steps = (((range.endInclusive - range.start) / step).toInt() - 1).coerceAtLeast(0),
+            enabled = enabled,
         )
     }
 }
