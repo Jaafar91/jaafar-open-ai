@@ -950,7 +950,10 @@ private fun TextMarkOverlay(
     BasicTextField(
         value = text,
         onValueChange = onTextChange,
-        singleLine = true,
+        // Multi-line so Enter inserts a newline instead of doing nothing, and long text wraps
+        // within the widthIn(max) below instead of running off the document -- matching how
+        // textMarkLayout now wraps/draws the same mark once it's no longer being edited.
+        singleLine = false,
         textStyle = TextStyle(
             color = ComposeColor(color),
             fontSize = with(density) { textSizePx.toSp() },
@@ -1266,39 +1269,49 @@ private fun markContainsPoint(
     val left = mark.offsetX * w
     val top = mark.offsetY * h
     val markWidth = mark.sizeFraction * w
-    // Text/Date's hit width must match how far the string actually renders (drawMarkOnCanvas
-    // draws it unclamped) -- markWidth alone is just a font-size estimate, so a longer string
-    // like "one two three" would render well past it, leaving its tail end untappable.
-    val width = when (mark.type) {
-        MarkType.Text, MarkType.Date ->
-            maxOf(markWidth, measuredTextMarkWidth(mark.text, markWidth, mark.fontKey, fontOptions))
-        MarkType.Check, MarkType.Signature, MarkType.Stamp -> markWidth
-    }
-    val height = when (mark.type) {
-        MarkType.Text, MarkType.Date, MarkType.Check -> markWidth * 0.5f
-        MarkType.Signature, MarkType.Stamp -> markWidth * 0.7f
+    // Text/Date's hit box must match how the string actually renders -- it now wraps at the
+    // document's right edge (drawMarkOnCanvas), so both its width (the widest wrapped line) and
+    // its height (grows with the number of lines) come from that same wrapped layout instead of
+    // a single-line estimate that would miss everything past the first line.
+    val (width, height) = when (mark.type) {
+        MarkType.Text, MarkType.Date -> {
+            val typeface = mark.fontKey?.let { key -> fontOptions.firstOrNull { it.first == key }?.second }
+            val layout = textMarkLayout(mark.text, markWidth * 0.25f, typeface, mark.colorArgb, w - left)
+            val lineWidth = (0 until layout.lineCount).maxOfOrNull { layout.getLineWidth(it) } ?: 0f
+            maxOf(markWidth, lineWidth) to maxOf(markWidth * 0.5f, layout.height.toFloat())
+        }
+        MarkType.Check -> markWidth to markWidth * 0.5f
+        MarkType.Signature, MarkType.Stamp -> markWidth to markWidth * 0.7f
     }
     return point.x in left..(left + width) && point.y in top..(top + height)
 }
 
-/** Actual rendered width (px) of a Text/Date mark's string, using the same font size and
- *  typeface drawMarkOnCanvas draws it with -- kept as one shared calculation so hit-testing
- *  and the selection highlight can't drift out of sync with each other or with the real
- *  drawn text again. */
-private fun measuredTextMarkWidth(
+/**
+ * Builds a wrapped, multi-line-aware layout for a Text/Date mark's string, breaking lines at
+ * [maxWidthPx] (the space remaining to the document's right edge) and at any newline the user
+ * typed on the document itself -- so long text, or text with explicit line breaks, flows onto
+ * more lines instead of running off the page. Shared by drawing (preview canvas + export
+ * bitmap/PDF) and hit-testing/selection sizing so all three always agree on where the text ends
+ * up.
+ */
+private fun textMarkLayout(
     text: String,
-    markWidth: Float,
-    fontKey: String?,
-    fontOptions: List<Pair<String, Typeface>>,
-): Float {
-    val textSizePx = markWidth * 0.25f
-    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+    textSizePx: Float,
+    typeface: Typeface?,
+    colorArgb: Int,
+    maxWidthPx: Float,
+): android.text.StaticLayout {
+    val paint = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = colorArgb
         textSize = textSizePx.coerceAtLeast(8f)
-        if (fontKey != null) {
-            fontOptions.firstOrNull { it.first == fontKey }?.second?.let { typeface = it }
-        }
+        if (typeface != null) this.typeface = typeface
     }
-    return paint.measureText(text)
+    val width = maxWidthPx.coerceAtLeast(textSizePx * 4f).roundToInt().coerceAtLeast(1)
+    return android.text.StaticLayout.Builder
+        .obtain(text, 0, text.length, paint, width)
+        .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+        .setIncludePad(false)
+        .build()
 }
 
 /**
@@ -1320,21 +1333,21 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMarkOnCanvas(
 
     when (mark.type) {
         MarkType.Text, MarkType.Date -> {
-            val displayText = mark.text
-            val textSizePx = markWidth * 0.25f
+            val typeface = mark.fontKey?.let { key -> fontOptions.firstOrNull { it.first == key }?.second }
+            val layout = textMarkLayout(mark.text, markWidth * 0.25f, typeface, mark.colorArgb, w - left)
             drawIntoCanvas { c ->
-                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                    color = mark.colorArgb
-                    textSize = textSizePx.coerceAtLeast(8f)
-                    if (mark.fontKey != null) {
-                        fontOptions.firstOrNull { it.first == mark.fontKey }?.second?.let { typeface = it }
-                    }
-                }
-                c.nativeCanvas.drawText(displayText, left, top + textSizePx, paint)
+                c.nativeCanvas.save()
+                c.nativeCanvas.translate(left, top)
+                layout.draw(c.nativeCanvas)
+                c.nativeCanvas.restore()
             }
             if (isSelected) {
-                val textW = measuredTextMarkWidth(displayText, markWidth, mark.fontKey, fontOptions)
-                drawSelectionRect(left, top, textW.coerceAtLeast(markWidth * 0.3f), markWidth * 0.3f)
+                val lineWidth = (0 until layout.lineCount).maxOfOrNull { layout.getLineWidth(it) } ?: 0f
+                drawSelectionRect(
+                    left, top,
+                    maxOf(markWidth * 0.3f, lineWidth),
+                    maxOf(markWidth * 0.3f, layout.height.toFloat()),
+                )
             }
         }
         MarkType.Check -> {
@@ -1536,14 +1549,12 @@ private fun drawMarkOnBitmap(
 
     when (mark.type) {
         MarkType.Text, MarkType.Date -> {
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = mark.colorArgb
-                textSize = (markWidthPx * 0.25f).coerceAtLeast(8f)
-                if (mark.fontKey != null) {
-                    fontOptions.firstOrNull { it.first == mark.fontKey }?.second?.let { typeface = it }
-                }
-            }
-            canvas.drawText(mark.text, left, top + paint.textSize, paint)
+            val typeface = mark.fontKey?.let { key -> fontOptions.firstOrNull { it.first == key }?.second }
+            val layout = textMarkLayout(mark.text, markWidthPx * 0.25f, typeface, mark.colorArgb, pageWidth - left)
+            canvas.save()
+            canvas.translate(left, top)
+            layout.draw(canvas)
+            canvas.restore()
         }
         MarkType.Check -> {
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
