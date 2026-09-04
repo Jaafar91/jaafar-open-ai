@@ -704,9 +704,17 @@ private fun FillMarkEditorScreen(
                                         val down = awaitFirstDown()
                                         val w = canvasDisplaySize.width.toFloat().coerceAtLeast(1f)
                                         val h = canvasDisplaySize.height.toFloat().coerceAtLeast(1f)
-                                        val hitMark = visibleMarks.lastOrNull { mark ->
-                                            markContainsPoint(mark, down.position, w, h)
-                                        }
+                                        // Re-read marks fresh here rather than closing over the
+                                        // outer visibleMarks val: this gesture handler's coroutine
+                                        // stays alive across many taps/drags whenever activeTool
+                                        // and currentPage don't change, so a val captured from the
+                                        // enclosing composable would keep the positions as they
+                                        // were the moment this handler last (re)started -- stale
+                                        // after any drag, making the old position still "hit"
+                                        // instead of where the mark visually moved to.
+                                        val hitMark = marks
+                                            .filter { it.applyToAllPages || it.targetPage == currentPage }
+                                            .lastOrNull { mark -> markContainsPoint(mark, down.position, w, h) }
                                         when {
                                             hitMark != null -> {
                                                 selectedMarkId = hitMark.id
