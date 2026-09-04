@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -869,20 +870,15 @@ private fun FillMarkEditorScreen(
                         configApplyToAll = configApplyToAll,
                         onApplyToAllChange = { configApplyToAll = it; updateSelectedMark() },
                         selectedMark = selectedMark,
-                    )
-                    if (selectedMark != null) {
-                        TextButton(onClick = {
-                            marks.removeIf { it.id == selectedMarkId }
-                            selectedMarkId = null
-                            activeTool = null
-                            editingTextMarkId = null
-                        }) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Text("Delete mark")
+                        onDelete = if (selectedMark != null) {
+                            {
+                                marks.removeIf { it.id == selectedMarkId }
+                                selectedMarkId = null
+                                activeTool = null
+                                editingTextMarkId = null
                             }
-                        }
-                    }
+                        } else null,
+                    )
                 }
             }
 
@@ -1009,6 +1005,7 @@ private fun MarkConfigPanel(
     configApplyToAll: Boolean,
     onApplyToAllChange: (Boolean) -> Unit,
     selectedMark: DocumentMark?,
+    onDelete: (() -> Unit)? = null,
 ) {
     // Which control (if any) is expanded below the icon row -- only one at a time, so this
     // panel stays compact instead of showing color+font+size+... all at once.
@@ -1032,7 +1029,7 @@ private fun MarkConfigPanel(
         // Icon toolbar -- one icon per control; tapping one reveals just that control below,
         // e.g. tapping the font icon shows the font list, instead of a fixed block of every
         // control at once.
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             when (tool) {
                 MarkType.Text, MarkType.Date, MarkType.Check -> {
                     if (tool == MarkType.Check) {
@@ -1054,6 +1051,14 @@ private fun MarkConfigPanel(
                     if (isPdf) {
                         ControlIconButton(Icons.Filled.Layers, "Apply to all pages", expandedControl == MarkControl.ApplyToAll) { toggle(MarkControl.ApplyToAll) }
                     }
+                }
+            }
+            // Delete sits at the far right of the same row, away from the other controls,
+            // instead of its own row below the panel.
+            if (onDelete != null) {
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete mark", tint = MaterialTheme.colorScheme.error)
                 }
             }
         }
