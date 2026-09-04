@@ -291,12 +291,6 @@ fun FontCreatorApp(
                     previewText = previewText,
                     changePreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
                     back = { screen = Screen.Letters },
-                    startDrawing = {
-                        viewModel.disablePhraseMode()
-                        screen = Screen.Letters
-                        val nextMissing = viewModel.activeCharacterOrder.firstOrNull { it !in viewModel.drawings }
-                        if (nextMissing != null) viewModel.edit(nextMissing) else viewModel.editLetters()
-                    },
                     useOnImage = { fontName, text ->
                         preferredImageFontName = fontName
                         initialImageText = text
@@ -354,12 +348,25 @@ fun FontCreatorApp(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable internal fun Page(title: String, back: (() -> Unit)? = null, scrollable: Boolean = false, actions: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
+@Composable internal fun Page(
+    title: String,
+    back: (() -> Unit)? = null,
+    scrollable: Boolean = false,
+    actions: @Composable RowScope.() -> Unit = {},
+    bottomBar: @Composable () -> Unit = {},
+    // Every other screen wants its content column stretched to the full available height
+    // (e.g. so a list inside it fills the screen) -- opt out only when the content itself
+    // manages its own sizing and a forced-full-height column would just leave blank space
+    // below it, above a pinned bottomBar.
+    fillAvailableHeight: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     BackHandler(enabled = back != null) { back?.invoke() }
-    Scaffold(topBar = { AppTopBar(title, back, actions) }) { padding ->
+    Scaffold(topBar = { AppTopBar(title, back, actions) }, bottomBar = bottomBar) { padding ->
         val scrollModifier = if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier
+        val sizeModifier = if (fillAvailableHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
         Column(
-            Modifier.fillMaxSize().padding(padding).padding(16.dp).then(scrollModifier),
+            sizeModifier.padding(padding).padding(16.dp).then(scrollModifier),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             content = content,
         )

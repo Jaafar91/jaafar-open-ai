@@ -600,8 +600,10 @@ internal fun SpacingControl(
     }
 }
 
+/** Renders one drawn letter scaled to fit `modifier`'s bounds. Also reused by
+ *  FontsModuleScreen.kt as a font-list row thumbnail. */
 @Composable
-private fun GlyphBarPreview(drawing: GlyphDrawing, color: Color, modifier: Modifier = Modifier) {
+internal fun GlyphBarPreview(drawing: GlyphDrawing, color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier) {
         val scale = minOf(
             size.width / drawing.canvasWidth.coerceAtLeast(1f),

@@ -17,6 +17,8 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -98,7 +100,11 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun allFontOptions(): List<Pair<String, Typeface>> {
         val app = getApplication<Application>()
         val generated = projects.mapNotNull { project ->
-            if (project.drawings.isEmpty()) return@mapNotNull null
+            // An incomplete font is missing glyphs for some of its own selected characters --
+            // offering it here would let it be picked to write arbitrary text that then renders
+            // with gaps for whatever hasn't been drawn yet. The fonts library screen still shows
+            // it (with its "x of y" progress), just not as a usable font elsewhere until done.
+            if (!isProjectComplete(project)) return@mapNotNull null
             val file = generatedFile(project.name)
             runCatching {
                 // Keep Library fonts usable and current even if the user has not opened Preview.
@@ -366,6 +372,22 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             file to loadTypeface(file)
         }.onSuccess { (file, typeface) -> main.post { generatedFont = file; previewTypeface = typeface; status = "${snapshot.name} generated and saved." } }
             .onFailure { error -> main.post { status = "Could not generate font: ${error.message ?: "unknown error"}" } } }
+    }
+
+    /** Loads [project]'s generated Typeface for lightweight previews (e.g. the fonts list),
+     *  off the main thread -- the *real* font, not an approximation, so it matches Fine-tune's
+     *  rendering exactly. Reuses the same generated file [generate] would produce if one
+     *  already exists on disk, otherwise builds and persists it there now, so a later visit to
+     *  Fine-tune or Use-on-image finds it ready instead of regenerating it again. */
+    suspend fun typefaceForPreview(project: FontProject): Typeface? = withContext(Dispatchers.IO) {
+        runCatching {
+            val file = generatedFile(project.name)
+            if (!file.exists()) {
+                if (project.drawings.isEmpty()) return@withContext null
+                file.writeBytes(TrueTypeGenerator().generate(project.drawings, project.wordSpacingMm, project.letterSpacingMm, project.name))
+            }
+            loadTypeface(file)
+        }.getOrNull()
     }
 
     fun importFont(contentResolver: ContentResolver, uri: Uri, displayName: String) {

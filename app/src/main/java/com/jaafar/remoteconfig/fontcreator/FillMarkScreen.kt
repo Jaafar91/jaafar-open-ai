@@ -15,8 +15,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
@@ -27,22 +29,36 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Approval
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.FontDownload
+import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -60,21 +76,29 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -85,6 +109,8 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -324,7 +350,14 @@ private fun FillMarkEditorScreen(
     val marks = remember { mutableStateListOf<DocumentMark>() }
     var selectedMarkId by remember { mutableStateOf<Long?>(null) }
     var activeTool by remember { mutableStateOf<MarkType?>(null) }
-    var showMarkOptions by remember { mutableStateOf(false) }
+    // Which text mark (if any) currently has its on-document text field open for editing.
+    // Distinct from selectedMarkId: a single tap selects a mark (shows the config panel)
+    // without opening this; only a fresh placement or a double-tap opens it.
+    var editingTextMarkId by remember { mutableStateOf<Long?>(null) }
+    // Tracks the last plain tap on a text mark so a second tap shortly after, on the same
+    // mark, can be recognized as a double-tap rather than two independent single taps.
+    var lastTextTapMarkId by remember { mutableStateOf<Long?>(null) }
+    var lastTextTapTimeMs by remember { mutableStateOf(0L) }
 
     // Per-tool config state (shared across marks for ergonomics)
     var configText by remember { mutableStateOf(initialText ?: "") }
@@ -338,7 +371,6 @@ private fun FillMarkEditorScreen(
         ?: vm.signatures.firstOrNull { it.imageFileName != null }?.name
     var configSignatureName by remember { mutableStateOf<String?>(defaultSignatureName) }
     var configApplyToAll by remember { mutableStateOf(false) }
-    var showTextEntry by remember { mutableStateOf(false) }
 
     val textColors = remember {
         listOf(
@@ -346,6 +378,11 @@ private fun FillMarkEditorScreen(
             "Blue" to Color.BLUE,
             "Red" to Color.RED,
             "Green" to 0xFF006400.toInt(),
+            "Orange" to 0xFFFF8C00.toInt(),
+            "Yellow" to 0xFFF9A825.toInt(),
+            "Purple" to 0xFF9C27B0.toInt(),
+            "Gray" to Color.GRAY,
+            "Brown" to 0xFF795548.toInt(),
         )
     }
 
@@ -444,7 +481,9 @@ private fun FillMarkEditorScreen(
             offsetY = offsetY,
             sizeFraction = configSizeFraction,
             text = when (tool) {
-                MarkType.Text -> configText.ifBlank { "Text" }
+                // Text is placed via placeTextMarkAtCenter() below, straight from the
+                // toolbar -- it never goes through this tap-to-place path.
+                MarkType.Text -> error("Text is placed via placeTextMarkAtCenter")
                 MarkType.Date -> todayText
                 MarkType.Check -> ""
                 MarkType.Signature, MarkType.Stamp -> ""
@@ -466,6 +505,28 @@ private fun FillMarkEditorScreen(
         activeTool = null
     }
 
+    // Tapping the Text tool places a mark immediately at the center of the document and opens
+    // its on-document text field there -- no separate canvas tap to choose a spot, matching
+    // "Use font on image"'s direct-entry experience.
+    fun placeTextMarkAtCenter() {
+        val width = configSizeFraction
+        val height = width * 0.5f
+        val newMark = DocumentMark(
+            type = MarkType.Text,
+            offsetX = ((1f - width) / 2f).coerceIn(0f, 0.85f),
+            offsetY = ((1f - height) / 2f).coerceIn(0f, 0.85f),
+            sizeFraction = configSizeFraction,
+            text = "",
+            colorArgb = textColors.getOrNull(configColorIdx)?.second ?: Color.BLACK,
+            fontKey = fontOptions.getOrNull(configFontIdx)?.first,
+            applyToAllPages = configApplyToAll,
+            targetPage = currentPage,
+        )
+        marks.add(newMark)
+        selectedMarkId = newMark.id
+        editingTextMarkId = newMark.id
+    }
+
     fun updateSelectedMark() {
         val idx = marks.indexOfFirst { it.id == selectedMarkId }
         if (idx < 0) return
@@ -481,7 +542,7 @@ private fun FillMarkEditorScreen(
         }
         marks[idx] = m.copy(
             text = when (m.type) {
-                MarkType.Text -> configText.ifBlank { "Text" }
+                MarkType.Text -> configText
                 MarkType.Date -> m.text
                 MarkType.Check -> ""
                 MarkType.Signature, MarkType.Stamp -> ""
@@ -524,89 +585,18 @@ private fun FillMarkEditorScreen(
         }
     }
 
-    if (showTextEntry) {
-        ModalBottomSheet(onDismissRequest = { showTextEntry = false; activeTool = null }) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(value = configText, onValueChange = { configText = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Type text") }, singleLine = true)
-                Button(onClick = { showTextEntry = false }, modifier = Modifier.fillMaxWidth()) { Text("Place on document") }
-            }
-        }
-    }
-
-    if (showMarkOptions && activeTool != null) {
-        ModalBottomSheet(onDismissRequest = { showMarkOptions = false }) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(
-                    if (selectedMark == null) "Add ${activeTool!!.label}" else "Edit ${activeTool!!.label}",
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                MarkConfigPanel(
-                        tool = activeTool!!,
-                        configText = configText,
-                        onConfigTextChange = { configText = it },
-                        configColorIdx = configColorIdx,
-                        onColorChange = { configColorIdx = it; updateSelectedMark() },
-                        textColors = textColors,
-                        configFontIdx = configFontIdx,
-                        onFontChange = { configFontIdx = it; updateSelectedMark() },
-                        fontOptions = fontOptions,
-                        configSizeFraction = configSizeFraction,
-                        onSizeChange = { configSizeFraction = it; updateSelectedMark() },
-                        configCheckStyle = configCheckStyle,
-                        onCheckStyleChange = { configCheckStyle = it; updateSelectedMark() },
-                        configSignatureName = configSignatureName,
-                        onSignatureChange = {
-                            configSignatureName = it
-                            when (activeTool) {
-                                MarkType.Signature -> it?.takeIf { name ->
-                                    vm.signatures.any { signature -> signature.imageFileName == null && signature.name == name }
-                                }?.let(vm::setDefaultSignature)
-                                MarkType.Stamp -> it?.takeIf { name ->
-                                    vm.signatures.any { signature -> signature.imageFileName != null && signature.name == name }
-                                }?.let(vm::setDefaultStamp)
-                                else -> Unit
-                            }
-                            updateSelectedMark()
-                        },
-                        vm = vm,
-                        isPdf = isPdf,
-                        configApplyToAll = configApplyToAll,
-                        onApplyToAllChange = { configApplyToAll = it; updateSelectedMark() },
-                        selectedMark = selectedMark,
-                    )
-                if (selectedMark != null) {
-                    TextButton(onClick = {
-                        marks.removeIf { it.id == selectedMarkId }
-                        selectedMarkId = null
-                        activeTool = null
-                        showMarkOptions = false
-                    }) { Text("Delete mark") }
-                }
-                Button(
-                    onClick = {
-                        updateSelectedMark()
-                        if (selectedMark != null) activeTool = null
-                        showMarkOptions = false
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        if (selectedMark == null) "Place on document" else "Done",
-                    )
-                }
-            }
-        }
-    }
+    // The active tool (adding a new mark) or the selected mark (editing an existing one) --
+    // whichever applies decides what MarkConfigPanel below configures. Shown inline in the
+    // screen itself (under the document, above the pinned tool row) instead of in a bottom
+    // sheet, so color/size/font are visible and adjustable without covering the canvas.
+    val configuringTool = activeTool ?: selectedMark?.type
 
     Page(
         title = "Fill & Mark Document",
         back = back,
+        // The document and config panel below both shrink to their own content -- a
+        // full-height column here would just leave blank space above the pinned bottomBar.
+        fillAvailableHeight = false,
         actions = {
             // Share / Export icon button fixed in the top app bar.
             IconButton(
@@ -616,17 +606,76 @@ private fun FillMarkEditorScreen(
                 FillMarkShareIcon()
             }
         },
+        bottomBar = {
+            // Text/Date/Check/Sign/Stamp stay pinned to the very bottom of the screen at all
+            // times, regardless of how much the document or the config panel above take up.
+            Column(Modifier.fillMaxWidth()) {
+                HorizontalDivider()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    // Text acts immediately -- unlike the other tools, there's no "armed" state
+                    // to tap the canvas into. Each tap places a fresh mark at the center of the
+                    // document and opens its text field right there.
+                    TextButton(onClick = {
+                        activeTool = null
+                        configText = ""
+                        placeTextMarkAtCenter()
+                    }) { MarkToolContent("Text", Icons.Filled.TextFields) }
+                    availableTools.filter { it != MarkType.Text }.forEach { tool ->
+                        val compactLabel = when (tool) {
+                            MarkType.Date -> "Date"
+                            MarkType.Check -> "Check"
+                            MarkType.Signature -> "Sign"
+                            MarkType.Stamp -> "Stamp"
+                            MarkType.Text -> error("Text is handled above")
+                        }
+                        val icon = when (tool) {
+                            MarkType.Date -> Icons.Filled.CalendarToday
+                            MarkType.Check -> Icons.Filled.Check
+                            MarkType.Signature -> Icons.Filled.Draw
+                            MarkType.Stamp -> Icons.Filled.Approval
+                            MarkType.Text -> error("Text is handled above")
+                        }
+                        val isActive = activeTool == tool
+                        if (isActive) {
+                            OutlinedButton(onClick = { activeTool = null; selectedMarkId = null; editingTextMarkId = null }) { MarkToolContent(compactLabel, icon) }
+                        } else {
+                            TextButton(onClick = {
+                                activeTool = tool
+                                configSignatureName = when (tool) {
+                                    MarkType.Signature -> defaultSignatureName
+                                    MarkType.Stamp -> defaultStampName
+                                    else -> configSignatureName
+                                }
+                                selectedMarkId = null
+                                editingTextMarkId = null
+                            }) { MarkToolContent(compactLabel, icon) }
+                        }
+                    }
+                }
+            }
+        },
     ) {
-        // The outer Column does NOT scroll — only the document area scrolls.
-        Column(Modifier.fillMaxSize()) {
+        // A single scroll for the whole thing (document + page nav + config panel), instead of
+        // separate weight(1f, fill=false) regions for the document and the config panel: even
+        // with fill=false, Compose's Column still reserves each weighted child's full share of
+        // the Scaffold's bounded content height when sizing the Column itself, so a short config
+        // panel left the rest of its reserved share as blank space above the pinned toolbar.
+        // Plain sequential children wrapped in one shared scroll size to their actual content
+        // instead, and fillAvailableHeight = false above already stops Page's own column from
+        // forcing full height on top of that.
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
 
             // ── DOCUMENT WORKSPACE ───────────────────────────────────────────── ─────────────────────────────────────────
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .heightIn(min = 200.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .heightIn(min = 200.dp),
             ) {
                 val bitmap = previewBitmap
                 if (bitmap != null) {
@@ -649,37 +698,91 @@ private fun FillMarkEditorScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .pointerInput(activeTool, currentPage) {
-                                    detectTapGestures { offset ->
+                                    // A single combined gesture handler -- tap to select/place,
+                                    // then drag the same finger to move a just-selected mark.
+                                    // Previously tap-select and drag-move were two independent
+                                    // pointerInput detectors on the same Canvas; the drag
+                                    // detector's touch-slop handling could consume small,
+                                    // natural finger jitter during a "tap", which cancelled the
+                                    // sibling tap detector and made reselecting an existing mark
+                                    // unreliable.
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown()
                                         val w = canvasDisplaySize.width.toFloat().coerceAtLeast(1f)
                                         val h = canvasDisplaySize.height.toFloat().coerceAtLeast(1f)
-                                        val hit = visibleMarks.lastOrNull { mark ->
-                                            markContainsPoint(mark, offset, w, h)
-                                        }
+                                        // Re-read marks fresh here rather than closing over the
+                                        // outer visibleMarks val: this gesture handler's coroutine
+                                        // stays alive across many taps/drags whenever activeTool
+                                        // and currentPage don't change, so a val captured from the
+                                        // enclosing composable would keep the positions as they
+                                        // were the moment this handler last (re)started -- stale
+                                        // after any drag, making the old position still "hit"
+                                        // instead of where the mark visually moved to.
+                                        val hitMark = marks
+                                            .filter { it.applyToAllPages || it.targetPage == currentPage }
+                                            .lastOrNull { mark -> markContainsPoint(mark, down.position, w, h, fontOptions) }
                                         when {
-                                            hit != null -> {
-                                                selectedMarkId = hit.id
+                                            hitMark != null -> {
+                                                selectedMarkId = hitMark.id
+                                                // Total displacement from the initial touch-down,
+                                                // used below to tell a genuine drag from a tap --
+                                                // drag() itself has no slop tolerance, so even the
+                                                // tiny sensor jitter a real finger-tap produces
+                                                // would otherwise count as "moved" on every tap,
+                                                // permanently defeating single/double-tap detection.
+                                                var totalDrag = Offset.Zero
+                                                drag(down.id) { change ->
+                                                    // positionChange() returns Offset.Zero once the
+                                                    // change is consumed, so it must be read before
+                                                    // consume() -- reading it after (as an earlier
+                                                    // version of this code did) silently zeroed out
+                                                    // every drag delta and made dragging a no-op.
+                                                    val delta = change.positionChange()
+                                                    change.consume()
+                                                    totalDrag += delta
+                                                    val idx = marks.indexOfFirst { it.id == hitMark.id }
+                                                    if (idx >= 0) {
+                                                        val m = marks[idx]
+                                                        marks[idx] = m.copy(
+                                                            offsetX = (m.offsetX + delta.x / w).coerceIn(0f, 1f),
+                                                            offsetY = (m.offsetY + delta.y / h).coerceIn(0f, 1f),
+                                                        )
+                                                    }
+                                                }
+                                                val moved = hypot(totalDrag.x, totalDrag.y) > viewConfiguration.touchSlop
+                                                // A plain tap (no movement) on a text mark either
+                                                // opens it for editing (double-tap) or just selects
+                                                // it to show the config panel (single tap) -- a drag
+                                                // does neither, it only repositions the mark above.
+                                                if (!moved && hitMark.type == MarkType.Text) {
+                                                    val now = System.currentTimeMillis()
+                                                    val isDoubleTap = hitMark.id == lastTextTapMarkId &&
+                                                        (now - lastTextTapTimeMs) < 300L
+                                                    if (isDoubleTap) {
+                                                        editingTextMarkId = hitMark.id
+                                                        lastTextTapMarkId = null
+                                                    } else {
+                                                        editingTextMarkId = null
+                                                        lastTextTapMarkId = hitMark.id
+                                                        lastTextTapTimeMs = now
+                                                    }
+                                                } else {
+                                                    lastTextTapMarkId = null
+                                                }
                                             }
                                             activeTool != null -> {
-                                                val xFrac = (offset.x / w).coerceIn(0f, 0.85f)
-                                                val yFrac = (offset.y / h).coerceIn(0f, 0.85f)
-                                                addOrUpdateMark(xFrac, yFrac)
+                                                if (waitForUpOrCancellation() != null) {
+                                                    val xFrac = (down.position.x / w).coerceIn(0f, 0.85f)
+                                                    val yFrac = (down.position.y / h).coerceIn(0f, 0.85f)
+                                                    addOrUpdateMark(xFrac, yFrac)
+                                                }
                                             }
-                                            else -> selectedMarkId = null
-                                        }
-                                    }
-                                }
-                                .pointerInput(selectedMarkId) {
-                                    detectDragGestures { change, dragAmount ->
-                                        change.consume()
-                                        val w = canvasDisplaySize.width.toFloat().coerceAtLeast(1f)
-                                        val h = canvasDisplaySize.height.toFloat().coerceAtLeast(1f)
-                                        val idx = marks.indexOfFirst { it.id == selectedMarkId }
-                                        if (idx >= 0) {
-                                            val m = marks[idx]
-                                            marks[idx] = m.copy(
-                                                offsetX = (m.offsetX + dragAmount.x / w).coerceIn(0f, 1f),
-                                                offsetY = (m.offsetY + dragAmount.y / h).coerceIn(0f, 1f),
-                                            )
+                                            else -> {
+                                                if (waitForUpOrCancellation() != null) {
+                                                    selectedMarkId = null
+                                                    editingTextMarkId = null
+                                                }
+                                            }
                                         }
                                     }
                                 },
@@ -687,9 +790,29 @@ private fun FillMarkEditorScreen(
                             val w = size.width
                             val h = size.height
                             visibleMarks.forEach { mark ->
+                                // The actively-edited text mark is skipped here -- the overlay
+                                // below renders its live text directly instead, so drawing it
+                                // here too would just double it up underneath the overlay. A
+                                // merely-selected (not editing) text mark is still drawn normally.
+                                if (mark.type == MarkType.Text && mark.id == editingTextMarkId) return@forEach
                                 val isSelected = mark.id == selectedMarkId
                                 drawMarkOnCanvas(mark, w, h, isSelected, fontOptions, sigBitmapCache)
                             }
+                        }
+                        // Text is typed directly on the document, right where it will appear --
+                        // matching "Use font on image" -- instead of in a separate field in the
+                        // config panel below. Only shown right after placement or a double-tap
+                        // (editingTextMarkId), not on every plain selection.
+                        val editingMark = selectedMark?.takeIf { it.id == editingTextMarkId }
+                        if (editingMark != null && editingMark.type == MarkType.Text && canvasDisplaySize.width > 0) {
+                            TextMarkOverlay(
+                                mark = editingMark,
+                                canvasSize = canvasDisplaySize,
+                                text = configText,
+                                onTextChange = { configText = it; updateSelectedMark() },
+                                color = textColors.getOrNull(configColorIdx)?.second ?: Color.BLACK,
+                                typeface = fontOptions.getOrNull(configFontIdx)?.second,
+                            )
                         }
                     }
                 } else {
@@ -700,112 +823,90 @@ private fun FillMarkEditorScreen(
                 }
             }
 
-            // ── COMPACT MARK BAR ─────────────────────────────────────────────── ────────────────────────────────────────────
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                // PDF page navigation
-                if (isPdf && pageCount > 0) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OutlinedButton(
-                            onClick = { if (currentPage > 0) currentPage-- },
-                            enabled = currentPage > 0,
-                        ) { Text("\u2190") }
-                        Text(
-                            "Page ${currentPage + 1} of $pageCount",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        OutlinedButton(
-                            onClick = { if (currentPage < pageCount - 1) currentPage++ },
-                            enabled = currentPage < pageCount - 1,
-                        ) { Text("\u2192") }
-                    }
-                }
-
-                // Tool selector toolbar
-                HorizontalDivider()
+            // PDF page navigation -- hidden for a single-page PDF (or a plain image, where
+            // pageCount is 0), since a "Page 1 of 1" row with two disabled arrows was just
+            // wasted space; the document area is already scrollable on its own.
+            if (isPdf && pageCount > 1) {
                 Row(
+                    Modifier.fillMaxWidth().padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = { if (currentPage > 0) currentPage-- },
+                        enabled = currentPage > 0,
+                    ) { Text("\u2190") }
+                    Text(
+                        "Page ${currentPage + 1} of $pageCount",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    OutlinedButton(
+                        onClick = { if (currentPage < pageCount - 1) currentPage++ },
+                        enabled = currentPage < pageCount - 1,
+                    ) { Text("\u2192") }
+                }
+            }
+
+            // ── CONFIG PANEL ───────────────────────────────────────
+            // Color/size/font (and everything else specific to the active tool or the
+            // selected mark) live here, inline, right under the document -- not behind an
+            // Edit tap or a bottom sheet. It shares the single scroll above with the document,
+            // so it sizes to its own content instead of reserving a fixed share of the screen.
+            if (configuringTool != null) {
+                Column(
                     Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        .padding(vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    val isTextMode = activeTool == MarkType.Text
-                    if (isTextMode) {
-                        OutlinedButton(onClick = {
-                            activeTool = null
-                            selectedMarkId = null
-                            showTextEntry = false
-                        }) { Text("Text") }
-                    } else {
-                        TextButton(onClick = {
-                            configText = ""
-                            selectedMarkId = null
-                            showMarkOptions = false
-                            activeTool = MarkType.Text
-                            showTextEntry = true
-                        }) { Text("Text") }
-                    }
-                    availableTools.filter { it != MarkType.Text }.forEach { tool ->
-                        val compactLabel = when (tool) {
-                            MarkType.Date -> "Date"
-                            MarkType.Check -> "✓"
-                            MarkType.Signature -> "Sign"
-                            MarkType.Stamp -> "Stamp"
-                            MarkType.Text -> error("Text is handled above")
-                        }
-                        val isActive = activeTool == tool
-                        if (isActive) {
-                            OutlinedButton(onClick = { activeTool = null; selectedMarkId = null }) { Text(compactLabel) }
-                        } else {
-                            TextButton(onClick = {
-                                activeTool = tool
-                                configSignatureName = when (tool) {
-                                    MarkType.Signature -> defaultSignatureName
-                                    MarkType.Stamp -> defaultStampName
-                                    else -> configSignatureName
-                                }
+                    MarkConfigPanel(
+                        tool = configuringTool,
+                        configColorIdx = configColorIdx,
+                        onColorChange = { configColorIdx = it; updateSelectedMark() },
+                        textColors = textColors,
+                        configFontIdx = configFontIdx,
+                        onFontChange = { configFontIdx = it; updateSelectedMark() },
+                        fontOptions = fontOptions,
+                        configSizeFraction = configSizeFraction,
+                        onSizeChange = { configSizeFraction = it; updateSelectedMark() },
+                        configCheckStyle = configCheckStyle,
+                        onCheckStyleChange = { configCheckStyle = it; updateSelectedMark() },
+                        configSignatureName = configSignatureName,
+                        onSignatureChange = {
+                            configSignatureName = it
+                            when (configuringTool) {
+                                MarkType.Signature -> it?.takeIf { name ->
+                                    vm.signatures.any { signature -> signature.imageFileName == null && signature.name == name }
+                                }?.let(vm::setDefaultSignature)
+                                MarkType.Stamp -> it?.takeIf { name ->
+                                    vm.signatures.any { signature -> signature.imageFileName != null && signature.name == name }
+                                }?.let(vm::setDefaultStamp)
+                                else -> Unit
+                            }
+                            updateSelectedMark()
+                        },
+                        vm = vm,
+                        isPdf = isPdf,
+                        configApplyToAll = configApplyToAll,
+                        onApplyToAllChange = { configApplyToAll = it; updateSelectedMark() },
+                        selectedMark = selectedMark,
+                        onDelete = if (selectedMark != null) {
+                            {
+                                marks.removeIf { it.id == selectedMarkId }
                                 selectedMarkId = null
-                                showMarkOptions = true
-                            }) { Text(compactLabel) }
-                        }
-                    }
-                }
-
-                if (activeTool != null && activeTool != MarkType.Text) {
-                    Text(
-                        "Tap the document to place ${activeTool!!.label.lowercase()}.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                                activeTool = null
+                                editingTextMarkId = null
+                            }
+                        } else null,
                     )
                 }
-                if (selectedMark != null) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { activeTool = selectedMark.type; showMarkOptions = true }, modifier = Modifier.weight(1f)) { Text("Edit") }
-                        TextButton(onClick = { marks.removeIf { it.id == selectedMarkId }; selectedMarkId = null; activeTool = null }, modifier = Modifier.weight(1f)) { Text("Delete") }
-                    }
-                }
-
-                HorizontalDivider()
             }
 
             // ── FIXED BOTTOM (export status) ─────────────────────────────────────
-            if (marks.isNotEmpty() && !isProcessing) {
-                Button(
-                    onClick = ::triggerExport,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                ) {
-                    Text("Export & Share")
-                }
-            }
+            // Export/share is triggered from the top app bar's icon button only -- this
+            // full-width "Export & Share" button called the exact same triggerExport(),
+            // just as a second, redundant way to do it.
             if (isProcessing) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (status.isNotBlank()) Text(
                 status,
@@ -814,6 +915,66 @@ private fun FillMarkEditorScreen(
             )
         }
     }
+}
+
+/** Icon above a small label, used by the tool-selector toolbar so each mark type reads by
+ *  icon first instead of by a plain text button. */
+@Composable
+private fun MarkToolContent(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+/**
+ * A live text field positioned and sized to match exactly where [drawMarkOnCanvas] would draw
+ * this text mark, so typing happens directly on the document -- the same "Use font on image"
+ * experience -- instead of in a separate field elsewhere on the screen. The mark it belongs to
+ * is skipped in the Canvas draw loop while this is on screen, so there's no double-render.
+ */
+@Composable
+private fun TextMarkOverlay(
+    mark: DocumentMark,
+    canvasSize: IntSize,
+    text: String,
+    onTextChange: (String) -> Unit,
+    color: Int,
+    typeface: Typeface?,
+) {
+    val density = LocalDensity.current
+    val focusRequester = remember(mark.id) { FocusRequester() }
+    val w = canvasSize.width.toFloat()
+    val h = canvasSize.height.toFloat()
+    val left = mark.offsetX * w
+    val top = mark.offsetY * h
+    // Matches drawMarkOnCanvas's own textSizePx/left/top so the live field lines up with where
+    // the static text would otherwise have been drawn.
+    val textSizePx = mark.sizeFraction * w * 0.25f
+    val maxWidthPx = (w - left).coerceAtLeast(textSizePx * 4f)
+    BasicTextField(
+        value = text,
+        onValueChange = onTextChange,
+        // Multi-line so Enter inserts a newline instead of doing nothing, and long text wraps
+        // within the widthIn(max) below instead of running off the document -- matching how
+        // textMarkLayout now wraps/draws the same mark once it's no longer being edited.
+        singleLine = false,
+        textStyle = TextStyle(
+            color = ComposeColor(color),
+            fontSize = with(density) { textSizePx.toSp() },
+            fontFamily = typeface?.let { FontFamily(it) },
+        ),
+        cursorBrush = SolidColor(ComposeColor(color)),
+        modifier = Modifier
+            .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+            .widthIn(
+                min = with(density) { (textSizePx * 3f).toDp() },
+                max = with(density) { maxWidthPx.toDp() },
+            )
+            .background(ComposeColor.White.copy(alpha = .6f))
+            .focusRequester(focusRequester),
+    )
+    LaunchedEffect(mark.id) { focusRequester.requestFocus() }
 }
 
 /**
@@ -845,11 +1006,12 @@ private fun FillMarkShareIcon() {
 // Mark configuration panel
 // ---------------------------------------------------------------------------
 
+/** Which single control's UI is currently expanded below the icon row. */
+private enum class MarkControl { Color, Font, Size, CheckStyle, Asset, ApplyToAll }
+
 @Composable
 private fun MarkConfigPanel(
     tool: MarkType,
-    configText: String,
-    onConfigTextChange: (String) -> Unit,
     configColorIdx: Int,
     onColorChange: (Int) -> Unit,
     textColors: List<Pair<String, Int>>,
@@ -867,7 +1029,15 @@ private fun MarkConfigPanel(
     configApplyToAll: Boolean,
     onApplyToAllChange: (Boolean) -> Unit,
     selectedMark: DocumentMark?,
+    onDelete: (() -> Unit)? = null,
 ) {
+    // Which control (if any) is expanded below the icon row -- only one at a time, so this
+    // panel stays compact instead of showing color+font+size+... all at once.
+    var expandedControl by remember(tool) { mutableStateOf<MarkControl?>(null) }
+    fun toggle(control: MarkControl) {
+        expandedControl = if (expandedControl == control) null else control
+    }
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -875,87 +1045,91 @@ private fun MarkConfigPanel(
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        when (tool) {
-            MarkType.Text -> {
-                OutlinedTextField(
-                    value = configText,
-                    onValueChange = onConfigTextChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Text") },
-                    singleLine = true,
-                )
-                TextMarkStyleControls(
-                    configColorIdx, onColorChange, textColors,
-                    configFontIdx, onFontChange, fontOptions,
-                    configSizeFraction, onSizeChange,
-                )
-            }
-            MarkType.Date -> {
-                val today = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()) }
-                Text("Date: $today", style = MaterialTheme.typography.bodySmall)
-                TextMarkStyleControls(
-                    configColorIdx, onColorChange, textColors,
-                    configFontIdx, onFontChange, fontOptions,
-                    configSizeFraction, onSizeChange,
-                )
-            }
-            MarkType.Check -> {
-                Text("Check style", style = MaterialTheme.typography.labelMedium)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CheckStyle.entries.forEach { style ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(
-                                selected = configCheckStyle == style,
-                                onClick = { onCheckStyleChange(style) },
-                            )
-                            Text("${style.symbol} ${style.name}", style = MaterialTheme.typography.bodyMedium)
-                        }
+        // Text has no field here anymore -- typing happens directly on the document itself,
+        // in a text field overlaid right where the mark sits (same as "Use font on image").
+        // Date needs nothing here either: the placed mark on the document already shows
+        // today's date, so a second preview of it in this panel was redundant.
+
+        // Icon toolbar -- one icon per control; tapping one reveals just that control below,
+        // e.g. tapping the font icon shows the font list, instead of a fixed block of every
+        // control at once.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            when (tool) {
+                MarkType.Text, MarkType.Date, MarkType.Check -> {
+                    if (tool == MarkType.Check) {
+                        ControlIconButton(Icons.Filled.Check, "Check style", expandedControl == MarkControl.CheckStyle) { toggle(MarkControl.CheckStyle) }
+                    }
+                    ControlIconButton(Icons.Filled.Palette, "Colour", expandedControl == MarkControl.Color) { toggle(MarkControl.Color) }
+                    if (tool != MarkType.Check) {
+                        // Check's symbol is drawn without a typeface, so a font control here
+                        // wouldn't actually change anything -- left out rather than shown inert.
+                        ControlIconButton(Icons.Filled.FontDownload, "Font", expandedControl == MarkControl.Font) { toggle(MarkControl.Font) }
+                    }
+                    ControlIconButton(Icons.Filled.FormatSize, "Size", expandedControl == MarkControl.Size) { toggle(MarkControl.Size) }
+                }
+                MarkType.Signature, MarkType.Stamp -> {
+                    val assetIcon = if (tool == MarkType.Signature) Icons.Filled.Draw else Icons.Filled.Approval
+                    val assetLabel = if (tool == MarkType.Signature) "Choose signature" else "Choose stamp"
+                    ControlIconButton(assetIcon, assetLabel, expandedControl == MarkControl.Asset) { toggle(MarkControl.Asset) }
+                    ControlIconButton(Icons.Filled.FormatSize, "Size", expandedControl == MarkControl.Size) { toggle(MarkControl.Size) }
+                    if (isPdf) {
+                        ControlIconButton(Icons.Filled.Layers, "Apply to all pages", expandedControl == MarkControl.ApplyToAll) { toggle(MarkControl.ApplyToAll) }
                     }
                 }
-                TextMarkStyleControls(
-                    configColorIdx, onColorChange, textColors,
-                    configFontIdx, onFontChange, fontOptions,
-                    configSizeFraction, onSizeChange,
-                )
             }
-            MarkType.Signature -> {
-                val sigs = vm.signatures.filter { it.imageFileName == null }
+            // Delete sits at the far right of the same row, away from the other controls,
+            // instead of its own row below the panel.
+            if (onDelete != null) {
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete mark", tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+
+        // The single expanded control's own UI.
+        when (expandedControl) {
+            MarkControl.Color -> ColorRow(configColorIdx, onColorChange, textColors)
+            MarkControl.Font -> FontRow(configFontIdx, onFontChange, fontOptions)
+            MarkControl.Size -> SizeControl(configSizeFraction, onSizeChange)
+            MarkControl.CheckStyle -> CheckStyleRow(configCheckStyle, onCheckStyleChange)
+            MarkControl.Asset -> {
+                val items = if (tool == MarkType.Signature) {
+                    vm.signatures.filter { it.imageFileName == null }
+                } else {
+                    vm.signatures.filter { it.imageFileName != null }
+                }
                 SignatureStampSelector(
-                    label = "Select a signature",
-                    items = sigs,
+                    label = if (tool == MarkType.Signature) "Select a signature" else "Select a stamp",
+                    items = items,
                     selectedName = configSignatureName,
                     onSelect = onSignatureChange,
                 )
-                SizeControl(configSizeFraction, onSizeChange)
-                if (isPdf) ApplyToAllToggle(configApplyToAll, onApplyToAllChange)
             }
-            MarkType.Stamp -> {
-                val stamps = vm.signatures.filter { it.imageFileName != null }
-                SignatureStampSelector(
-                    label = "Select a stamp",
-                    items = stamps,
-                    selectedName = configSignatureName,
-                    onSelect = onSignatureChange,
-                )
-                SizeControl(configSizeFraction, onSizeChange)
-                if (isPdf) ApplyToAllToggle(configApplyToAll, onApplyToAllChange)
-            }
+            MarkControl.ApplyToAll -> ApplyToAllToggle(configApplyToAll, onApplyToAllChange)
+            null -> Unit
         }
     }
 }
 
+/** Icon button for one control in [MarkConfigPanel]'s toolbar; tinted primary while its own
+ *  section is the one expanded below. */
 @Composable
-private fun TextMarkStyleControls(
-    colorIdx: Int, onColorChange: (Int) -> Unit, colors: List<Pair<String, Int>>,
-    fontIdx: Int, onFontChange: (Int) -> Unit, fontOptions: List<Pair<String, Typeface>>,
-    sizeFraction: Float, onSizeChange: (Float) -> Unit,
-) {
+private fun ControlIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(icon, contentDescription = label, tint = if (selected) MaterialTheme.colorScheme.primary else LocalContentColor.current)
+    }
+}
+
+@Composable
+private fun ColorRow(colorIdx: Int, onColorChange: (Int) -> Unit, colors: List<Pair<String, Int>>) {
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Colour", style = MaterialTheme.typography.labelMedium)
         colors.forEachIndexed { idx, (_, argb) ->
             Box(
                 Modifier
@@ -970,29 +1144,48 @@ private fun TextMarkStyleControls(
             )
         }
     }
-    if (fontOptions.isNotEmpty()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            val defaultLabel = "Default"
-            if (fontIdx < 0) {
-                Button(onClick = {}) { Text(defaultLabel) }
+}
+
+@Composable
+private fun FontRow(fontIdx: Int, onFontChange: (Int) -> Unit, fontOptions: List<Pair<String, Typeface>>) {
+    if (fontOptions.isEmpty()) return
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        val defaultLabel = "Default"
+        if (fontIdx < 0) {
+            Button(onClick = {}) { Text(defaultLabel) }
+        } else {
+            OutlinedButton(onClick = { onFontChange(-1) }) { Text(defaultLabel) }
+        }
+        fontOptions.forEachIndexed { idx, (name, typeface) ->
+            // Same as the fonts list screen: show each name set in its own actual typeface,
+            // not the default UI font, so you can see what you're picking.
+            if (idx == fontIdx) {
+                Button(onClick = {}) { Text(name, maxLines = 1, fontFamily = FontFamily(typeface)) }
             } else {
-                OutlinedButton(onClick = { onFontChange(-1) }) { Text(defaultLabel) }
-            }
-            fontOptions.forEachIndexed { idx, (name, _) ->
-                if (idx == fontIdx) {
-                    Button(onClick = {}) { Text(name, maxLines = 1) }
-                } else {
-                    OutlinedButton(onClick = { onFontChange(idx) }) { Text(name, maxLines = 1) }
-                }
+                OutlinedButton(onClick = { onFontChange(idx) }) { Text(name, maxLines = 1, fontFamily = FontFamily(typeface)) }
             }
         }
     }
-    SizeControl(sizeFraction, onSizeChange)
+}
+
+@Composable
+private fun CheckStyleRow(checkStyle: CheckStyle, onCheckStyleChange: (CheckStyle) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        CheckStyle.entries.forEach { style ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(
+                    selected = checkStyle == style,
+                    onClick = { onCheckStyleChange(style) },
+                )
+                Text("${style.symbol} ${style.name}", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
 }
 
 @Composable
@@ -1073,15 +1266,59 @@ private fun SignatureStampSelector(
  * Estimates the bounding box of [mark] in canvas-pixel coordinates and tests
  * whether [point] falls inside it.
  */
-private fun markContainsPoint(mark: DocumentMark, point: androidx.compose.ui.geometry.Offset, w: Float, h: Float): Boolean {
+private fun markContainsPoint(
+    mark: DocumentMark,
+    point: androidx.compose.ui.geometry.Offset,
+    w: Float,
+    h: Float,
+    fontOptions: List<Pair<String, Typeface>>,
+): Boolean {
     val left = mark.offsetX * w
     val top = mark.offsetY * h
-    val width = mark.sizeFraction * w
-    val height = when (mark.type) {
-        MarkType.Text, MarkType.Date, MarkType.Check -> width * 0.5f
-        MarkType.Signature, MarkType.Stamp -> width * 0.7f
+    val markWidth = mark.sizeFraction * w
+    // Text/Date's hit box must match how the string actually renders -- it now wraps at the
+    // document's right edge (drawMarkOnCanvas), so both its width (the widest wrapped line) and
+    // its height (grows with the number of lines) come from that same wrapped layout instead of
+    // a single-line estimate that would miss everything past the first line.
+    val (width, height) = when (mark.type) {
+        MarkType.Text, MarkType.Date -> {
+            val typeface = mark.fontKey?.let { key -> fontOptions.firstOrNull { it.first == key }?.second }
+            val layout = textMarkLayout(mark.text, markWidth * 0.25f, typeface, mark.colorArgb, w - left)
+            val lineWidth = (0 until layout.lineCount).maxOfOrNull { layout.getLineWidth(it) } ?: 0f
+            maxOf(markWidth, lineWidth) to maxOf(markWidth * 0.5f, layout.height.toFloat())
+        }
+        MarkType.Check -> markWidth to markWidth * 0.5f
+        MarkType.Signature, MarkType.Stamp -> markWidth to markWidth * 0.7f
     }
     return point.x in left..(left + width) && point.y in top..(top + height)
+}
+
+/**
+ * Builds a wrapped, multi-line-aware layout for a Text/Date mark's string, breaking lines at
+ * [maxWidthPx] (the space remaining to the document's right edge) and at any newline the user
+ * typed on the document itself -- so long text, or text with explicit line breaks, flows onto
+ * more lines instead of running off the page. Shared by drawing (preview canvas + export
+ * bitmap/PDF) and hit-testing/selection sizing so all three always agree on where the text ends
+ * up.
+ */
+private fun textMarkLayout(
+    text: String,
+    textSizePx: Float,
+    typeface: Typeface?,
+    colorArgb: Int,
+    maxWidthPx: Float,
+): android.text.StaticLayout {
+    val paint = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = colorArgb
+        textSize = textSizePx.coerceAtLeast(8f)
+        if (typeface != null) this.typeface = typeface
+    }
+    val width = maxWidthPx.coerceAtLeast(textSizePx * 4f).roundToInt().coerceAtLeast(1)
+    return android.text.StaticLayout.Builder
+        .obtain(text, 0, text.length, paint, width)
+        .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+        .setIncludePad(false)
+        .build()
 }
 
 /**
@@ -1103,21 +1340,21 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMarkOnCanvas(
 
     when (mark.type) {
         MarkType.Text, MarkType.Date -> {
-            val displayText = mark.text
-            val textSizePx = markWidth * 0.25f
+            val typeface = mark.fontKey?.let { key -> fontOptions.firstOrNull { it.first == key }?.second }
+            val layout = textMarkLayout(mark.text, markWidth * 0.25f, typeface, mark.colorArgb, w - left)
             drawIntoCanvas { c ->
-                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                    color = mark.colorArgb
-                    textSize = textSizePx.coerceAtLeast(8f)
-                    if (mark.fontKey != null) {
-                        fontOptions.firstOrNull { it.first == mark.fontKey }?.second?.let { typeface = it }
-                    }
-                }
-                c.nativeCanvas.drawText(displayText, left, top + textSizePx, paint)
+                c.nativeCanvas.save()
+                c.nativeCanvas.translate(left, top)
+                layout.draw(c.nativeCanvas)
+                c.nativeCanvas.restore()
             }
             if (isSelected) {
-                val textW = displayText.length * markWidth * 0.15f
-                drawSelectionRect(left, top, textW.coerceAtLeast(markWidth * 0.3f), markWidth * 0.3f)
+                val lineWidth = (0 until layout.lineCount).maxOfOrNull { layout.getLineWidth(it) } ?: 0f
+                drawSelectionRect(
+                    left, top,
+                    maxOf(markWidth * 0.3f, lineWidth),
+                    maxOf(markWidth * 0.3f, layout.height.toFloat()),
+                )
             }
         }
         MarkType.Check -> {
@@ -1319,14 +1556,12 @@ private fun drawMarkOnBitmap(
 
     when (mark.type) {
         MarkType.Text, MarkType.Date -> {
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = mark.colorArgb
-                textSize = (markWidthPx * 0.25f).coerceAtLeast(8f)
-                if (mark.fontKey != null) {
-                    fontOptions.firstOrNull { it.first == mark.fontKey }?.second?.let { typeface = it }
-                }
-            }
-            canvas.drawText(mark.text, left, top + paint.textSize, paint)
+            val typeface = mark.fontKey?.let { key -> fontOptions.firstOrNull { it.first == key }?.second }
+            val layout = textMarkLayout(mark.text, markWidthPx * 0.25f, typeface, mark.colorArgb, pageWidth - left)
+            canvas.save()
+            canvas.translate(left, top)
+            layout.draw(canvas)
+            canvas.restore()
         }
         MarkType.Check -> {
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
