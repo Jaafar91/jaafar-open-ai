@@ -119,7 +119,7 @@ internal fun ImportStampFromImageScreen(
         onDispose { processedPreview?.recycle() }
     }
 
-    Page(if (existing != null) "Edit Stamp" else "Import Stamp", back, scrollable = true) {
+    Page(if (existing != null) "Stamp Workspace" else "Import Stamp", back, scrollable = true) {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
@@ -253,7 +253,7 @@ internal fun SignatureEditorScreen(
         !name.trim().equals(existing?.name, ignoreCase = true) &&
         vm.hasSavedSignatureName(name)
 
-    Page(if (existing != null) "Edit Signature" else "New Signature", back, scrollable = true) {
+    Page(if (existing != null) "Signature Workspace" else "New Signature", back, scrollable = true) {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
