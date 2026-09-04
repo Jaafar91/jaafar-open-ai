@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.jaafar.remoteconfig.R
+import kotlinx.coroutines.delay
 
 /** Font creation, preview, export, and import screens. */
 
@@ -71,10 +72,22 @@ import com.jaafar.remoteconfig.R
     // outside them) would hand the Slider a value past its valueRange, which crashed it.
     var letterSpacing by remember(project.name) { mutableFloatStateOf(project.letterSpacingMm.coerceIn(LETTER_SPACING_RANGE)) }
     var wordSpacing by remember(project.name) { mutableFloatStateOf(project.wordSpacingMm.coerceIn(WORD_SPACING_RANGE)) }
-    val updateSpacing: (Float, Float) -> Unit = { nextLetter, nextWord ->
-        letterSpacing = nextLetter
-        wordSpacing = nextWord
-        if (vm.setSpacing(nextLetter.toString(), nextWord.toString())) vm.generate()
+    // Regenerating the font is a disk write followed by a native Typeface reload of that same
+    // file -- doing that on every intermediate value while a slider is still being dragged (it
+    // can fire dozens of times a second) flooded the background executor with overlapping
+    // regenerate/reload cycles against the same path, which could crash native font loading.
+    // Debouncing means the actual regenerate only runs once the value has held still for a
+    // moment, not on every pixel of a fast drag; each new change cancels the pending one.
+    // Skips its very first firing on entering the screen -- the caller already generate()d
+    // right before navigating here, so an immediate rerun would just redo the same work.
+    var isFirstSpacingChange by remember(project.name) { mutableStateOf(true) }
+    LaunchedEffect(letterSpacing, wordSpacing) {
+        if (isFirstSpacingChange) {
+            isFirstSpacingChange = false
+        } else {
+            delay(150)
+            if (vm.setSpacing(letterSpacing.toString(), wordSpacing.toString())) vm.generate()
+        }
     }
     // Word spacing has no visible effect with only one word in the preview -- there's nothing
     // to space apart -- so its control is disabled rather than left inertly interactive.
@@ -128,11 +141,11 @@ import com.jaafar.remoteconfig.R
                     // advance widths are clamped to 500..4096 / 100..4096 font units) --
                     // the previous wider ranges mostly got silently clamped to the same
                     // value, so dragging looked like it did something but had no effect.
-                    SpacingSlider("Letter spacing", letterSpacing, LETTER_SPACING_RANGE, 0.25f) { updateSpacing(it, wordSpacing) }
+                    SpacingSlider("Letter spacing", letterSpacing, LETTER_SPACING_RANGE, 0.25f) { letterSpacing = it }
                     SpacingSlider(
                         "Word spacing", wordSpacing, WORD_SPACING_RANGE, 0.25f,
                         enabled = previewWordCount > 1,
-                    ) { updateSpacing(letterSpacing, it) }
+                    ) { wordSpacing = it }
                     Text(
                         "Changes save automatically.",
                         style = MaterialTheme.typography.bodySmall,
