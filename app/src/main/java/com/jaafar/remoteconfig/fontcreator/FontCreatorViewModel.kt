@@ -612,6 +612,59 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return true
     }
 
+    /** Updates an existing stamp's name and/or replaces its image in place -- unlike
+     *  [saveSignatureFromImage], which is create-only and rejects any name already in use,
+     *  including the stamp's own current name. Used by the stamp editor's edit flow. */
+    fun updateSignatureImage(
+        originalName: String,
+        newName: String,
+        contentResolver: ContentResolver,
+        uri: Uri,
+        removeWhiteBackground: Boolean = true,
+    ): Boolean {
+        val index = signatures.indexOfFirst { it.name == originalName }
+        if (index < 0) return false
+        val clean = newName.trim().ifEmpty { originalName }
+        val duplicate = signatures.withIndex().any { (idx, signature) ->
+            idx != index && signature.name.equals(clean, ignoreCase = true)
+        }
+        if (duplicate) return false
+        val fileName = "stamp-${System.currentTimeMillis()}.png"
+        val outputFile = File(getApplication<Application>().filesDir, fileName)
+        try {
+            val sourceBitmap: Bitmap = if (Build.VERSION.SDK_INT >= 28) {
+                ImageDecoder.decodeBitmap(ImageDecoder.createSource(contentResolver, uri)) { decoder, _, _ ->
+                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                }
+            } else {
+                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            } ?: error("Cannot read source image")
+            val outputBitmap = if (removeWhiteBackground) {
+                val result = removeNearWhitePixels(sourceBitmap)
+                sourceBitmap.recycle()
+                result
+            } else {
+                sourceBitmap
+            }
+            try {
+                java.io.FileOutputStream(outputFile).use { outputBitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            } finally {
+                outputBitmap.recycle()
+            }
+        } catch (error: Exception) {
+            outputFile.delete()
+            return false
+        }
+        val oldImageFileName = signatures[index].imageFileName
+        signatures[index] = signatures[index].copy(name = clean, imageFileName = fileName, savedAt = System.currentTimeMillis())
+        if (oldImageFileName != null && oldImageFileName != fileName) {
+            executor.execute { File(getApplication<Application>().filesDir, oldImageFileName).delete() }
+        }
+        if (defaultStampName == originalName) setDefaultStamp(clean)
+        persistSignatures()
+        return true
+    }
+
     fun deleteSignature(name: String) {
         val index = signatures.indexOfFirst { it.name == name }
         if (index >= 0) {

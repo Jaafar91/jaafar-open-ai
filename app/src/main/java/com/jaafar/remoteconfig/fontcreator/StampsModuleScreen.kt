@@ -16,8 +16,21 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun StampsModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useInDocument: (String) -> Unit) {
     var importing by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<SavedSignature?>(null) }
     if (importing) {
         ImportStampFromImageScreen(vm = vm, onSaved = { importing = false }, back = { importing = false })
+        return
+    }
+    // Opened by tapping a row below -- rename, replace the image, and "Use in Fill & Mark" all
+    // live here now, instead of a separate action dialog over the list.
+    editing?.let { mark ->
+        ImportStampFromImageScreen(
+            vm = vm,
+            existing = mark,
+            onSaved = { editing = null },
+            useInFillMark = { name -> editing = null; useInDocument(name) },
+            back = { editing = null },
+        )
         return
     }
     val stamps = vm.signatures.filter { it.imageFileName != null }
@@ -52,7 +65,7 @@ internal fun StampsModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useI
         } else {
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(stamps, key = { it.name }) { stamp ->
-                    SavedMarkCard(vm, stamp, useInDocument)
+                    SavedMarkCard(vm, stamp) { editing = stamp }
                 }
             }
         }
