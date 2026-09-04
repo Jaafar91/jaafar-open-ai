@@ -94,7 +94,7 @@ private val ModernDarkColors = darkColorScheme(
     outlineVariant = Color(0xFF45464F),
 )
 
-internal enum class Screen { Home, Fonts, Signatures, Stamps, FontCelebration, FontReady, Letters, Signature, FillMark, Settings }
+internal enum class Screen { Home, Fonts, Signatures, Stamps, FontCelebration, FontReady, Letters, FillMark, Settings }
 
 @Composable
 fun FontCreatorApp(
@@ -129,6 +129,10 @@ fun FontCreatorApp(
         sharedUri ?: return@LaunchedEffect
         showTutorial = false
         fillMarkUri = sharedUri
+        // A pending mark from an earlier "use in Fill & Mark" visit could otherwise still be
+        // set if that visit was backed out of internally (picker -> Home was never reached),
+        // which would auto-place it on this unrelated newly shared document too.
+        pendingSignatureMark = null
         screen = Screen.FillMark
     }
 
@@ -240,7 +244,11 @@ fun FontCreatorApp(
                         initialImageText = ""
                         imagePicker.launch("image/*")
                     },
-                    openFillMark = { screen = Screen.FillMark },
+                    openFillMark = {
+                        fillMarkUri = null
+                        pendingSignatureMark = null
+                        screen = Screen.FillMark
+                    },
                     openFonts = { screen = Screen.Fonts },
                     openSignatures = { screen = Screen.Signatures },
                     openStamps = { screen = Screen.Stamps },
@@ -260,7 +268,8 @@ fun FontCreatorApp(
                     back = { screen = Screen.Home },
                     useInDocument = { markName ->
                         pendingSignatureMark = markName
-                        screen = Screen.Signature
+                        fillMarkUri = null
+                        screen = Screen.FillMark
                     },
                 )
                 Screen.Stamps -> StampsModuleScreen(
@@ -268,7 +277,8 @@ fun FontCreatorApp(
                     back = { screen = Screen.Home },
                     useInDocument = { markName ->
                         pendingSignatureMark = markName
-                        screen = Screen.Signature
+                        fillMarkUri = null
+                        screen = Screen.FillMark
                     },
                 )
                 Screen.FontCelebration -> {
@@ -310,17 +320,13 @@ fun FontCreatorApp(
                         imagePicker.launch("image/*")
                     },
                 )
-                Screen.Signature -> SignatureScreen(
-                    vm = viewModel,
-                    initialMarkName = pendingSignatureMark,
-                    onInitialMarkConsumed = { pendingSignatureMark = null },
-                    back = { pendingSignatureMark = null; screen = Screen.Home },
-                )
                 Screen.FillMark -> FillMarkScreen(
                     vm = viewModel,
                     initialUri = fillMarkUri,
+                    initialMarkName = pendingSignatureMark,
                     back = {
                         fillMarkUri = null
+                        pendingSignatureMark = null
                         screen = Screen.Home
                     },
                 )

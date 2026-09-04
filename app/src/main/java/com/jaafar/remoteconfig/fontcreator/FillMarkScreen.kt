@@ -223,11 +223,16 @@ private fun canOpenRecentDoc(context: android.content.Context, uri: Uri): Boolea
  *
  * @param initialUri  URI passed in via the Android Share sheet (ACTION_SEND).
  *                    When non-null the editor opens immediately with this document.
+ * @param initialMarkName  A saved signature/stamp's name to place automatically once a
+ *                    document is loaded -- the entry point from Signatures/Stamps' own
+ *                    "use in a document" action: choose a document here first, then land in
+ *                    the editor with that mark already placed at the center.
  */
 @Composable
 internal fun FillMarkScreen(
     vm: FontCreatorViewModel,
     initialUri: Uri? = null,
+    initialMarkName: String? = null,
     back: () -> Unit,
 ) {
     var documentUri by remember { mutableStateOf(initialUri) }
@@ -247,6 +252,7 @@ internal fun FillMarkScreen(
         FillMarkEditorScreen(
             vm = vm,
             documentUri = documentUri!!,
+            initialMarkName = initialMarkName,
             back = { documentUri = null },
         )
     }
@@ -327,6 +333,7 @@ private fun FillMarkEditorScreen(
     vm: FontCreatorViewModel,
     documentUri: Uri,
     initialText: String? = null,
+    initialMarkName: String? = null,
     back: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -527,6 +534,17 @@ private fun FillMarkEditorScreen(
         val offsetX = ((1f - width) / 2f).coerceIn(0f, 0.85f)
         val offsetY = ((1f - height) / 2f).coerceIn(0f, 0.85f)
         addOrUpdateMark(offsetX, offsetY)
+    }
+
+    // Arriving here from Signatures/Stamps' "Use in Fill & Mark" action: place that saved
+    // mark at the center immediately, same as tapping its tool in the toolbar when there's
+    // only one to choose from -- initialMarkName doesn't change over this screen's lifetime,
+    // so this runs once.
+    LaunchedEffect(initialMarkName) {
+        val name = initialMarkName ?: return@LaunchedEffect
+        val asset = vm.signatures.firstOrNull { it.name == name } ?: return@LaunchedEffect
+        val tool = if (asset.imageFileName == null) MarkType.Signature else MarkType.Stamp
+        placeMarkAtCenter(tool, name)
     }
 
     // Tapping the Text tool places a mark immediately at the center of the document and opens

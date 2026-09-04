@@ -1,9 +1,11 @@
 package com.jaafar.remoteconfig.fontcreator
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,8 +18,21 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun SignaturesModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useInDocument: (String) -> Unit) {
     var creating by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<SavedSignature?>(null) }
     if (creating) {
         SignatureEditorScreen(vm = vm, onSaved = { creating = false }, back = { creating = false })
+        return
+    }
+    // Opened by tapping a row below -- rename, redraw, and "Use in Fill & Mark" all live here
+    // now, instead of a separate action dialog over the list.
+    editing?.let { mark ->
+        SignatureEditorScreen(
+            vm = vm,
+            existing = mark,
+            onSaved = { editing = null },
+            useInFillMark = { name -> editing = null; useInDocument(name) },
+            back = { editing = null },
+        )
         return
     }
     val signatures = vm.signatures.filter { it.imageFileName == null }
@@ -52,8 +67,30 @@ internal fun SignaturesModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, 
         } else {
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(signatures, key = { it.name }) { signature ->
-                    SavedMarkCard(vm, signature, useInDocument)
+                    SignatureRow(vm, signature) { editing = signature }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * One signature row: delete only, no inline rename -- tapping the row opens the signature
+ * editor, where the name (and the drawing itself) can be changed, and from which it can be
+ * sent straight into Fill & Mark.
+ */
+@Composable
+private fun SignatureRow(vm: FontCreatorViewModel, mark: SavedSignature, onClick: () -> Unit) {
+    OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SignaturePreview(Modifier.size(88.dp, 56.dp), mark)
+            Text(mark.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            IconButton(onClick = { vm.deleteSignature(mark.name) }) {
+                Icon(Icons.Filled.Delete, contentDescription = "Delete ${mark.name}")
             }
         }
     }

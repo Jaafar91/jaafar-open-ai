@@ -585,6 +585,24 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return true
     }
 
+    /** Updates an existing signature's name and redrawn strokes in place -- unlike
+     *  [saveSignature], which is create-only and rejects any name already in use, including
+     *  the signature's own current name. Used by the signature editor's edit flow. */
+    fun updateSignature(originalName: String, newName: String, strokes: List<GlyphStroke>, canvasWidth: Float, canvasHeight: Float): Boolean {
+        val index = signatures.indexOfFirst { it.name == originalName }
+        if (index < 0) return false
+        val clean = newName.trim().ifEmpty { originalName }
+        val duplicate = signatures.withIndex().any { (idx, signature) ->
+            idx != index && signature.name.equals(clean, ignoreCase = true)
+        }
+        if (duplicate) return false
+        val existing = signatures[index]
+        signatures[index] = existing.copy(name = clean, strokes = strokes, canvasWidth = canvasWidth.coerceAtLeast(1f), canvasHeight = canvasHeight.coerceAtLeast(1f))
+        if (defaultSignatureName == originalName) setDefaultSignature(clean)
+        persistSignatures()
+        return true
+    }
+
     fun deleteSignature(name: String) {
         val index = signatures.indexOfFirst { it.name == name }
         if (index >= 0) {
