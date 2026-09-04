@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun SignaturesModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useInDocument: (String) -> Unit) {
     var creating by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<SavedSignature?>(null) }
     if (creating) {
         SignatureEditorScreen(vm = vm, onSaved = { creating = false }, back = { creating = false })
         return
@@ -53,10 +52,9 @@ internal fun SignaturesModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, 
         } else {
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(signatures, key = { it.name }) { signature ->
-                    SavedMarkCard(signature, vm.defaultSignatureName == signature.name) { selected = signature }
+                    SavedMarkCard(vm, signature, useInDocument)
                 }
             }
         }
     }
-    selected?.let { mark -> SavedMarkActionsSheet(vm, mark, useInDocument) { selected = null } }
 }

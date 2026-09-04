@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.dp
 @Composable
 internal fun StampsModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useInDocument: (String) -> Unit) {
     var importing by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<SavedSignature?>(null) }
     if (importing) {
         ImportStampFromImageScreen(vm = vm, onSaved = { importing = false }, back = { importing = false })
         return
@@ -53,10 +52,9 @@ internal fun StampsModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useI
         } else {
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(stamps, key = { it.name }) { stamp ->
-                    SavedMarkCard(stamp, vm.defaultStampName == stamp.name) { selected = stamp }
+                    SavedMarkCard(vm, stamp, useInDocument)
                 }
             }
         }
     }
-    selected?.let { mark -> SavedMarkActionsSheet(vm, mark, useInDocument) { selected = null } }
 }
