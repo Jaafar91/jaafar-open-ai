@@ -378,6 +378,11 @@ private fun FillMarkEditorScreen(
             "Blue" to Color.BLUE,
             "Red" to Color.RED,
             "Green" to 0xFF006400.toInt(),
+            "Orange" to 0xFFFF8C00.toInt(),
+            "Yellow" to 0xFFF9A825.toInt(),
+            "Purple" to 0xFF9C27B0.toInt(),
+            "Gray" to Color.GRAY,
+            "Brown" to 0xFF795548.toInt(),
         )
     }
 
@@ -1119,7 +1124,9 @@ private fun ControlIconButton(icon: androidx.compose.ui.graphics.vector.ImageVec
 @Composable
 private fun ColorRow(colorIdx: Int, onColorChange: (Int) -> Unit, colors: List<Pair<String, Int>>) {
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
