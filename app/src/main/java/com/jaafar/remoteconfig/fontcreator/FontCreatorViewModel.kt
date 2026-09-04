@@ -100,7 +100,11 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun allFontOptions(): List<Pair<String, Typeface>> {
         val app = getApplication<Application>()
         val generated = projects.mapNotNull { project ->
-            if (project.drawings.isEmpty()) return@mapNotNull null
+            // An incomplete font is missing glyphs for some of its own selected characters --
+            // offering it here would let it be picked to write arbitrary text that then renders
+            // with gaps for whatever hasn't been drawn yet. The fonts library screen still shows
+            // it (with its "x of y" progress), just not as a usable font elsewhere until done.
+            if (!isProjectComplete(project)) return@mapNotNull null
             val file = generatedFile(project.name)
             runCatching {
                 // Keep Library fonts usable and current even if the user has not opened Preview.
