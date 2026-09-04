@@ -1151,11 +1151,13 @@ private fun FontRow(fontIdx: Int, onFontChange: (Int) -> Unit, fontOptions: List
         } else {
             OutlinedButton(onClick = { onFontChange(-1) }) { Text(defaultLabel) }
         }
-        fontOptions.forEachIndexed { idx, (name, _) ->
+        fontOptions.forEachIndexed { idx, (name, typeface) ->
+            // Same as the fonts list screen: show each name set in its own actual typeface,
+            // not the default UI font, so you can see what you're picking.
             if (idx == fontIdx) {
-                Button(onClick = {}) { Text(name, maxLines = 1) }
+                Button(onClick = {}) { Text(name, maxLines = 1, fontFamily = FontFamily(typeface)) }
             } else {
-                OutlinedButton(onClick = { onFontChange(idx) }) { Text(name, maxLines = 1) }
+                OutlinedButton(onClick = { onFontChange(idx) }) { Text(name, maxLines = 1, fontFamily = FontFamily(typeface)) }
             }
         }
     }
