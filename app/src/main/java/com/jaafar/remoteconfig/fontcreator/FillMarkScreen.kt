@@ -715,7 +715,7 @@ private fun FillMarkEditorScreen(
                                         // instead of where the mark visually moved to.
                                         val hitMark = marks
                                             .filter { it.applyToAllPages || it.targetPage == currentPage }
-                                            .lastOrNull { mark -> markContainsPoint(mark, down.position, w, h) }
+                                            .lastOrNull { mark -> markContainsPoint(mark, down.position, w, h, fontOptions) }
                                         when {
                                             hitMark != null -> {
                                                 selectedMarkId = hitMark.id
@@ -1254,15 +1254,49 @@ private fun SignatureStampSelector(
  * Estimates the bounding box of [mark] in canvas-pixel coordinates and tests
  * whether [point] falls inside it.
  */
-private fun markContainsPoint(mark: DocumentMark, point: androidx.compose.ui.geometry.Offset, w: Float, h: Float): Boolean {
+private fun markContainsPoint(
+    mark: DocumentMark,
+    point: androidx.compose.ui.geometry.Offset,
+    w: Float,
+    h: Float,
+    fontOptions: List<Pair<String, Typeface>>,
+): Boolean {
     val left = mark.offsetX * w
     val top = mark.offsetY * h
-    val width = mark.sizeFraction * w
+    val markWidth = mark.sizeFraction * w
+    // Text/Date's hit width must match how far the string actually renders (drawMarkOnCanvas
+    // draws it unclamped) -- markWidth alone is just a font-size estimate, so a longer string
+    // like "one two three" would render well past it, leaving its tail end untappable.
+    val width = when (mark.type) {
+        MarkType.Text, MarkType.Date ->
+            maxOf(markWidth, measuredTextMarkWidth(mark.text, markWidth, mark.fontKey, fontOptions))
+        MarkType.Check, MarkType.Signature, MarkType.Stamp -> markWidth
+    }
     val height = when (mark.type) {
-        MarkType.Text, MarkType.Date, MarkType.Check -> width * 0.5f
-        MarkType.Signature, MarkType.Stamp -> width * 0.7f
+        MarkType.Text, MarkType.Date, MarkType.Check -> markWidth * 0.5f
+        MarkType.Signature, MarkType.Stamp -> markWidth * 0.7f
     }
     return point.x in left..(left + width) && point.y in top..(top + height)
+}
+
+/** Actual rendered width (px) of a Text/Date mark's string, using the same font size and
+ *  typeface drawMarkOnCanvas draws it with -- kept as one shared calculation so hit-testing
+ *  and the selection highlight can't drift out of sync with each other or with the real
+ *  drawn text again. */
+private fun measuredTextMarkWidth(
+    text: String,
+    markWidth: Float,
+    fontKey: String?,
+    fontOptions: List<Pair<String, Typeface>>,
+): Float {
+    val textSizePx = markWidth * 0.25f
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = textSizePx.coerceAtLeast(8f)
+        if (fontKey != null) {
+            fontOptions.firstOrNull { it.first == fontKey }?.second?.let { typeface = it }
+        }
+    }
+    return paint.measureText(text)
 }
 
 /**
@@ -1297,7 +1331,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMarkOnCanvas(
                 c.nativeCanvas.drawText(displayText, left, top + textSizePx, paint)
             }
             if (isSelected) {
-                val textW = displayText.length * markWidth * 0.15f
+                val textW = measuredTextMarkWidth(displayText, markWidth, mark.fontKey, fontOptions)
                 drawSelectionRect(left, top, textW.coerceAtLeast(markWidth * 0.3f), markWidth * 0.3f)
             }
         }
