@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -579,7 +578,7 @@ private fun FillMarkEditorScreen(
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
                 ) {
                     // Text acts immediately -- unlike the other tools, there's no "armed" state
                     // to tap the canvas into. Each tap places a fresh mark at the center of the
@@ -1088,7 +1087,7 @@ private fun MarkConfigPanel(
         // Icon toolbar -- one icon per control; tapping one reveals just that control below,
         // e.g. tapping the font icon shows the font list, instead of a fixed block of every
         // control at once.
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally)) {
             when (tool) {
                 MarkType.Text, MarkType.Date, MarkType.Check -> {
                     if (tool == MarkType.Check) {
@@ -1112,10 +1111,8 @@ private fun MarkConfigPanel(
                     }
                 }
             }
-            // Delete sits at the far right of the same row, away from the other controls,
-            // instead of its own row below the panel.
+            // Delete sits in the same centered row as the other controls, not off to one side.
             if (onDelete != null) {
-                Spacer(Modifier.weight(1f))
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Filled.Delete, contentDescription = "Delete mark", tint = MaterialTheme.colorScheme.error)
                 }
