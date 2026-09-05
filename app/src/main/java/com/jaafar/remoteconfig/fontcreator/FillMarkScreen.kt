@@ -33,7 +33,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -272,6 +271,21 @@ private fun FillMarkEditorScreen(
     // mark, can be recognized as a double-tap rather than two independent single taps.
     var lastTextTapMarkId by remember { mutableStateOf<Long?>(null) }
     var lastTextTapTimeMs by remember { mutableStateOf(0L) }
+    // Discards a text mark left empty once its on-document edit session ends, whatever ends
+    // it -- tapping away, switching tools, selecting a different mark. There's no reason to
+    // keep an invisible, still-selectable/draggable empty text box around.
+    DisposableEffect(editingTextMarkId) {
+        val idBeingEdited = editingTextMarkId
+        onDispose {
+            if (idBeingEdited != null) {
+                val mark = marks.firstOrNull { it.id == idBeingEdited }
+                if (mark != null && mark.type == MarkType.Text && mark.text.isBlank()) {
+                    marks.removeIf { it.id == idBeingEdited }
+                    if (selectedMarkId == idBeingEdited) selectedMarkId = null
+                }
+            }
+        }
+    }
     // Which asset-picker dropdown (if any) is open, when Signature/Stamp has more than one
     // saved asset to choose from -- picking there places the mark immediately, same as tapping
     // Sign/Stamp does directly when there's only one.
@@ -925,8 +939,15 @@ private fun MarkToolContent(label: String, icon: androidx.compose.ui.graphics.ve
 /**
  * A live text field positioned and sized to match exactly where [drawMarkOnCanvas] would draw
  * this text mark, so typing happens directly on the document -- the same "Use font on image"
- * experience -- instead of in a separate field elsewhere on the screen. The mark it belongs to
- * is skipped in the Canvas draw loop while this is on screen, so there's no double-render.
+ * experience. The mark it belongs to is skipped in the Canvas draw loop while this is on
+ * screen, so there's no double-render.
+ *
+ * Matches "Use font on image"'s own technique for the same reason: the [BasicTextField]'s
+ * text itself stays invisible, and the real glyphs are drawn separately underneath with
+ * [textMarkLayout] -- the exact same layout [drawMarkOnCanvas] and export use -- instead of
+ * letting Compose's own text layout draw them. Compose's wrap can disagree with
+ * [textMarkLayout]'s for the app's custom-generated fonts, which is what let this text
+ * silently reflow (or even collapse onto one line) the instant editing ended.
  */
 @Composable
 private fun TextMarkOverlay(
@@ -945,30 +966,44 @@ private fun TextMarkOverlay(
     val top = mark.offsetY * h
     // Matches drawMarkOnCanvas's own textSizePx/left/top so the live field lines up with where
     // the static text would otherwise have been drawn.
-    val textSizePx = mark.sizeFraction * w * 0.25f
+    val markWidth = mark.sizeFraction * w
+    val textSizePx = markWidth * 0.25f
     val maxWidthPx = (w - left).coerceAtLeast(textSizePx * 4f)
-    BasicTextField(
-        value = text,
-        onValueChange = onTextChange,
-        // Multi-line so Enter inserts a newline instead of doing nothing, and long text wraps
-        // within the widthIn(max) below instead of running off the document -- matching how
-        // textMarkLayout now wraps/draws the same mark once it's no longer being edited.
-        singleLine = false,
-        textStyle = TextStyle(
-            color = ComposeColor(color),
-            fontSize = with(density) { textSizePx.toSp() },
-            fontFamily = typeface?.let { FontFamily(it) },
-        ),
-        cursorBrush = SolidColor(ComposeColor(color)),
-        modifier = Modifier
+    val layout = textMarkLayout(text.ifEmpty { " " }, textSizePx, typeface, color, maxWidthPx)
+    val boxWidthPx = maxOf(layout.width.toFloat(), textSizePx * 3f)
+    val boxHeightPx = maxOf(layout.height.toFloat(), textSizePx * 1.2f)
+    Box(
+        Modifier
             .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
-            .widthIn(
-                min = with(density) { (textSizePx * 3f).toDp() },
-                max = with(density) { maxWidthPx.toDp() },
+            .size(
+                width = with(density) { boxWidthPx.toDp() },
+                height = with(density) { boxHeightPx.toDp() },
             )
-            .background(ComposeColor.White.copy(alpha = .6f))
-            .focusRequester(focusRequester),
-    )
+            .background(ComposeColor.White.copy(alpha = .6f)),
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawIntoCanvas { c -> layout.draw(c.nativeCanvas) }
+        }
+        BasicTextField(
+            value = text,
+            onValueChange = onTextChange,
+            // Multi-line so Enter inserts a newline instead of doing nothing; wrapping itself
+            // is decided by textMarkLayout above, not by this field.
+            singleLine = false,
+            // Invisible -- only the cursor shows, at the real typeface/size/line-height so it
+            // still lines up reasonably with the glyphs textMarkLayout draws underneath.
+            textStyle = TextStyle(
+                color = ComposeColor.Transparent,
+                fontSize = with(density) { textSizePx.toSp() },
+                lineHeight = with(density) {
+                    (layout.height.toFloat() / maxOf(layout.lineCount, 1)).toSp()
+                },
+                fontFamily = typeface?.let { FontFamily(it) },
+            ),
+            cursorBrush = SolidColor(ComposeColor(color)),
+            modifier = Modifier.fillMaxSize().focusRequester(focusRequester),
+        )
+    }
     LaunchedEffect(mark.id) { focusRequester.requestFocus() }
 }
 
