@@ -77,7 +77,7 @@ internal fun DashboardScreen(
     if (preferredFont != null) {
         DashboardRowAction(
             title = "Use font on image",
-            detail = "Write with $preferredFont on a photo",
+            detail = "Write with your font style on a photo",
             icon = Icons.Filled.Image,
             click = { useFontOnImage(preferredFont) },
         )
