@@ -1311,17 +1311,21 @@ private fun markContainsPoint(
     val left = mark.offsetX * w
     val top = mark.offsetY * h
     val markWidth = mark.sizeFraction * w
-    // Text/Date's hit box must match how the string actually renders: a near-full-width, centered
-    // box (see textMarkBoxLeft/Width), not the mark's own stored x position -- and its height
-    // grows with the number of lines, from that same layout, instead of a single-line estimate
-    // that would miss everything past the first line.
+    // Text/Date wraps at the same near-full-width, centered box used while editing (see
+    // textMarkBoxLeft/Width) so wrapping never changes between editing and static -- but the
+    // tappable/selectable area itself hugs just the rendered glyphs (the widest wrapped line,
+    // centered in that box), not the whole edit-width box, so a tap next to the text on an
+    // otherwise-empty document doesn't count as hitting it.
     if (mark.type == MarkType.Text || mark.type == MarkType.Date) {
         val typeface = mark.fontKey?.let { key -> fontOptions.firstOrNull { it.first == key }?.second }
         val boxLeft = textMarkBoxLeft(w)
         val boxWidth = textMarkBoxWidth(w)
         val layout = textMarkLayout(mark.text, markWidth * 0.25f, typeface, mark.colorArgb, boxWidth)
+        val lineWidth = (0 until layout.lineCount).maxOfOrNull { layout.getLineWidth(it) } ?: 0f
+        val hitWidth = maxOf(markWidth, lineWidth)
+        val hitLeft = boxLeft + (boxWidth - hitWidth) / 2f
         val height = maxOf(markWidth * 0.5f, layout.height.toFloat())
-        return point.x in boxLeft..(boxLeft + boxWidth) && point.y in top..(top + height)
+        return point.x in hitLeft..(hitLeft + hitWidth) && point.y in top..(top + height)
     }
     val (width, height) = when (mark.type) {
         MarkType.Check -> markWidth to markWidth * 0.5f
@@ -1398,9 +1402,15 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMarkOnCanvas(
                 c.nativeCanvas.restore()
             }
             if (isSelected) {
+                // The selection outline hugs just the rendered text (widest wrapped line,
+                // centered in the edit-width box), not the full edit-width box itself -- that
+                // box only exists to give editing room, it isn't what's "selected".
+                val lineWidth = (0 until layout.lineCount).maxOfOrNull { layout.getLineWidth(it) } ?: 0f
+                val selWidth = maxOf(markWidth * 0.3f, lineWidth)
+                val selLeft = boxLeft + (boxWidth - selWidth) / 2f
                 drawSelectionRect(
-                    boxLeft, top,
-                    boxWidth,
+                    selLeft, top,
+                    selWidth,
                     maxOf(markWidth * 0.3f, layout.height.toFloat()),
                 )
             }
