@@ -15,13 +15,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -247,10 +252,18 @@ internal fun SignatureEditorScreen(
     var active by remember { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember { mutableStateOf(1f to 1f) }
     var status by remember { mutableStateOf("") }
+    // The freshest saved copy -- updated in place after each successful edit, so the read-only
+    // preview below reflects the latest save without needing to pop back to the signatures list.
+    var current by remember { mutableStateOf(existing) }
+    // A saved signature opens to a plain read-only preview; drawing only starts once the user
+    // explicitly taps Edit, instead of always landing straight into an editable canvas already
+    // holding its strokes. A brand-new signature has nothing to preview yet, so it always opens
+    // straight into the canvas.
+    var isEditing by remember { mutableStateOf(existing == null) }
     // Excludes the signature's own current name -- editing it back to what it already was
     // isn't a duplicate, unlike creating a brand new one under a name already in use.
     val duplicateName = name.trim().isNotEmpty() &&
-        !name.trim().equals(existing?.name, ignoreCase = true) &&
+        !name.trim().equals(current?.name, ignoreCase = true) &&
         vm.hasSavedSignatureName(name)
 
     Page(if (existing != null) "Signature Workspace" else "New Signature", back, scrollable = true) {
@@ -265,72 +278,99 @@ internal fun SignatureEditorScreen(
                 if (duplicateName) Text("A saved signature or stamp already uses that name.")
             },
         )
-        Canvas(
-            Modifier.fillMaxWidth().height(220.dp)
-                .background(ComposeColor.White)
-                .border(1.dp, ComposeColor.Gray)
-                .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) },
-                        onDrag = { change, _ ->
-                            change.consume()
-                            val next = GlyphPoint(change.position.x, change.position.y)
-                            if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) {
-                                active = active + next
-                            }
-                        },
-                        onDragEnd = {
-                            if (active.size > 1) strokes = strokes + GlyphStroke(active)
-                            active = emptyList()
-                        },
-                        onDragCancel = { active = emptyList() },
-                    )
-                }
-        ) {
-            canvasSize = size.width to size.height
-            (strokes.map { it.points } + listOf(active)).forEach { points ->
-                if (points.size > 1) {
-                    drawPath(
-                        ComposePath().apply {
-                            moveTo(points.first().x, points.first().y)
-                            points.drop(1).forEach { lineTo(it.x, it.y) }
-                        },
-                        ComposeColor.Black,
-                        style = Stroke(width = 8f, cap = StrokeCap.Round, join = StrokeJoin.Round),
-                    )
+        if (!isEditing && current != null) {
+            SignaturePreview(modifier = Modifier.fillMaxWidth().height(220.dp), signature = current!!)
+            OutlinedButton(onClick = { isEditing = true }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Edit")
+            }
+        } else {
+            Canvas(
+                Modifier.fillMaxWidth().height(220.dp)
+                    .background(ComposeColor.White)
+                    .border(1.dp, ComposeColor.Gray)
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                val next = GlyphPoint(change.position.x, change.position.y)
+                                if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) {
+                                    active = active + next
+                                }
+                            },
+                            onDragEnd = {
+                                if (active.size > 1) strokes = strokes + GlyphStroke(active)
+                                active = emptyList()
+                            },
+                            onDragCancel = { active = emptyList() },
+                        )
+                    }
+            ) {
+                canvasSize = size.width to size.height
+                (strokes.map { it.points } + listOf(active)).forEach { points ->
+                    if (points.size > 1) {
+                        drawPath(
+                            ComposePath().apply {
+                                moveTo(points.first().x, points.first().y)
+                                points.drop(1).forEach { lineTo(it.x, it.y) }
+                            },
+                            ComposeColor.Black,
+                            style = Stroke(width = 8f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                        )
+                    }
                 }
             }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) { Text("Clear") }
-            OutlinedButton(onClick = { strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }
-            Button(
-                onClick = {
-                    if (duplicateName) {
-                        status = "A saved signature or stamp already uses that name."
-                        return@Button
-                    }
-                    val savedName = if (existing != null) {
-                        if (vm.updateSignature(existing.name, name, strokes, canvasSize.first, canvasSize.second)) name.trim().ifEmpty { existing.name } else null
-                    } else {
-                        vm.saveSignature(name, strokes, canvasSize.first, canvasSize.second)
-                    }
-                    if (savedName != null) {
-                        status = "Saved."
-                        onSaved(savedName)
-                    } else {
-                        status = "A saved signature or stamp already uses that name."
-                    }
-                },
-                enabled = strokes.isNotEmpty() && !duplicateName,
-                modifier = Modifier.weight(1f),
-            ) { Text(if (existing != null) "Save changes" else "Save signature") }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) { Text("Clear") }
+                OutlinedButton(onClick = { strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }
+                // Only a saved signature has a view to cancel back to -- a brand-new one has
+                // nowhere to go back to, so it has no Cancel.
+                if (current != null) {
+                    OutlinedButton(onClick = {
+                        strokes = current!!.strokes
+                        active = emptyList()
+                        name = current!!.name
+                        status = ""
+                        isEditing = false
+                    }) { Text("Cancel") }
+                }
+                Button(
+                    onClick = {
+                        if (duplicateName) {
+                            status = "A saved signature or stamp already uses that name."
+                            return@Button
+                        }
+                        val savedName = if (current != null) {
+                            if (vm.updateSignature(current!!.name, name, strokes, canvasSize.first, canvasSize.second)) name.trim().ifEmpty { current!!.name } else null
+                        } else {
+                            vm.saveSignature(name, strokes, canvasSize.first, canvasSize.second)
+                        }
+                        if (savedName != null) {
+                            status = "Saved."
+                            if (current != null) {
+                                // Stays on this same screen, now showing the just-saved result
+                                // as the read-only preview, instead of popping back to the list.
+                                current = vm.signatures.firstOrNull { it.name == savedName }
+                                isEditing = false
+                            } else {
+                                onSaved(savedName)
+                            }
+                        } else {
+                            status = "A saved signature or stamp already uses that name."
+                        }
+                    },
+                    enabled = strokes.isNotEmpty() && !duplicateName,
+                    modifier = Modifier.weight(1f),
+                ) { Text(if (current != null) "Save changes" else "Save signature") }
+            }
         }
         // Signing/stamping a document is now Fill & Mark's job -- this just gets you there
         // with this signature ready to place, instead of a separate bespoke sign-a-document
         // screen duplicating what Fill & Mark already does.
-        if (existing != null && useInFillMark != null) {
-            OutlinedButton(onClick = { useInFillMark(existing.name) }, modifier = Modifier.fillMaxWidth()) {
+        if (current != null && useInFillMark != null) {
+            OutlinedButton(onClick = { useInFillMark(current!!.name) }, modifier = Modifier.fillMaxWidth()) {
                 Text("Use in Fill & Mark")
             }
         }

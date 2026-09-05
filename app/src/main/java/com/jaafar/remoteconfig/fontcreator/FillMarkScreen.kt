@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -579,7 +578,7 @@ private fun FillMarkEditorScreen(
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
                 ) {
                     // Text acts immediately -- unlike the other tools, there's no "armed" state
                     // to tap the canvas into. Each tap places a fresh mark at the center of the
@@ -965,11 +964,10 @@ private fun TextMarkOverlay(
     val h = canvasSize.height.toFloat()
     val top = mark.offsetY * h
     // Matches drawMarkOnCanvas's own box/top so the live field lines up with where the static
-    // text would otherwise have been drawn: a near-full-width box centered on the document,
-    // not anchored at the mark's own x position, so typed text is centered and the cursor stays
-    // near the middle instead of drifting off to one side.
-    val boxLeft = textMarkBoxLeft(w)
-    val boxWidthPx = textMarkBoxWidth(w)
+    // text would otherwise have been drawn: a near-full-width box centered on the mark's own
+    // (draggable) position, so typed text is centered and the cursor stays near the middle of
+    // that box as the user types.
+    val (boxLeft, boxWidthPx) = textMarkBox(mark, w)
     val markWidth = mark.sizeFraction * w
     val textSizePx = markWidth * 0.25f
     val layout = textMarkLayout(text.ifEmpty { " " }, textSizePx, typeface, color, boxWidthPx)
@@ -1088,7 +1086,7 @@ private fun MarkConfigPanel(
         // Icon toolbar -- one icon per control; tapping one reveals just that control below,
         // e.g. tapping the font icon shows the font list, instead of a fixed block of every
         // control at once.
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally)) {
             when (tool) {
                 MarkType.Text, MarkType.Date, MarkType.Check -> {
                     if (tool == MarkType.Check) {
@@ -1112,10 +1110,8 @@ private fun MarkConfigPanel(
                     }
                 }
             }
-            // Delete sits at the far right of the same row, away from the other controls,
-            // instead of its own row below the panel.
+            // Delete sits in the same centered row as the other controls, not off to one side.
             if (onDelete != null) {
-                Spacer(Modifier.weight(1f))
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Filled.Delete, contentDescription = "Delete mark", tint = MaterialTheme.colorScheme.error)
                 }
@@ -1311,17 +1307,20 @@ private fun markContainsPoint(
     val left = mark.offsetX * w
     val top = mark.offsetY * h
     val markWidth = mark.sizeFraction * w
-    // Text/Date's hit box must match how the string actually renders: a near-full-width, centered
-    // box (see textMarkBoxLeft/Width), not the mark's own stored x position -- and its height
-    // grows with the number of lines, from that same layout, instead of a single-line estimate
-    // that would miss everything past the first line.
+    // Text/Date wraps at the same near-full-width box used while editing (see textMarkBox),
+    // centered on the mark's own draggable position, so wrapping never changes between editing
+    // and static -- but the tappable/selectable area itself hugs just the rendered glyphs (the
+    // widest wrapped line, centered in that box), not the whole edit-width box, so a tap next to
+    // the text on an otherwise-empty document doesn't count as hitting it.
     if (mark.type == MarkType.Text || mark.type == MarkType.Date) {
         val typeface = mark.fontKey?.let { key -> fontOptions.firstOrNull { it.first == key }?.second }
-        val boxLeft = textMarkBoxLeft(w)
-        val boxWidth = textMarkBoxWidth(w)
+        val (boxLeft, boxWidth) = textMarkBox(mark, w)
         val layout = textMarkLayout(mark.text, markWidth * 0.25f, typeface, mark.colorArgb, boxWidth)
+        val lineWidth = (0 until layout.lineCount).maxOfOrNull { layout.getLineWidth(it) } ?: 0f
+        val hitWidth = maxOf(markWidth, lineWidth)
+        val hitLeft = boxLeft + (boxWidth - hitWidth) / 2f
         val height = maxOf(markWidth * 0.5f, layout.height.toFloat())
-        return point.x in boxLeft..(boxLeft + boxWidth) && point.y in top..(top + height)
+        return point.x in hitLeft..(hitLeft + hitWidth) && point.y in top..(top + height)
     }
     val (width, height) = when (mark.type) {
         MarkType.Check -> markWidth to markWidth * 0.5f
@@ -1332,14 +1331,20 @@ private fun markContainsPoint(
 }
 
 /**
- * Text/Date marks always edit and render in a box spanning nearly the full document width and
- * centered on it -- not just from the mark's stored x position to the document's right edge --
- * so the text is centered and the cursor stays near the middle as the user types, wherever the
- * mark itself sits vertically. Shared by every render path (live editing, preview canvas, export
- * bitmap/PDF) and hit-testing so they all agree on where the text box sits.
+ * Text/Date marks always edit and render in a box spanning nearly the full document width,
+ * centered on the mark's own position (so it tracks wherever the mark has been dragged to, in
+ * either direction) rather than fixed at the document's exact center -- clamped so the box never
+ * runs off the document. Returns (left, width) in pixels. Shared by every render path (live
+ * editing, preview canvas, export bitmap/PDF) and hit-testing so they all agree on where the
+ * text box sits.
  */
-private fun textMarkBoxLeft(w: Float): Float = w * 0.05f
-private fun textMarkBoxWidth(w: Float): Float = w * 0.9f
+private fun textMarkBox(mark: DocumentMark, w: Float): Pair<Float, Float> {
+    val boxWidth = (w * 0.9f).coerceAtMost(w)
+    val markWidth = mark.sizeFraction * w
+    val centerX = mark.offsetX * w + markWidth / 2f
+    val boxLeft = (centerX - boxWidth / 2f).coerceIn(0f, (w - boxWidth).coerceAtLeast(0f))
+    return boxLeft to boxWidth
+}
 
 /**
  * Builds a wrapped, multi-line-aware, center-aligned layout for a Text/Date mark's string,
@@ -1388,8 +1393,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMarkOnCanvas(
     when (mark.type) {
         MarkType.Text, MarkType.Date -> {
             val typeface = mark.fontKey?.let { key -> fontOptions.firstOrNull { it.first == key }?.second }
-            val boxLeft = textMarkBoxLeft(w)
-            val boxWidth = textMarkBoxWidth(w)
+            val (boxLeft, boxWidth) = textMarkBox(mark, w)
             val layout = textMarkLayout(mark.text, markWidth * 0.25f, typeface, mark.colorArgb, boxWidth)
             drawIntoCanvas { c ->
                 c.nativeCanvas.save()
@@ -1398,9 +1402,15 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMarkOnCanvas(
                 c.nativeCanvas.restore()
             }
             if (isSelected) {
+                // The selection outline hugs just the rendered text (widest wrapped line,
+                // centered in the edit-width box), not the full edit-width box itself -- that
+                // box only exists to give editing room, it isn't what's "selected".
+                val lineWidth = (0 until layout.lineCount).maxOfOrNull { layout.getLineWidth(it) } ?: 0f
+                val selWidth = maxOf(markWidth * 0.3f, lineWidth)
+                val selLeft = boxLeft + (boxWidth - selWidth) / 2f
                 drawSelectionRect(
-                    boxLeft, top,
-                    boxWidth,
+                    selLeft, top,
+                    selWidth,
                     maxOf(markWidth * 0.3f, layout.height.toFloat()),
                 )
             }
@@ -1605,8 +1615,7 @@ private fun drawMarkOnBitmap(
     when (mark.type) {
         MarkType.Text, MarkType.Date -> {
             val typeface = mark.fontKey?.let { key -> fontOptions.firstOrNull { it.first == key }?.second }
-            val boxLeft = textMarkBoxLeft(pageWidth.toFloat())
-            val boxWidth = textMarkBoxWidth(pageWidth.toFloat())
+            val (boxLeft, boxWidth) = textMarkBox(mark, pageWidth.toFloat())
             val layout = textMarkLayout(mark.text, markWidthPx * 0.25f, typeface, mark.colorArgb, boxWidth)
             canvas.save()
             canvas.translate(boxLeft, top)
