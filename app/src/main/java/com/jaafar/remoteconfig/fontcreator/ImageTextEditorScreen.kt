@@ -511,9 +511,10 @@ fun ImageTextEditorScreen(
     }
 }
 
-// Icon above a small label, matching the iOS app's write-on-image toolbar (SF Symbols
+// Icon-only, matching the iOS app's write-on-image toolbar (SF Symbols
 // plus/textformat/textformat.size/paintpalette there; the closest standard Material
-// icons here), instead of plain text-only buttons.
+// icons here). label is kept as the accessibility description since there's no
+// visible text anymore.
 @Composable
 private fun androidx.compose.foundation.layout.RowScope.EditorToolButton(
     label: String,
@@ -522,10 +523,7 @@ private fun androidx.compose.foundation.layout.RowScope.EditorToolButton(
     onClick: () -> Unit,
 ) {
     OutlinedButton(onClick = onClick, modifier = Modifier.weight(1f), enabled = enabled) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(label, style = MaterialTheme.typography.labelSmall)
-        }
+        Icon(icon, contentDescription = label, modifier = Modifier.size(26.dp))
     }
 }
 
