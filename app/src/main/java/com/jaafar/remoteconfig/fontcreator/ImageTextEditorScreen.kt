@@ -302,7 +302,6 @@ fun ImageTextEditorScreen(
                         // onto a single line as soon as editing ended.
                         drawIntoCanvas { canvas ->
                             layers.forEach { layer ->
-                                if (layer.id == editingLayerId) return@forEach
                                 val paint = overlayPaint(typefaceFor(layer.fontLabel), height * layer.sizePercent / 100f, layer.color.value)
                                 drawOverlayText(
                                     canvas.nativeCanvas, layer.text,
