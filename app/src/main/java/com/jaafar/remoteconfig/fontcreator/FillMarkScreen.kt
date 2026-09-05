@@ -1339,10 +1339,15 @@ private fun markContainsPoint(
  * text box sits.
  */
 private fun textMarkBox(mark: DocumentMark, w: Float): Pair<Float, Float> {
-    val boxWidth = (w * 0.9f).coerceAtMost(w)
+    val boxWidth = w * 0.9f
     val markWidth = mark.sizeFraction * w
     val centerX = mark.offsetX * w + markWidth / 2f
-    val boxLeft = (centerX - boxWidth / 2f).coerceIn(0f, (w - boxWidth).coerceAtLeast(0f))
+    // Deliberately NOT clamped to keep the box fully on-document: at 90% width there'd be only
+    // ~10% of slack to clamp within, so almost any real drag would immediately hit that clamp
+    // and the mark would look stuck near the center no matter how far it was dragged. Letting
+    // the box (and an extreme drag) run past the edges, same as every other mark type already
+    // does, is what makes dragging actually reach the whole document.
+    val boxLeft = centerX - boxWidth / 2f
     return boxLeft to boxWidth
 }
 
