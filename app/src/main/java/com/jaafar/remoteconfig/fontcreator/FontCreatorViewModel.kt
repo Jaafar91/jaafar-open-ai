@@ -458,6 +458,9 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             importedFonts.removeAt(idx)
             persistImportedFonts()
             executor.execute { File(getApplication<Application>().filesDir, font.fileName).delete() }
+            // Otherwise a leftover "<name> imported." from whenever this font was first added
+            // stays on screen after deleting it, reading like the deletion itself said so.
+            importStatus = "\"${font.displayName}\" deleted."
         }
     }
 
