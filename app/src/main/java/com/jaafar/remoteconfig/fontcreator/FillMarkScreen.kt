@@ -1658,8 +1658,15 @@ private fun renderStrokeSignatureToBitmap(sig: SavedSignature): Bitmap? {
     val minY = pts.minOf { it.y }
     val maxX = pts.maxOf { it.x }
     val maxY = pts.maxOf { it.y }
-    val w = (maxX - minX).coerceAtLeast(1f).toInt()
-    val h = (maxY - minY).coerceAtLeast(1f).toInt()
+    val rawW = (maxX - minX).coerceAtLeast(1f)
+    val rawH = (maxY - minY).coerceAtLeast(1f)
+    val strokeWidth = maxOf(2f, rawW * 0.03f)
+    // A stroke running along the tight bounding box's own edge is centered exactly on that
+    // edge, so half its width falls outside [minX,maxX]/[minY,maxY] -- padding by half the
+    // stroke width (plus a pixel of slack) keeps it from being clipped by the bitmap's bounds.
+    val pad = strokeWidth / 2f + 1f
+    val w = (rawW + pad * 2f).toInt()
+    val h = (rawH + pad * 2f).toInt()
     val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -1667,13 +1674,13 @@ private fun renderStrokeSignatureToBitmap(sig: SavedSignature): Bitmap? {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
-        strokeWidth = maxOf(2f, w * 0.03f)
+        this.strokeWidth = strokeWidth
     }
     sig.strokes.forEach { stroke ->
         val first = stroke.points.firstOrNull() ?: return@forEach
         val path = android.graphics.Path().apply {
-            moveTo(first.x - minX, first.y - minY)
-            stroke.points.drop(1).forEach { pt -> lineTo(pt.x - minX, pt.y - minY) }
+            moveTo(first.x - minX + pad, first.y - minY + pad)
+            stroke.points.drop(1).forEach { pt -> lineTo(pt.x - minX + pad, pt.y - minY + pad) }
         }
         canvas.drawPath(path, paint)
     }
