@@ -31,10 +31,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FontDownload
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -52,7 +53,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -82,7 +84,7 @@ import java.io.FileOutputStream
 import kotlin.math.roundToInt
 
 private data class TextColorOption(val name: String, val value: Int, val composeColor: Color)
-private enum class EditorPanel { Text, Font, Size, Color }
+private enum class EditorPanel { Font, Size, Color }
 private enum class FontFilter { All, MyFonts, System }
 private const val PREF_KEY_LAST_IMAGE_FONT = "last_font"
 private const val PREF_KEY_RECENT_IMAGE_FONTS = "recent_fonts"
@@ -95,6 +97,17 @@ private val TEXT_COLORS = listOf(
     TextColorOption("Yellow", android.graphics.Color.YELLOW, Color.Yellow),
     TextColorOption("Blue", android.graphics.Color.BLUE, Color.Blue),
     TextColorOption("Green", android.graphics.Color.rgb(0, 160, 70), Color(0xFF00A046)),
+)
+
+/** One independent piece of text on the image -- its own font, size, color, and position, so
+ *  the screen can hold more than one at a time. Mirrors the iOS app's `TextLayer`. */
+private data class TextLayer(
+    val id: Long,
+    val text: String = "",
+    val fontLabel: String,
+    val sizePercent: Float = 10f,
+    val color: TextColorOption = TEXT_COLORS.first(),
+    val position: Offset = Offset(.5f, .85f),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -113,33 +126,64 @@ fun ImageTextEditorScreen(
     val preferences = remember { context.getSharedPreferences("image_editor", 0) }
     val bitmap = remember(imageUri) { loadBitmap(context.contentResolver, imageUri) }
     val lastSavedFont = remember { preferences.getString(PREF_KEY_LAST_IMAGE_FONT, null) }
-    var selectedFontLabel by remember(fontOptions, initiallySelectedFont) {
-        val resolved = when {
+    val resolvedInitialFont = remember(fontOptions, initiallySelectedFont) {
+        when {
             initiallySelectedFont != null && fontOptions.any { it.first == initiallySelectedFont } -> initiallySelectedFont
             lastSavedFont != null && fontOptions.any { it.first == lastSavedFont } -> lastSavedFont
             else -> fontOptions.firstOrNull()?.first ?: "Default"
         }
-        mutableStateOf(resolved)
     }
-    val typeface = fontOptions.firstOrNull { it.first == selectedFontLabel }?.second ?: Typeface.DEFAULT
-    var text by remember(imageUri, initialText) { mutableStateOf(initialText) }
-    var sizePercent by remember { mutableFloatStateOf(10f) }
-    var textColor by remember { mutableStateOf(TEXT_COLORS.first()) }
-    var textPosition by remember { mutableStateOf(Offset(.5f, .85f)) }
+    // The font a freshly-added text layer starts with -- whatever was most recently picked,
+    // persisted across screen visits the same way it was before layers existed.
+    var lastUsedFontLabel by remember(fontOptions, initiallySelectedFont) { mutableStateOf(resolvedInitialFont) }
+    fun typefaceFor(label: String): Typeface = fontOptions.firstOrNull { it.first == label }?.second ?: Typeface.DEFAULT
+
+    // Multiple independent text layers, not just one -- tapping "Add" always creates another
+    // one instead of only ever being able to re-edit whatever's already there.
+    val layers = remember(imageUri, initialText) { mutableStateListOf<TextLayer>() }
+    var nextLayerId by remember { mutableLongStateOf(0L) }
+    var selectedLayerId by remember(imageUri, initialText) { mutableStateOf<Long?>(null) }
+    var editingLayerId by remember(imageUri, initialText) { mutableStateOf<Long?>(null) }
+    LaunchedEffect(imageUri, initialText) {
+        if (layers.isEmpty()) {
+            val id = nextLayerId++
+            layers.add(TextLayer(id = id, text = initialText, fontLabel = resolvedInitialFont))
+            selectedLayerId = id
+            if (initialText.isBlank()) editingLayerId = id
+        }
+    }
+
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var activePanel by remember { mutableStateOf<EditorPanel?>(null) }
-    var isEditingText by remember(imageUri, initialText) { mutableStateOf(initialText.isBlank()) }
     var fontQuery by remember { mutableStateOf("") }
     var showAllFonts by remember { mutableStateOf(false) }
     var fontFilter by remember { mutableStateOf(FontFilter.All) }
     var recentFontLabels by remember(fontOptions) {
         val stored = preferences.getString(PREF_KEY_RECENT_IMAGE_FONTS, "").orEmpty()
             .split(RECENT_FONT_SEPARATOR).filter { saved -> fontOptions.any { it.first == saved } }
-        mutableStateOf((listOf(selectedFontLabel) + stored).distinct().take(6))
+        mutableStateOf((listOf(lastUsedFontLabel) + stored).distinct().take(6))
     }
 
-    fun selectImageFont(label: String) {
-        selectedFontLabel = label
+    fun addLayer() {
+        val id = nextLayerId++
+        layers.add(TextLayer(id = id, fontLabel = lastUsedFontLabel))
+        selectedLayerId = id
+        editingLayerId = id
+        activePanel = null
+    }
+
+    fun deleteSelectedLayer() {
+        val id = selectedLayerId ?: return
+        layers.removeAll { it.id == id }
+        selectedLayerId = null
+        editingLayerId = null
+        activePanel = null
+    }
+
+    fun selectLayerFont(index: Int, label: String) {
+        if (index !in layers.indices) return
+        layers[index] = layers[index].copy(fontLabel = label)
+        lastUsedFontLabel = label
         recentFontLabels = (listOf(label) + recentFontLabels).distinct().take(6)
         preferences.edit()
             .putString(PREF_KEY_LAST_IMAGE_FONT, label)
@@ -147,8 +191,8 @@ fun ImageTextEditorScreen(
             .apply()
     }
 
-    LaunchedEffect(isEditingText, canvasSize) {
-        if (isEditingText && canvasSize.width > 0 && canvasSize.height > 0) {
+    LaunchedEffect(editingLayerId, canvasSize) {
+        if (editingLayerId != null && canvasSize.width > 0 && canvasSize.height > 0) {
             runCatching {
                 textFocusRequester.requestFocus()
                 keyboard?.show()
@@ -159,23 +203,23 @@ fun ImageTextEditorScreen(
     BackHandler {
         when {
             activePanel != null -> activePanel = null
-            isEditingText -> { isEditingText = false; keyboard?.hide() }
+            editingLayerId != null -> { editingLayerId = null; keyboard?.hide() }
             else -> onBack()
         }
     }
     Scaffold(
         topBar = {
             AppTopBar("Write on image", onBack) {
-                if (isEditingText) {
-                    TextButton(onClick = { isEditingText = false; keyboard?.hide() }) { Text("Done") }
+                if (editingLayerId != null) {
+                    TextButton(onClick = { editingLayerId = null; keyboard?.hide() }) { Text("Done") }
                 } else {
                     // Icon-only, matching ShareButton's use elsewhere in the app (the font
                     // workspace's own share action) instead of a text label here.
                     IconButton(
-                        enabled = bitmap != null && text.isNotBlank(),
+                        enabled = bitmap != null && layers.any { it.text.isNotBlank() },
                         onClick = {
                             bitmap?.let { source ->
-                                shareImage(context, renderImage(source, text, typeface, sizePercent, textColor.value, textPosition))
+                                shareImage(context, renderImage(source, layers, ::typefaceFor))
                             }
                         },
                     ) { ActionIcon(ActionIconType.Share, "Share image") }
@@ -193,39 +237,50 @@ fun ImageTextEditorScreen(
                 ) {
                     ComposeCanvas(
                         Modifier.fillMaxSize()
-                            .pointerInput(bitmap, canvasSize, text, typeface) {
+                            .pointerInput(bitmap, canvasSize, layers.size, fontOptions) {
                                 detectTransformGestures { centroid, pan, zoom, _ ->
                                     val imageSize = displayedImageSize(canvasSize, bitmap.width, bitmap.height)
-                                    val touchesText = isPointNearOverlayText(
-                                        pointer = centroid,
-                                        canvasSize = canvasSize,
-                                        imageWidth = bitmap.width,
-                                        imageHeight = bitmap.height,
-                                        text = text,
-                                        typeface = typeface,
-                                        sizePercent = sizePercent,
-                                        textPosition = textPosition,
-                                        touchPadding = 24.dp.toPx(),
-                                    )
-                                    if (!isEditingText && touchesText && imageSize.width > 0 && imageSize.height > 0) {
-                                        textPosition = Offset(
-                                            (textPosition.x + pan.x / imageSize.width).coerceIn(0f, 1f),
-                                            (textPosition.y + pan.y / imageSize.height).coerceIn(0f, 1f),
+                                    if (imageSize.width <= 0 || imageSize.height <= 0) return@detectTransformGestures
+                                    val hitIndex = layers.indexOfLast { layer ->
+                                        layer.id != editingLayerId && isPointNearOverlayText(
+                                            pointer = centroid,
+                                            canvasSize = canvasSize,
+                                            imageWidth = bitmap.width,
+                                            imageHeight = bitmap.height,
+                                            text = layer.text,
+                                            typeface = typefaceFor(layer.fontLabel),
+                                            sizePercent = layer.sizePercent,
+                                            textPosition = layer.position,
+                                            touchPadding = 24.dp.toPx(),
                                         )
-                                        sizePercent = (sizePercent * zoom).coerceIn(4f, 24f)
+                                    }
+                                    if (hitIndex >= 0) {
+                                        val layer = layers[hitIndex]
+                                        selectedLayerId = layer.id
+                                        layers[hitIndex] = layer.copy(
+                                            position = Offset(
+                                                (layer.position.x + pan.x / imageSize.width).coerceIn(0f, 1f),
+                                                (layer.position.y + pan.y / imageSize.height).coerceIn(0f, 1f),
+                                            ),
+                                            sizePercent = (layer.sizePercent * zoom).coerceIn(4f, 24f),
+                                        )
                                     }
                                 }
                             }
-                            .pointerInput(bitmap, canvasSize, text, typeface) {
+                            .pointerInput(bitmap, canvasSize, layers.size, fontOptions) {
                                 detectTapGestures { pointer ->
-                                    val touchesText = isPointNearOverlayText(
-                                            pointer, canvasSize, bitmap.width, bitmap.height, text,
-                                            typeface, sizePercent, textPosition, 24.dp.toPx(),
+                                    val hitIndex = layers.indexOfLast { layer ->
+                                        isPointNearOverlayText(
+                                            pointer, canvasSize, bitmap.width, bitmap.height, layer.text,
+                                            typefaceFor(layer.fontLabel), layer.sizePercent, layer.position, 24.dp.toPx(),
                                         )
-                                    if (touchesText) {
-                                        isEditingText = true
-                                    } else if (isEditingText) {
-                                        isEditingText = false
+                                    }
+                                    if (hitIndex >= 0) {
+                                        selectedLayerId = layers[hitIndex].id
+                                        editingLayerId = layers[hitIndex].id
+                                    } else if (editingLayerId != null || selectedLayerId != null) {
+                                        editingLayerId = null
+                                        selectedLayerId = null
                                         keyboard?.hide()
                                     }
                                 }
@@ -246,30 +301,38 @@ fun ImageTextEditorScreen(
                         // app's custom-generated fonts, which is what made lengthy text collapse
                         // onto a single line as soon as editing ended.
                         drawIntoCanvas { canvas ->
-                            val paint = overlayPaint(typeface, height * sizePercent / 100f, textColor.value)
-                            drawOverlayText(
-                                canvas.nativeCanvas, text,
-                                left + width * textPosition.x, top + height * textPosition.y,
-                                width * .9f, paint,
-                            )
+                            layers.forEach { layer ->
+                                if (layer.id == editingLayerId) return@forEach
+                                val paint = overlayPaint(typefaceFor(layer.fontLabel), height * layer.sizePercent / 100f, layer.color.value)
+                                drawOverlayText(
+                                    canvas.nativeCanvas, layer.text,
+                                    left + width * layer.position.x, top + height * layer.position.y,
+                                    width * .9f, paint,
+                                )
+                            }
                         }
                     }
-                    if (isEditingText && canvasSize.width > 0 && canvasSize.height > 0) {
+                    val editingLayer = layers.firstOrNull { it.id == editingLayerId }
+                    if (editingLayer != null && canvasSize.width > 0 && canvasSize.height > 0) {
+                        val editingTypeface = typefaceFor(editingLayer.fontLabel)
                         val imageSize = displayedImageSize(canvasSize, bitmap.width, bitmap.height)
                         val imageLeft = (canvasSize.width - imageSize.width) / 2f
                         val imageTop = (canvasSize.height - imageSize.height) / 2f
                         val editorWidthPx = imageSize.width * .9f
-                        val textSizePx = imageSize.height * sizePercent / 100f
-                        val editorPaint = overlayPaint(typeface, textSizePx, textColor.value)
-                        val editorLines = wrapTextLines(text, editorWidthPx, editorPaint)
+                        val textSizePx = imageSize.height * editingLayer.sizePercent / 100f
+                        val editorPaint = overlayPaint(editingTypeface, textSizePx, editingLayer.color.value)
+                        val editorLines = wrapTextLines(editingLayer.text, editorWidthPx, editorPaint)
                         val editorTextSize = with(density) { textSizePx.toSp() }
                         val editorLineHeight = with(density) { editorPaint.fontSpacing.toSp() }
-                        val centerX = imageLeft + imageSize.width * textPosition.x
-                        val baselineY = imageTop + imageSize.height * textPosition.y
+                        val centerX = imageLeft + imageSize.width * editingLayer.position.x
+                        val baselineY = imageTop + imageSize.height * editingLayer.position.y
                         val editorTop = baselineY - editorPaint.fontSpacing * (editorLines.size - 1) - textSizePx
                         BasicTextField(
-                            value = text,
-                            onValueChange = { text = it },
+                            value = editingLayer.text,
+                            onValueChange = { newValue ->
+                                val idx = layers.indexOfFirst { it.id == editingLayer.id }
+                                if (idx >= 0) layers[idx] = layers[idx].copy(text = newValue)
+                            },
                             modifier = Modifier
                                 .offset { IntOffset((centerX - editorWidthPx / 2f).roundToInt(), editorTop.roundToInt()) }
                                 .width(with(density) { editorWidthPx.toDp() })
@@ -281,47 +344,46 @@ fun ImageTextEditorScreen(
                             // correctly-wrapped text -- so only the cursor is visible here.
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
                                 color = Color.Transparent,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily(typeface),
+                                fontFamily = androidx.compose.ui.text.font.FontFamily(editingTypeface),
                                 fontSize = editorTextSize,
                                 lineHeight = editorLineHeight,
                                 textAlign = TextAlign.Center,
                             ),
-                            cursorBrush = androidx.compose.ui.graphics.SolidColor(textColor.composeColor),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(editingLayer.color.composeColor),
                         )
                     }
                 }
-                Text("Drag the text to reposition it", style = MaterialTheme.typography.bodySmall)
+                Text("Tap Add for more text · drag to reposition · pinch to resize", style = MaterialTheme.typography.bodySmall)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    EditorToolButton("Text", Icons.Filled.TextFields, EditorPanel.Text) { activePanel = null; isEditingText = true }
-                    EditorToolButton("Font", Icons.Filled.FontDownload, EditorPanel.Font) { isEditingText = false; keyboard?.hide(); activePanel = it }
-                    EditorToolButton("Size", Icons.Filled.FormatSize, EditorPanel.Size) { isEditingText = false; keyboard?.hide(); activePanel = it }
-                    EditorToolButton("Color", Icons.Filled.Palette, EditorPanel.Color) { isEditingText = false; keyboard?.hide(); activePanel = it }
+                    EditorToolButton("Add", Icons.Filled.Add) { addLayer() }
+                    EditorToolButton("Font", Icons.Filled.FontDownload, enabled = selectedLayerId != null) {
+                        editingLayerId = null; keyboard?.hide(); activePanel = EditorPanel.Font
+                    }
+                    EditorToolButton("Size", Icons.Filled.FormatSize, enabled = selectedLayerId != null) {
+                        editingLayerId = null; keyboard?.hide(); activePanel = EditorPanel.Size
+                    }
+                    EditorToolButton("Color", Icons.Filled.Palette, enabled = selectedLayerId != null) {
+                        editingLayerId = null; keyboard?.hide(); activePanel = EditorPanel.Color
+                    }
+                    EditorToolButton("Delete", Icons.Filled.Delete, enabled = selectedLayerId != null) { deleteSelectedLayer() }
                 }
             }
         }
     }
+    val selectedIndex = layers.indexOfFirst { it.id == selectedLayerId }
+    if (activePanel != null && selectedIndex < 0) {
+        // The selected layer was deleted (or none was ever selected) while its panel was open.
+        activePanel = null
+    }
     activePanel?.let { panel ->
+        if (selectedIndex < 0) return@let
+        val selectedLayer = layers[selectedIndex]
         ModalBottomSheet(onDismissRequest = { activePanel = null; showAllFonts = false; fontQuery = "" }) {
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 when (panel) {
-                    EditorPanel.Text -> {
-                        Text("Edit text", style = MaterialTheme.typography.titleLarge)
-                        OutlinedTextField(
-                            value = text,
-                            onValueChange = { text = it },
-                            label = { Text("Text") },
-                            supportingText = { Text("Use Enter to start a new line") },
-                            modifier = Modifier.fillMaxWidth(),
-                            minLines = 2,
-                            maxLines = 4,
-                            textStyle = MaterialTheme.typography.titleLarge.copy(
-                                fontFamily = androidx.compose.ui.text.font.FontFamily(typeface),
-                            ),
-                        )
-                    }
                     EditorPanel.Font -> {
                         if (!showAllFonts) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -333,9 +395,9 @@ fun ImageTextEditorScreen(
                             ).distinct().take(10)
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 items(carouselLabels.mapNotNull { name -> fontOptions.firstOrNull { it.first == name } }) { (label, optionTypeface) ->
-                                    val selected = label == selectedFontLabel
+                                    val selected = label == selectedLayer.fontLabel
                                     Surface(
-                                        onClick = { selectImageFont(label) },
+                                        onClick = { selectLayerFont(selectedIndex, label) },
                                         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                                         contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                                         shape = RoundedCornerShape(18.dp),
@@ -347,7 +409,7 @@ fun ImageTextEditorScreen(
                                             verticalArrangement = Arrangement.Center,
                                         ) {
                                             Text(
-                                                text.ifBlank { "Aa" }.replace('\n', ' ').take(14),
+                                                selectedLayer.text.ifBlank { "Aa" }.replace('\n', ' ').take(14),
                                                 style = MaterialTheme.typography.titleLarge,
                                                 fontFamily = androidx.compose.ui.text.font.FontFamily(optionTypeface),
                                                 maxLines = 1,
@@ -389,9 +451,9 @@ fun ImageTextEditorScreen(
                             val visibleFonts = filteredBySource.filter { (label, _) -> label.contains(fontQuery, ignoreCase = true) }
                             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
                                 items(visibleFonts) { (label, optionTypeface) ->
-                                    val selected = label == selectedFontLabel
+                                    val selected = label == selectedLayer.fontLabel
                                     Surface(
-                                        onClick = { selectImageFont(label) },
+                                        onClick = { selectLayerFont(selectedIndex, label) },
                                         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                                         contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                                         shape = RoundedCornerShape(16.dp),
@@ -404,7 +466,7 @@ fun ImageTextEditorScreen(
                                             Column(Modifier.weight(1f)) {
                                                 Text(label, style = MaterialTheme.typography.labelSmall)
                                                 Text(
-                                                    text.ifBlank { "Aa" }.replace('\n', ' '),
+                                                    selectedLayer.text.ifBlank { "Aa" }.replace('\n', ' '),
                                                     style = MaterialTheme.typography.titleLarge,
                                                     fontFamily = androidx.compose.ui.text.font.FontFamily(optionTypeface),
                                                     maxLines = 1,
@@ -418,8 +480,12 @@ fun ImageTextEditorScreen(
                         }
                     }
                     EditorPanel.Size -> {
-                        Text("Text size · ${sizePercent.roundToInt()}%", style = MaterialTheme.typography.titleLarge)
-                        Slider(value = sizePercent, onValueChange = { sizePercent = it }, valueRange = 4f..24f)
+                        Text("Text size · ${selectedLayer.sizePercent.roundToInt()}%", style = MaterialTheme.typography.titleLarge)
+                        Slider(
+                            value = selectedLayer.sizePercent,
+                            onValueChange = { layers[selectedIndex] = layers[selectedIndex].copy(sizePercent = it) },
+                            valueRange = 4f..24f,
+                        )
                     }
                     EditorPanel.Color -> {
                         Text("Text color", style = MaterialTheme.typography.titleLarge)
@@ -427,12 +493,12 @@ fun ImageTextEditorScreen(
                             TEXT_COLORS.forEach { option ->
                                 androidx.compose.foundation.layout.Box(
                                     Modifier.size(48.dp).background(option.composeColor, androidx.compose.foundation.shape.CircleShape)
-                                        .border(if (textColor == option) 4.dp else 1.dp, MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
+                                        .border(if (selectedLayer.color == option) 4.dp else 1.dp, MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
                                         .semantics { contentDescription = "${option.name} text" }
-                                        .clickable { textColor = option },
+                                        .clickable { layers[selectedIndex] = layers[selectedIndex].copy(color = option) },
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    if (textColor == option) {
+                                    if (selectedLayer.color == option) {
                                         Text("✓", color = if (option.value == android.graphics.Color.WHITE || option.value == android.graphics.Color.YELLOW) Color.Black else Color.White)
                                     }
                                 }
@@ -452,10 +518,10 @@ fun ImageTextEditorScreen(
 private fun androidx.compose.foundation.layout.RowScope.EditorToolButton(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    panel: EditorPanel,
-    onClick: (EditorPanel) -> Unit,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
 ) {
-    OutlinedButton(onClick = { onClick(panel) }, modifier = Modifier.weight(1f)) {
+    OutlinedButton(onClick = onClick, modifier = Modifier.weight(1f), enabled = enabled) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(label, style = MaterialTheme.typography.labelSmall)
@@ -472,10 +538,13 @@ private fun overlayPaint(typeface: Typeface, textSize: Float, textColor: Int) = 
     setShadowLayer(textSize / 18f, 0f, textSize / 30f, shadow)
 }
 
-private fun renderImage(source: Bitmap, text: String, typeface: Typeface, sizePercent: Float, textColor: Int, textPosition: Offset): Bitmap {
+private fun renderImage(source: Bitmap, layers: List<TextLayer>, typefaceFor: (String) -> Typeface): Bitmap {
     val output = source.copy(Bitmap.Config.ARGB_8888, true)
-    val paint = overlayPaint(typeface, output.height * sizePercent / 100f, textColor)
-    drawOverlayText(Canvas(output), text, output.width * textPosition.x, output.height * textPosition.y, output.width * .9f, paint)
+    val canvas = Canvas(output)
+    layers.forEach { layer ->
+        val paint = overlayPaint(typefaceFor(layer.fontLabel), output.height * layer.sizePercent / 100f, layer.color.value)
+        drawOverlayText(canvas, layer.text, output.width * layer.position.x, output.height * layer.position.y, output.width * .9f, paint)
+    }
     return output
 }
 
