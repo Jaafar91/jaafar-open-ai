@@ -24,7 +24,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -323,8 +326,14 @@ internal fun SignatureEditorScreen(
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) { Text("Clear") }
-                OutlinedButton(onClick = { strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) { Text("Undo") }
+                // Icon-only -- Clear/Undo/Cancel alongside a full-width "Save changes" made that
+                // label wrap onto two lines; the icons alone read clearly enough on their own.
+                OutlinedButton(onClick = { strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
+                    Icon(Icons.Filled.Replay, contentDescription = "Clear")
+                }
+                OutlinedButton(onClick = { strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) {
+                    Icon(Icons.Filled.Undo, contentDescription = "Undo")
+                }
                 // Only a saved signature has a view to cancel back to -- a brand-new one has
                 // nowhere to go back to, so it has no Cancel.
                 if (current != null) {
@@ -334,7 +343,7 @@ internal fun SignatureEditorScreen(
                         name = current!!.name
                         status = ""
                         isEditing = false
-                    }) { Text("Cancel") }
+                    }) { Icon(Icons.Filled.Close, contentDescription = "Cancel") }
                 }
                 Button(
                     onClick = {
