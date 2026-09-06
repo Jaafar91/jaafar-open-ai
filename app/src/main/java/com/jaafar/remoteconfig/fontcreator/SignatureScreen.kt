@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -325,19 +326,21 @@ internal fun SignatureEditorScreen(
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Icon-only -- Clear/Undo/Cancel alongside a full-width "Save changes" made that
-                // label wrap onto two lines; the icons alone read clearly enough on their own.
-                OutlinedButton(onClick = { strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                // IconButton, not OutlinedButton -- Outlined's default content padding (~24dp a
+                // side) is sized for a text label, so three of them still crowded "Save changes"
+                // onto two lines even reduced to icon-only. IconButton is the compact component
+                // actually meant for a bare icon.
+                IconButton(onClick = { strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
                     Icon(Icons.Filled.Replay, contentDescription = "Clear")
                 }
-                OutlinedButton(onClick = { strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) {
+                IconButton(onClick = { strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) {
                     Icon(Icons.Filled.Undo, contentDescription = "Undo")
                 }
                 // Only a saved signature has a view to cancel back to -- a brand-new one has
                 // nowhere to go back to, so it has no Cancel.
                 if (current != null) {
-                    OutlinedButton(onClick = {
+                    IconButton(onClick = {
                         strokes = current!!.strokes
                         active = emptyList()
                         name = current!!.name
