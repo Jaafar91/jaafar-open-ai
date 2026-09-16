@@ -117,7 +117,8 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             val file = generatedFile(project.name)
             runCatching {
                 // Keep Library fonts usable and current even if the user has not opened Preview.
-                file.writeBytes(
+                AtomicFontFile.write(
+                    file,
                     TrueTypeGenerator().generate(
                         project.drawings,
                         project.wordSpacingMm,
@@ -191,7 +192,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         executor.execute {
             runCatching {
                 val newFile = generatedFile(renamed.name)
-                newFile.writeBytes(TrueTypeGenerator().generate(renamed.drawings, renamed.wordSpacingMm, renamed.letterSpacingMm, renamed.name))
+                AtomicFontFile.write(newFile, TrueTypeGenerator().generate(renamed.drawings, renamed.wordSpacingMm, renamed.letterSpacingMm, renamed.name))
                 newFile to loadTypeface(newFile)
             }.onSuccess { (newFile, typeface) ->
                 if (oldFile != newFile) oldFile.delete()
@@ -377,7 +378,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         status = "Generating font…"; syncActive(); val snapshot = activeProject ?: return
         executor.execute { runCatching {
             val file = generatedFile(snapshot.name)
-            file.writeBytes(TrueTypeGenerator().generate(snapshot.drawings, snapshot.wordSpacingMm, snapshot.letterSpacingMm, snapshot.name))
+            AtomicFontFile.write(file, TrueTypeGenerator().generate(snapshot.drawings, snapshot.wordSpacingMm, snapshot.letterSpacingMm, snapshot.name))
             file to loadTypeface(file)
         }.onSuccess { (file, typeface) -> main.post { generatedFont = file; previewTypeface = typeface; status = "${snapshot.name} generated and saved." } }
             .onFailure { error -> main.post { status = "Could not generate font: ${error.message ?: "unknown error"}" } } }
@@ -393,7 +394,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             val file = generatedFile(project.name)
             if (!file.exists()) {
                 if (project.drawings.isEmpty()) return@withContext null
-                file.writeBytes(TrueTypeGenerator().generate(project.drawings, project.wordSpacingMm, project.letterSpacingMm, project.name))
+                AtomicFontFile.write(file, TrueTypeGenerator().generate(project.drawings, project.wordSpacingMm, project.letterSpacingMm, project.name))
             }
             loadTypeface(file)
         }.getOrNull()
