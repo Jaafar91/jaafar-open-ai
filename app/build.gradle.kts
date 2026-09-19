@@ -8,10 +8,17 @@ android {
     namespace = "com.jaafar.remoteconfig"
     compileSdk = 36
 
-    // GITHUB_RUN_NUMBER restarts for each workflow, so it can make a Play
-    // release older than an APK built by a different workflow. Epoch seconds
-    // are monotonically increasing and remain below Android's versionCode limit.
-    val buildVersionCode = (System.currentTimeMillis() / 1_000L).toInt()
+    // GITHUB_RUN_NUMBER restarts for each workflow, so it can make a Play release older
+    // than an APK built by a different workflow -- wall-clock time avoids that regardless
+    // of which workflow builds it. Play caps versionCode at 2,100,000,000, though, and raw
+    // epoch SECONDS grows 1/sec forever: at that rate this app would hit the ceiling around
+    // 2036 no matter how often it ships. Counting minutes-since-anchor instead cuts the
+    // growth rate 60x, buying centuries of headroom. versionCodeBase is chosen comfortably
+    // above every versionCode this app has ever published (highest so far: ~1.79B as of
+    // 2026-09) so this switch can never produce a value <= a previously published release.
+    val versionCodeBase = 1_800_000_000L
+    val versionCodeAnchorEpochSeconds = 1_735_689_600L // 2025-01-01T00:00:00Z
+    val buildVersionCode = (versionCodeBase + (System.currentTimeMillis() / 1_000L - versionCodeAnchorEpochSeconds) / 60L).toInt()
     val ciBuildNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
 
     defaultConfig {
