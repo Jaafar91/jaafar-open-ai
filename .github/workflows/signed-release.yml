@@ -37,6 +37,19 @@ jobs:
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+      - name: Compute next Play versionCode
+        id: next_version_code
+        continue-on-error: true
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "No Play service account configured for this workflow; falling back to build.gradle.kts's local scheme."
+            exit 0
+          fi
+          python3 -m pip install --quiet google-auth requests
+          version_code=$(python3 .github/scripts/next_play_version_code.py --package-name com.mjaafar.fontcreator --increment 1)
+          echo "PLAY_VERSION_CODE=$version_code" >> "$GITHUB_ENV"
       - name: Build signed release bundle and APK
         run: gradle :app:bundleRelease :app:assembleRelease
       - name: Upload Play Store bundle

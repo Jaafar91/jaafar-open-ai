@@ -39,6 +39,17 @@ jobs:
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
 
+      - name: Compute next Play versionCode
+        id: next_version_code
+        if: env.PLAY_PUBLISH_ENABLED == 'true' && steps.restore_release_keystore.outcome == 'success'
+        continue-on-error: true
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python3 -m pip install --quiet google-auth requests
+          version_code=$(python3 .github/scripts/next_play_version_code.py --package-name com.mjaafar.fontcreator --increment 1)
+          echo "PLAY_VERSION_CODE=$version_code" >> "$GITHUB_ENV"
+
       - name: Build and upload release app
         id: build_release_bundle
         if: env.PLAY_PUBLISH_ENABLED == 'true' && steps.restore_release_keystore.outcome == 'success'
