@@ -148,7 +148,10 @@ internal fun removeNearWhitePixels(source: Bitmap, threshold: Int = 240): Bitmap
 }
 
 internal fun normalizedFontStorageKey(name: String): String =
-    name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+    // \p{L}/\p{N} (any Unicode letter/digit) rather than [a-z0-9] -- a name written entirely in
+    // Arabic, or any other non-Latin script this app supports, must not normalize to blank, or
+    // createProject()/renameActiveProject() silently reject it.
+    name.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), "-").trim('-')
 
 internal fun isDuplicateFontProjectName(existingNames: List<String>, candidate: String): Boolean {
     val clean = candidate.trim()
