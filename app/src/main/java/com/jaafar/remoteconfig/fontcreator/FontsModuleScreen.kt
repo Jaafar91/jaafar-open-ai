@@ -284,8 +284,13 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val duplicate = name.trim().isNotEmpty() && vm.hasFontName(name)
+    // keyboard.show() below opens the IME for this dialog's own field, but dismissing the
+    // dialog never hands focus to another text field -- Create jumps straight into the
+    // glyph-drawing canvas, which has none -- so without an explicit hide() here the keyboard
+    // is left floating over whatever's shown next.
+    val dismiss = { keyboard?.hide(); onDismiss() }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = dismiss,
         title = { Text("Name your font") },
         text = {
             LaunchedEffect(Unit) { focusRequester.requestFocus(); keyboard?.show() }
@@ -303,8 +308,11 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
             }
         },
         confirmButton = {
-            Button(onClick = { if (vm.createProject(name)) onCreated() }, enabled = name.isNotBlank() && !duplicate) { Text("Create font") }
+            Button(
+                onClick = { if (vm.createProject(name)) { keyboard?.hide(); onCreated() } },
+                enabled = name.isNotBlank() && !duplicate,
+            ) { Text("Create font") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
 }
