@@ -50,6 +50,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package-name", required=True)
     parser.add_argument("--increment", type=int, default=1)
+    parser.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="Allow a highest-published versionCode of 0 (a genuinely brand-new app's first release).",
+    )
     args = parser.parse_args()
 
     key_json = os.environ.get("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON")
@@ -70,12 +75,29 @@ def main() -> int:
     try:
         tracks_response = session.get(f"{app_base}/edits/{edit_id}/tracks")
         tracks_response.raise_for_status()
-        tracks = tracks_response.json().get("track", [])
+        # TracksListResponse wraps the array under "tracks" (plural) -- each element then has
+        # its own "track" (singular) field for that track's name.
+        tracks = tracks_response.json().get("tracks", [])
         highest_published = highest_version_code(tracks)
     finally:
         # Edits are drafts; discard it rather than leaving it open (an open
         # edit can block creating a new one on the next run).
         session.delete(f"{app_base}/edits/{edit_id}")
+
+    # A 0 here almost always means the response was parsed wrong (as literally just happened:
+    # an earlier version of this script read the wrong JSON key, silently got an empty track
+    # list, and computed versionCode=1 for an app that already had ~1.79B published -- CI's
+    # continue-on-error caught the resulting bad upload, but that's a safety net, not a check).
+    # A real brand-new app with genuinely zero releases needs --allow-empty to get past this.
+    if highest_published == 0 and not args.allow_empty:
+        print(
+            "No published versionCode found across any track. For an app with release "
+            "history, this means the query is broken, not that there are no releases -- "
+            "refusing to produce a versionCode based on it. Pass --allow-empty if this is "
+            "genuinely a brand-new app's first release.",
+            file=sys.stderr,
+        )
+        return 1
 
     next_version_code = highest_published + args.increment
 
