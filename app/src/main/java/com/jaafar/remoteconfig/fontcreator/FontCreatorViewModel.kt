@@ -20,6 +20,7 @@ import androidx.lifecycle.AndroidViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.Executors
 
 class FontCreatorViewModel(application: Application) : AndroidViewModel(application) {
@@ -117,7 +118,8 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             val file = generatedFile(project.name)
             runCatching {
                 // Keep Library fonts usable and current even if the user has not opened Preview.
-                file.writeBytes(
+                writeFontFileAtomically(
+                    file,
                     TrueTypeGenerator().generate(
                         project.drawings,
                         project.wordSpacingMm,
@@ -191,7 +193,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         executor.execute {
             runCatching {
                 val newFile = generatedFile(renamed.name)
-                newFile.writeBytes(TrueTypeGenerator().generate(renamed.drawings, renamed.wordSpacingMm, renamed.letterSpacingMm, renamed.name))
+                writeFontFileAtomically(newFile, TrueTypeGenerator().generate(renamed.drawings, renamed.wordSpacingMm, renamed.letterSpacingMm, renamed.name))
                 newFile to loadTypeface(newFile)
             }.onSuccess { (newFile, typeface) ->
                 if (oldFile != newFile) oldFile.delete()
@@ -377,7 +379,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         status = "Generating font…"; syncActive(); val snapshot = activeProject ?: return
         executor.execute { runCatching {
             val file = generatedFile(snapshot.name)
-            file.writeBytes(TrueTypeGenerator().generate(snapshot.drawings, snapshot.wordSpacingMm, snapshot.letterSpacingMm, snapshot.name))
+            writeFontFileAtomically(file, TrueTypeGenerator().generate(snapshot.drawings, snapshot.wordSpacingMm, snapshot.letterSpacingMm, snapshot.name))
             file to loadTypeface(file)
         }.onSuccess { (file, typeface) -> main.post { generatedFont = file; previewTypeface = typeface; status = "${snapshot.name} generated and saved." } }
             .onFailure { error -> main.post { status = "Could not generate font: ${error.message ?: "unknown error"}" } } }
@@ -393,7 +395,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             val file = generatedFile(project.name)
             if (!file.exists()) {
                 if (project.drawings.isEmpty()) return@withContext null
-                file.writeBytes(TrueTypeGenerator().generate(project.drawings, project.wordSpacingMm, project.letterSpacingMm, project.name))
+                writeFontFileAtomically(file, TrueTypeGenerator().generate(project.drawings, project.wordSpacingMm, project.letterSpacingMm, project.name))
             }
             loadTypeface(file)
         }.getOrNull()
@@ -701,6 +703,26 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun loadTypeface(file: File) = if (Build.VERSION.SDK_INT >= 26) Typeface.Builder(file).build() else Typeface.createFromFile(file)
+
+    /** Writes [bytes] to [file] atomically (write to a sibling temp file, then rename it over
+     *  [file]) instead of File.writeBytes()'s truncate-then-write. [generatedFile]s the same
+     *  path can be (re)written from up to three unsynchronized places at once -- allFontOptions()
+     *  on the caller's thread, generate() on [executor], typefaceForPreview() on Dispatchers.IO
+     *  -- and a plain truncate-then-write can momentarily leave the file empty/partial while
+     *  another thread's loadTypeface() has it mmap'd, crashing the process with SIGBUS.
+     *  File.renameTo() maps to the POSIX rename() syscall for two paths on the same filesystem
+     *  (always true here -- both live in filesDir), which is atomic, so any concurrent reader
+     *  always sees either the complete old file or the complete new one, never a torn write.
+     *  (java.nio.file.Files.move() would be clearer but requires API 26+; minSdk here is 24.) */
+    private fun writeFontFileAtomically(file: File, bytes: ByteArray) {
+        val tempFile = File(file.parentFile, "${file.name}.tmp-${System.nanoTime()}")
+        tempFile.writeBytes(bytes)
+        if (!tempFile.renameTo(file)) {
+            tempFile.delete()
+            throw IOException("Could not replace ${file.name}")
+        }
+    }
+
     private fun generatedFile(name: String) = File(getApplication<Application>().filesDir, "font-${normalizedFontStorageKey(name)}.ttf")
     // Both helpers stamp lastModifiedAt centrally (matching the iOS app's updateFont()) so
     // every edit path -- rename, spacing, language selection, saving a drawn letter -- keeps

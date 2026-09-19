@@ -23,6 +23,15 @@ class FontNameUniquenessTest {
     }
 
     @Test
+    fun `normalized key accepts non-Latin script names`() {
+        // A name written entirely in a non-Latin script (e.g. Arabic, one of this app's
+        // supported LanguageScripts) must not normalize to blank -- that silently blocks
+        // createProject()/renameActiveProject() from ever accepting it.
+        assertFalse(normalizedFontStorageKey("خط يدي").isBlank())
+        assertEquals(normalizedFontStorageKey("خط يدي"), normalizedFontStorageKey("خط   يدي"))
+    }
+
+    @Test
     fun `duplicate project name matches case and normalized variants`() {
         val existingNames = listOf("My Font")
 
