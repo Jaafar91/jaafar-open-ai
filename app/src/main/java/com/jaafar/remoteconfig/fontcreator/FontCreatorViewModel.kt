@@ -3,8 +3,6 @@ package com.jaafar.remoteconfig.fontcreator
 import android.app.Application
 import android.content.ContentResolver
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.ImageDecoder
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
@@ -535,13 +533,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         val fileName = "stamp-${System.currentTimeMillis()}.png"
         val outputFile = File(getApplication<Application>().filesDir, fileName)
         try {
-            val sourceBitmap: Bitmap = if (Build.VERSION.SDK_INT >= 28) {
-                ImageDecoder.decodeBitmap(ImageDecoder.createSource(contentResolver, uri)) { decoder, _, _ ->
-                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                }
-            } else {
-                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-            } ?: error("Cannot read source image")
+            // loadBitmap() downsamples to a bounded dimension instead of decoding the source
+            // image at full resolution -- a gallery photo picked as a stamp/signature can easily
+            // be 50MP+, which would otherwise blow up memory for no visual benefit here.
+            val sourceBitmap: Bitmap = loadBitmap(contentResolver, uri) ?: error("Cannot read source image")
             val outputBitmap = if (removeWhiteBackground) {
                 val result = removeNearWhitePixels(sourceBitmap)
                 sourceBitmap.recycle()
@@ -637,13 +632,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         val fileName = "stamp-${System.currentTimeMillis()}.png"
         val outputFile = File(getApplication<Application>().filesDir, fileName)
         try {
-            val sourceBitmap: Bitmap = if (Build.VERSION.SDK_INT >= 28) {
-                ImageDecoder.decodeBitmap(ImageDecoder.createSource(contentResolver, uri)) { decoder, _, _ ->
-                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                }
-            } else {
-                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-            } ?: error("Cannot read source image")
+            // loadBitmap() downsamples to a bounded dimension instead of decoding the source
+            // image at full resolution -- a gallery photo picked as a stamp/signature can easily
+            // be 50MP+, which would otherwise blow up memory for no visual benefit here.
+            val sourceBitmap: Bitmap = loadBitmap(contentResolver, uri) ?: error("Cannot read source image")
             val outputBitmap = if (removeWhiteBackground) {
                 val result = removeNearWhitePixels(sourceBitmap)
                 sourceBitmap.recycle()
