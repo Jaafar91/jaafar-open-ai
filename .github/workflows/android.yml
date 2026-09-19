@@ -39,6 +39,24 @@ jobs:
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
 
+      - name: Compute next Play versionCode
+        id: next_version_code
+        if: env.PLAY_PUBLISH_ENABLED == 'true' && steps.restore_release_keystore.outcome == 'success'
+        continue-on-error: true
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python3 -m pip install --quiet google-auth requests
+          set +e
+          version_code=$(python3 .github/scripts/next_play_version_code.py --package-name com.mjaafar.fontcreator --increment 1)
+          script_exit_code=$?
+          set -e
+          if [ "$script_exit_code" -eq 0 ] && [[ "$version_code" =~ ^[0-9]+$ ]]; then
+            echo "PLAY_VERSION_CODE=$version_code" >> "$GITHUB_ENV"
+          else
+            echo "::warning::next_play_version_code.py failed or returned an invalid value ('$version_code'); leaving PLAY_VERSION_CODE unset so build.gradle.kts falls back to its local scheme."
+          fi
+
       - name: Build and upload release app
         id: build_release_bundle
         if: env.PLAY_PUBLISH_ENABLED == 'true' && steps.restore_release_keystore.outcome == 'success'
