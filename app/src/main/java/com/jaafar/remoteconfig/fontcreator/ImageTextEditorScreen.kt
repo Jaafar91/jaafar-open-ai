@@ -337,10 +337,18 @@ fun ImageTextEditorScreen(
                                 .width(with(density) { editorWidthPx.toDp() })
                                 .border(1.dp, MaterialTheme.colorScheme.primary)
                                 .background(MaterialTheme.colorScheme.surface.copy(alpha = .35f))
-                                .padding(6.dp)
                                 .focusRequester(textFocusRequester),
                             // Text itself is invisible -- the Canvas above already draws the real,
-                            // correctly-wrapped text -- so only the cursor is visible here.
+                            // correctly-wrapped text -- so only the cursor is visible here. That
+                            // only works if this field's own line-wrapping agrees with
+                            // wrapTextLines' on where each line breaks -- which needs an identical
+                            // width. A `.padding()` here used to shrink this field's content width
+                            // below editorWidthPx (the width wrapTextLines above was called with),
+                            // so Compose's own wrapping broke a line one word earlier than the
+                            // Canvas text actually did. The cursor (the only visible part of this
+                            // field) then landed on the wrong row/character relative to what the
+                            // Canvas showed, so pressing Enter at a position that looked right
+                            // inserted the newline at the wrong point in the string entirely.
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
                                 color = Color.Transparent,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily(editingTypeface),
