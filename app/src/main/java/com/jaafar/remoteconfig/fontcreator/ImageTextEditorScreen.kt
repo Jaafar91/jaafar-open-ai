@@ -113,6 +113,7 @@ private data class TextLayer(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImageTextEditorScreen(
+    vm: FontCreatorViewModel,
     imageUri: Uri,
     fontOptions: List<Pair<String, Typeface>>,
     initiallySelectedFont: String? = null,
@@ -220,6 +221,7 @@ fun ImageTextEditorScreen(
                         onClick = {
                             bitmap?.let { source ->
                                 shareImage(context, renderImage(source, layers, ::typefaceFor))
+                                vm.recordUseOnImageExport()
                             }
                         },
                     ) { ActionIcon(ActionIconType.Share, "Share image") }

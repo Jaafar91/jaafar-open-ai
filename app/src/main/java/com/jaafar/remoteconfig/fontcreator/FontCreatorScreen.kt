@@ -161,12 +161,13 @@ fun FontCreatorApp(
                     showTutorial = false
                 },
             )
-            imageUri != null && !viewModel.isPro -> ProPaywallScreen(vm = viewModel, lockedFeature = "Use font on image") {
+            imageUri != null && viewModel.hasReachedFreeUseOnImageLimit -> ProPaywallScreen(vm = viewModel, lockedFeature = "Use font on image") {
                 imageUri = null
                 preferredImageFontName = null
                 initialImageText = ""
             }
             imageUri != null -> ImageTextEditorScreen(
+                vm = viewModel,
                 imageUri = imageUri!!,
                 fontOptions = imageFontOptions,
                 initiallySelectedFont = preferredImageFontName,
@@ -321,7 +322,7 @@ fun FontCreatorApp(
                         imagePicker.launch("image/*")
                     },
                 )
-                Screen.FillMark -> if (viewModel.isPro) {
+                Screen.FillMark -> if (!viewModel.hasReachedFreeFillMarkLimit) {
                     FillMarkScreen(
                         vm = viewModel,
                         initialUri = fillMarkUri,
@@ -468,7 +469,9 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
         }
     } else {
         Text(
-            "Free plan: 1 saved font, 1 signature, 1 stamp. Use font on image and Fill & Mark need Pro.",
+            "Free plan: 1 saved font, 1 signature, 1 stamp, and " +
+                "${FontCreatorViewModel.FREE_MONTHLY_FEATURE_EXPORTS} free exports a month each for " +
+                "Use font on image and Fill & Mark.",
             style = MaterialTheme.typography.bodySmall,
         )
         Button(onClick = openPaywall) { Text("Upgrade to Pro") }

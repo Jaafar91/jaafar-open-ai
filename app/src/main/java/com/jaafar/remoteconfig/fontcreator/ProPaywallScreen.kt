@@ -21,14 +21,15 @@ private val PRO_BENEFITS = listOf(
     "Unlimited saved fonts",
     "Unlimited saved signatures",
     "Unlimited saved stamps",
-    "Use your font on image",
-    "Fill & Mark documents",
+    "Unlimited use of Use font on image",
+    "Unlimited use of Fill & Mark",
 )
 
 /**
- * Shown instead of a locked feature (Use font on image, Fill & Mark) or reachable any time from
+ * Shown once a locked feature's free monthly quota (Use font on image, Fill & Mark -- see
+ * FontCreatorViewModel.FREE_MONTHLY_FEATURE_EXPORTS) is used up, or reachable any time from
  * Settings. [lockedFeature], when set, names the specific feature that led here, so the pitch
- * reads as "you need Pro for this" rather than a generic upsell.
+ * reads as "you've used this month's free X" rather than a generic upsell.
  */
 @Composable
 internal fun ProPaywallScreen(vm: FontCreatorViewModel, lockedFeature: String? = null, back: () -> Unit) {
@@ -36,9 +37,19 @@ internal fun ProPaywallScreen(vm: FontCreatorViewModel, lockedFeature: String? =
     val priceLabel = vm.billing.proPriceLabel
     Page("Font Maker Pro", back) {
         Text(
-            if (lockedFeature != null) "$lockedFeature is a Pro feature" else "Unlock Font Maker Pro",
+            if (lockedFeature != null) {
+                "You've used this month's ${FontCreatorViewModel.FREE_MONTHLY_FEATURE_EXPORTS} free \"$lockedFeature\" exports"
+            } else {
+                "Unlock Font Maker Pro"
+            },
             style = MaterialTheme.typography.headlineSmall,
         )
+        if (lockedFeature != null) {
+            Text(
+                "More free exports next month, or upgrade to Pro for unlimited, right now.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         Text(
             "One-time purchase, yours forever -- no subscription.",
             style = MaterialTheme.typography.bodyMedium,

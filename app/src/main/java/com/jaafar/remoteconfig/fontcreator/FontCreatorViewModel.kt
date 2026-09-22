@@ -32,11 +32,18 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             " .,!?\'\"-:;()".forEach { add(it.code) }; addAll((33..126).filter { it !in this })
         }.distinct()
 
-        // Free plan: 1 saved item of each kind. Pro removes these caps and unlocks Use font on
-        // image / Fill & Mark entirely (gated separately, at FontCreatorApp's navigation).
+        // Free plan: 1 saved item of each kind. Pro removes these caps.
         const val FREE_FONT_LIMIT = 1
         const val FREE_SIGNATURE_LIMIT = 1
         const val FREE_STAMP_LIMIT = 1
+
+        // Use font on image / Fill & Mark stay open on the free plan up to this many completed
+        // exports each, per calendar month -- not a hard Pro-only lock. Pro removes the cap.
+        const val FREE_MONTHLY_FEATURE_EXPORTS = 5
+        private const val PREFS_IMAGE_EXPORT_MONTH = "image_export_month"
+        private const val PREFS_IMAGE_EXPORT_COUNT = "image_export_count"
+        private const val PREFS_FILLMARK_EXPORT_MONTH = "fillmark_export_month"
+        private const val PREFS_FILLMARK_EXPORT_COUNT = "fillmark_export_count"
     }
 
     /** Returns the ordered code points for the active project's selected languages. */
@@ -69,6 +76,36 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     val isPro: Boolean get() = billing.isPro
+
+    /** "2026-9" style key for the current calendar month -- a monthly export count is only
+     *  valid while it was stored under this same key; any other stored key (or none) means
+     *  the count is from a previous month and reads as zero, no explicit reset step needed. */
+    private fun currentYearMonth(): String {
+        val calendar = java.util.Calendar.getInstance()
+        return "${calendar.get(java.util.Calendar.YEAR)}-${calendar.get(java.util.Calendar.MONTH)}"
+    }
+
+    private fun monthlyExportCount(monthKey: String, countKey: String): Int =
+        if (prefs.getString(monthKey, null) == currentYearMonth()) prefs.getInt(countKey, 0) else 0
+
+    private fun recordMonthlyExport(monthKey: String, countKey: String) {
+        if (isPro) return // Pro is unlimited -- nothing to track.
+        val nextCount = monthlyExportCount(monthKey, countKey) + 1
+        prefs.edit().putString(monthKey, currentYearMonth()).putInt(countKey, nextCount).apply()
+    }
+
+    val hasReachedFreeUseOnImageLimit: Boolean
+        get() = !isPro && monthlyExportCount(PREFS_IMAGE_EXPORT_MONTH, PREFS_IMAGE_EXPORT_COUNT) >= FREE_MONTHLY_FEATURE_EXPORTS
+    val hasReachedFreeFillMarkLimit: Boolean
+        get() = !isPro && monthlyExportCount(PREFS_FILLMARK_EXPORT_MONTH, PREFS_FILLMARK_EXPORT_COUNT) >= FREE_MONTHLY_FEATURE_EXPORTS
+
+    /** Call once a "Use font on image" export actually completes -- entering the screen or
+     *  placing text layers is free; only a completed export counts against the monthly cap. */
+    fun recordUseOnImageExport() = recordMonthlyExport(PREFS_IMAGE_EXPORT_MONTH, PREFS_IMAGE_EXPORT_COUNT)
+
+    /** Call once a Fill & Mark export actually completes -- same "only a completed export
+     *  counts" rule as [recordUseOnImageExport]. */
+    fun recordFillMarkExport() = recordMonthlyExport(PREFS_FILLMARK_EXPORT_MONTH, PREFS_FILLMARK_EXPORT_COUNT)
 
     // Hand-drawn (projects) and imported fonts are two separate lists/models, but count
     // together against the free plan's single shared font cap.

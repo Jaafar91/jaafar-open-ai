@@ -540,6 +540,7 @@ private fun FillMarkEditorScreen(
             isProcessing = false
             if (result != null) {
                 shareDocument(context, result.file, result.mimeType)
+                vm.recordFillMarkExport()
                 status = "Export ready to share."
             } else {
                 status = "Export failed."
