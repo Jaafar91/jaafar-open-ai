@@ -122,7 +122,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     private val repository = GlyphRepository(application)
     private val signatureRepository = SignatureRepository(application)
     private val importedFontRepository = ImportedFontRepository(application)
-    val billing = BillingManager(application)
+    internal val billing = BillingManager(application)
     private val prefs = application.getSharedPreferences("appearance", 0)
     private val executor = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
