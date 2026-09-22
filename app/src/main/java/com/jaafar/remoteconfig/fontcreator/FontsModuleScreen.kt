@@ -196,7 +196,7 @@ internal fun FontsModuleScreen(
                     OutlinedTextField(importName, { importName = it }, label = { Text("Font name") }, singleLine = true)
                     if (importCapReached) {
                         Text(
-                            "Free plan allows ${FontCreatorViewModel.FREE_FONT_LIMIT} font. Upgrade to Pro (Settings) for unlimited fonts.",
+                            "Free plan allows ${FontCreatorViewModel.FREE_FONT_LIMIT} font. Upgrade to Pro for unlimited fonts.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                         )
@@ -204,11 +204,15 @@ internal fun FontsModuleScreen(
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = { vm.importFont(context.contentResolver, uri, importName); pendingImport = null },
-                    enabled = importName.isNotBlank() && !importCapReached,
-                ) {
-                    Text("Import")
+                if (importCapReached) {
+                    UpgradeToProButton(vm)
+                } else {
+                    Button(
+                        onClick = { vm.importFont(context.contentResolver, uri, importName); pendingImport = null },
+                        enabled = importName.isNotBlank(),
+                    ) {
+                        Text("Import")
+                    }
                 }
             },
             dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } },
@@ -323,7 +327,7 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
                 )
                 if (capReached) {
                     Text(
-                        "Free plan allows ${FontCreatorViewModel.FREE_FONT_LIMIT} font. Upgrade to Pro (Settings) for unlimited fonts.",
+                        "Free plan allows ${FontCreatorViewModel.FREE_FONT_LIMIT} font. Upgrade to Pro for unlimited fonts.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -331,10 +335,14 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
             }
         },
         confirmButton = {
-            Button(
-                onClick = { if (vm.createProject(name)) { keyboard?.hide(); onCreated() } },
-                enabled = name.isNotBlank() && !duplicate && !capReached,
-            ) { Text("Create font") }
+            if (capReached) {
+                UpgradeToProButton(vm)
+            } else {
+                Button(
+                    onClick = { if (vm.createProject(name)) { keyboard?.hide(); onCreated() } },
+                    enabled = name.isNotBlank() && !duplicate,
+                ) { Text("Create font") }
+            }
         },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )

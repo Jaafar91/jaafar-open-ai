@@ -145,10 +145,11 @@ internal fun ImportStampFromImageScreen(
         )
         if (capReached) {
             Text(
-                "Free plan allows ${FontCreatorViewModel.FREE_STAMP_LIMIT} stamp. Upgrade to Pro (Settings) for unlimited stamps.",
+                "Free plan allows ${FontCreatorViewModel.FREE_STAMP_LIMIT} stamp. Upgrade to Pro for unlimited stamps.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
+            UpgradeToProButton(vm, modifier = Modifier.fillMaxWidth())
         }
         OutlinedButton(
             onClick = { picker.launch(arrayOf("image/*")) },
@@ -202,7 +203,7 @@ internal fun ImportStampFromImageScreen(
                     return@Button
                 }
                 if (capReached) {
-                    status = "Free plan allows ${FontCreatorViewModel.FREE_STAMP_LIMIT} stamp. Upgrade to Pro (Settings) for unlimited stamps."
+                    status = "Free plan allows ${FontCreatorViewModel.FREE_STAMP_LIMIT} stamp. Upgrade to Pro for unlimited stamps."
                     return@Button
                 }
                 val uri = selectedUri
@@ -345,10 +346,11 @@ internal fun SignatureEditorScreen(
             }
             if (capReached) {
                 Text(
-                    "Free plan allows ${FontCreatorViewModel.FREE_SIGNATURE_LIMIT} signature. Upgrade to Pro (Settings) for unlimited signatures.",
+                    "Free plan allows ${FontCreatorViewModel.FREE_SIGNATURE_LIMIT} signature. Upgrade to Pro for unlimited signatures.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
+                UpgradeToProButton(vm, modifier = Modifier.fillMaxWidth())
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // IconButton, not OutlinedButton -- Outlined's default content padding (~24dp a
@@ -379,7 +381,7 @@ internal fun SignatureEditorScreen(
                             return@Button
                         }
                         if (capReached) {
-                            status = "Free plan allows ${FontCreatorViewModel.FREE_SIGNATURE_LIMIT} signature. Upgrade to Pro (Settings) for unlimited signatures."
+                            status = "Free plan allows ${FontCreatorViewModel.FREE_SIGNATURE_LIMIT} signature. Upgrade to Pro for unlimited signatures."
                             return@Button
                         }
                         val savedName = if (current != null) {

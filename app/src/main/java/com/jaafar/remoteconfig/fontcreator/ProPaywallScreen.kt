@@ -26,6 +26,20 @@ private val PRO_BENEFITS = listOf(
 )
 
 /**
+ * A one-tap "Upgrade to Pro" button that launches the real purchase flow right where a free-plan
+ * cap was just hit (a creation dialog, a save screen) -- so upgrading is part of what the user
+ * was already doing instead of a detour through Settings. Mirrors ProPaywallScreen's own button.
+ */
+@Composable
+internal fun UpgradeToProButton(vm: FontCreatorViewModel, modifier: Modifier = Modifier) {
+    val activity = LocalContext.current as? Activity
+    val priceLabel = vm.billing.proPriceLabel
+    Button(onClick = { activity?.let(vm.billing::launchPurchase) }, modifier = modifier, enabled = activity != null) {
+        Text(if (priceLabel != null) "Upgrade to Pro — $priceLabel" else "Upgrade to Pro")
+    }
+}
+
+/**
  * Shown once a locked feature's free monthly quota (Use font on image, Fill & Mark -- see
  * FontCreatorViewModel.FREE_MONTHLY_FEATURE_EXPORTS) is used up, or reachable any time from
  * Settings. [lockedFeature], when set, names the specific feature that led here, so the pitch
