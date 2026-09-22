@@ -85,6 +85,9 @@ internal fun ImportStampFromImageScreen(
     val duplicateName = name.trim().isNotEmpty() &&
         !name.trim().equals(existing?.name, ignoreCase = true) &&
         vm.hasSavedSignatureName(name)
+    // Only creating a new stamp counts against the free plan's cap -- editing this one's name/
+    // image back (existing != null) doesn't add a stamp, so it's never blocked by it.
+    val capReached = existing == null && vm.hasReachedFreeStampLimit
     DisposableEffect(rawBitmap) {
         val bitmapToRecycle = rawBitmap
         onDispose { bitmapToRecycle?.recycle() }
@@ -140,10 +143,17 @@ internal fun ImportStampFromImageScreen(
                 if (duplicateName) Text("A saved signature or stamp already uses that name.")
             },
         )
+        if (capReached) {
+            Text(
+                "Free plan allows ${FontCreatorViewModel.FREE_STAMP_LIMIT} stamp. Upgrade to Pro (Settings) for unlimited stamps.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
         OutlinedButton(
             onClick = { picker.launch(arrayOf("image/*")) },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !saving,
+            enabled = !saving && !capReached,
         ) { Text(if (selectedUri == null) "Choose image" else "Choose a different image") }
         if (rawBitmap != null) {
             val bitmap = rawBitmap!!
@@ -191,6 +201,10 @@ internal fun ImportStampFromImageScreen(
                     status = "A saved signature or stamp already uses that name."
                     return@Button
                 }
+                if (capReached) {
+                    status = "Free plan allows ${FontCreatorViewModel.FREE_STAMP_LIMIT} stamp. Upgrade to Pro (Settings) for unlimited stamps."
+                    return@Button
+                }
                 val uri = selectedUri
                 if (uri == null) {
                     // Editing without picking a new image -- rename only, image unchanged.
@@ -229,7 +243,7 @@ internal fun ImportStampFromImageScreen(
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !saving && (selectedUri != null || existing != null) && !duplicateName,
+            enabled = !saving && (selectedUri != null || existing != null) && !duplicateName && !capReached,
         ) { Text(if (existing != null) "Save changes" else "Save stamp") }
         // Stamping a document is now Fill & Mark's job -- this just gets you there with this
         // stamp ready to place, instead of a separate bespoke sign-a-document screen.
@@ -269,6 +283,9 @@ internal fun SignatureEditorScreen(
     val duplicateName = name.trim().isNotEmpty() &&
         !name.trim().equals(current?.name, ignoreCase = true) &&
         vm.hasSavedSignatureName(name)
+    // Only creating a new signature counts against the free plan's cap -- redrawing/renaming
+    // this one back (existing != null) doesn't add a signature, so it's never blocked by it.
+    val capReached = existing == null && vm.hasReachedFreeSignatureLimit
 
     Page(if (existing != null) "Signature Workspace" else "New Signature", back, scrollable = true) {
         OutlinedTextField(
@@ -326,6 +343,13 @@ internal fun SignatureEditorScreen(
                     }
                 }
             }
+            if (capReached) {
+                Text(
+                    "Free plan allows ${FontCreatorViewModel.FREE_SIGNATURE_LIMIT} signature. Upgrade to Pro (Settings) for unlimited signatures.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // IconButton, not OutlinedButton -- Outlined's default content padding (~24dp a
                 // side) is sized for a text label, so three of them still crowded "Save changes"
@@ -354,6 +378,10 @@ internal fun SignatureEditorScreen(
                             status = "A saved signature or stamp already uses that name."
                             return@Button
                         }
+                        if (capReached) {
+                            status = "Free plan allows ${FontCreatorViewModel.FREE_SIGNATURE_LIMIT} signature. Upgrade to Pro (Settings) for unlimited signatures."
+                            return@Button
+                        }
                         val savedName = if (current != null) {
                             if (vm.updateSignature(current!!.name, name, strokes, canvasSize.first, canvasSize.second)) name.trim().ifEmpty { current!!.name } else null
                         } else {
@@ -373,7 +401,7 @@ internal fun SignatureEditorScreen(
                             status = "A saved signature or stamp already uses that name."
                         }
                     },
-                    enabled = strokes.isNotEmpty() && !duplicateName,
+                    enabled = strokes.isNotEmpty() && !duplicateName && !capReached,
                     modifier = Modifier.weight(1f),
                 ) { Text(if (current != null) "Save changes" else "Save signature") }
             }

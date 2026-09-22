@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
@@ -94,7 +95,7 @@ private val ModernDarkColors = darkColorScheme(
     outlineVariant = Color(0xFF45464F),
 )
 
-internal enum class Screen { Home, Fonts, Signatures, Stamps, FontCelebration, FontReady, Letters, FillMark, Settings }
+internal enum class Screen { Home, Fonts, Signatures, Stamps, FontCelebration, FontReady, Letters, FillMark, Settings, Paywall }
 
 @Composable
 fun FontCreatorApp(
@@ -160,6 +161,11 @@ fun FontCreatorApp(
                     showTutorial = false
                 },
             )
+            imageUri != null && !viewModel.isPro -> ProPaywallScreen(vm = viewModel, lockedFeature = "Use font on image") {
+                imageUri = null
+                preferredImageFontName = null
+                initialImageText = ""
+            }
             imageUri != null -> ImageTextEditorScreen(
                 imageUri = imageUri!!,
                 fontOptions = imageFontOptions,
@@ -315,21 +321,31 @@ fun FontCreatorApp(
                         imagePicker.launch("image/*")
                     },
                 )
-                Screen.FillMark -> FillMarkScreen(
-                    vm = viewModel,
-                    initialUri = fillMarkUri,
-                    initialMarkName = pendingSignatureMark,
-                    back = {
+                Screen.FillMark -> if (viewModel.isPro) {
+                    FillMarkScreen(
+                        vm = viewModel,
+                        initialUri = fillMarkUri,
+                        initialMarkName = pendingSignatureMark,
+                        back = {
+                            fillMarkUri = null
+                            pendingSignatureMark = null
+                            screen = Screen.Home
+                        },
+                    )
+                } else {
+                    ProPaywallScreen(vm = viewModel, lockedFeature = "Fill & Mark") {
                         fillMarkUri = null
                         pendingSignatureMark = null
                         screen = Screen.Home
-                    },
-                )
+                    }
+                }
                 Screen.Settings -> SettingsScreen(
                     vm = viewModel,
                     dark = darkTheme,
                     change = { value -> darkTheme = value; preferences.edit().putBoolean("dark_theme", value).apply() },
+                    openPaywall = { screen = Screen.Paywall },
                 ) { screen = Screen.Home }
+                Screen.Paywall -> ProPaywallScreen(vm = viewModel) { screen = Screen.Settings }
                 }
                 if (showCreateFontDialog) {
                     CreateFontDialog(
@@ -440,9 +456,24 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     vm: FontCreatorViewModel,
     dark: Boolean,
     change: (Boolean) -> Unit,
+    openPaywall: () -> Unit,
     back: () -> Unit,
 ) = Page("Settings", back, scrollable = true) {
     val context = LocalContext.current
+    Text("Membership", style = MaterialTheme.typography.titleMedium)
+    if (vm.isPro) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Text("Font Maker Pro is active. Thank you!", style = MaterialTheme.typography.bodyMedium)
+        }
+    } else {
+        Text(
+            "Free plan: 1 saved font, 1 signature, 1 stamp. Use font on image and Fill & Mark need Pro.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(onClick = openPaywall) { Text("Upgrade to Pro") }
+    }
+    HorizontalDivider()
     Text("Appearance", style = MaterialTheme.typography.titleMedium)
     Row(
         horizontalArrangement = Arrangement.spacedBy(20.dp),

@@ -31,6 +31,12 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             addAll('A'.code..'Z'.code); addAll('a'.code..'z'.code); addAll('0'.code..'9'.code)
             " .,!?\'\"-:;()".forEach { add(it.code) }; addAll((33..126).filter { it !in this })
         }.distinct()
+
+        // Free plan: 1 saved item of each kind. Pro removes these caps and unlocks Use font on
+        // image / Fill & Mark entirely (gated separately, at FontCreatorApp's navigation).
+        const val FREE_FONT_LIMIT = 1
+        const val FREE_SIGNATURE_LIMIT = 1
+        const val FREE_STAMP_LIMIT = 1
     }
 
     /** Returns the ordered code points for the active project's selected languages. */
@@ -62,9 +68,24 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return required.isNotEmpty() && project.drawings.map { it.codePoint }.toSet().containsAll(required)
     }
 
+    val isPro: Boolean get() = billing.isPro
+
+    // Hand-drawn (projects) and imported fonts are two separate lists/models, but count
+    // together against the free plan's single shared font cap.
+    val hasReachedFreeFontLimit: Boolean get() = !isPro && (projects.size + importedFonts.size) >= FREE_FONT_LIMIT
+
+    // Signatures and stamps share one SavedSignature list, told apart by imageFileName --
+    // null for a drawn signature, set for a stamp rasterized from a photo -- so each needs its
+    // own count against its own cap rather than one combined check.
+    val hasReachedFreeSignatureLimit: Boolean
+        get() = !isPro && signatures.count { it.imageFileName == null } >= FREE_SIGNATURE_LIMIT
+    val hasReachedFreeStampLimit: Boolean
+        get() = !isPro && signatures.count { it.imageFileName != null } >= FREE_STAMP_LIMIT
+
     private val repository = GlyphRepository(application)
     private val signatureRepository = SignatureRepository(application)
     private val importedFontRepository = ImportedFontRepository(application)
+    val billing = BillingManager(application)
     private val prefs = application.getSharedPreferences("appearance", 0)
     private val executor = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -136,6 +157,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun createProject(name: String): Boolean {
+        if (hasReachedFreeFontLimit) {
+            status = "Free plan allows $FREE_FONT_LIMIT font. Upgrade to Pro for unlimited fonts."
+            return false
+        }
         val clean = name.trim()
         if (clean.isBlank()) { status = "Enter a name for the font."; return false }
         val requestedStorageKey = normalizedFontStorageKey(clean)
@@ -400,6 +425,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun importFont(contentResolver: ContentResolver, uri: Uri, displayName: String) {
+        if (hasReachedFreeFontLimit) {
+            importStatus = "Free plan allows $FREE_FONT_LIMIT font. Upgrade to Pro for unlimited fonts."
+            return
+        }
         val cleanName = displayName.trim().ifEmpty { "Imported Font" }
         if (hasFontName(cleanName)) {
             importStatus = "A font with that name already exists."
@@ -510,6 +539,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun saveSignature(name: String, strokes: List<GlyphStroke>, canvasWidth: Float, canvasHeight: Float): String? {
+        if (hasReachedFreeSignatureLimit) return null
         val cleanInputName = name.trim()
         if (cleanInputName.isNotBlank() && hasSavedSignatureName(cleanInputName)) return null
         val cleanName = cleanInputName.ifEmpty { suggestedSignatureName("My signature") }
@@ -527,6 +557,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun saveSignatureFromImage(contentResolver: ContentResolver, uri: Uri, name: String, removeWhiteBackground: Boolean = true): String? {
+        if (hasReachedFreeStampLimit) return null
         val cleanInputName = name.trim()
         if (cleanInputName.isNotBlank() && hasSavedSignatureName(cleanInputName)) return null
         val cleanName = cleanInputName.ifEmpty { suggestedSignatureName("My stamp") }

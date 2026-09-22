@@ -284,6 +284,7 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val duplicate = name.trim().isNotEmpty() && vm.hasFontName(name)
+    val capReached = vm.hasReachedFreeFontLimit
     // keyboard.show() below opens the IME for this dialog's own field, but dismissing the
     // dialog never hands focus to another text field -- Create jumps straight into the
     // glyph-drawing canvas, which has none -- so without an explicit hide() here the keyboard
@@ -305,12 +306,19 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
                     isError = duplicate,
                     supportingText = { if (duplicate) Text("A font with that name already exists.") },
                 )
+                if (capReached) {
+                    Text(
+                        "Free plan allows ${FontCreatorViewModel.FREE_FONT_LIMIT} font. Upgrade to Pro (Settings) for unlimited fonts.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = { if (vm.createProject(name)) { keyboard?.hide(); onCreated() } },
-                enabled = name.isNotBlank() && !duplicate,
+                enabled = name.isNotBlank() && !duplicate && !capReached,
             ) { Text("Create font") }
         },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
