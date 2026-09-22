@@ -187,12 +187,27 @@ internal fun FontsModuleScreen(
     }
 
     pendingImport?.let { uri ->
+        val importCapReached = vm.hasReachedFreeFontLimit
         AlertDialog(
             onDismissRequest = { pendingImport = null },
             title = { Text("Name imported font") },
-            text = { OutlinedTextField(importName, { importName = it }, label = { Text("Font name") }, singleLine = true) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(importName, { importName = it }, label = { Text("Font name") }, singleLine = true)
+                    if (importCapReached) {
+                        Text(
+                            "Free plan allows ${FontCreatorViewModel.FREE_FONT_LIMIT} font. Upgrade to Pro (Settings) for unlimited fonts.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
             confirmButton = {
-                Button(onClick = { vm.importFont(context.contentResolver, uri, importName); pendingImport = null }, enabled = importName.isNotBlank()) {
+                Button(
+                    onClick = { vm.importFont(context.contentResolver, uri, importName); pendingImport = null },
+                    enabled = importName.isNotBlank() && !importCapReached,
+                ) {
                     Text("Import")
                 }
             },
