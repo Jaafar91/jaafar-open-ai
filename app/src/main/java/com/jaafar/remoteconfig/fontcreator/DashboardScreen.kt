@@ -38,16 +38,8 @@ internal fun DashboardScreen(
         actions = {
             IconButton(onClick = openSettings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
         },
-        // Pinned outside the scrolling content, like a bottom nav bar, so the upgrade pitch stays
-        // visible and reachable no matter how far down the page the rest of the content runs.
-        bottomBar = {
-            if (!vm.isPro) {
-                ProUpgradeBanner(
-                    onClick = { showProDialog = true },
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
-                )
-            }
-        },
+        // Scrollable so the extra Pro tile below the assets can't be clipped on a short screen.
+        scrollable = true,
     ) {
     // Picked by lastModifiedAt, matching the iOS app's equivalent defaults -- createProject
     // appends new projects at the end of the list, so indexOfFirst/lastOrNull only ever
@@ -123,6 +115,11 @@ internal fun DashboardScreen(
             }
         }
     }
+    // Sits directly under the assets (not pinned to the screen bottom): a pinned tile leaves a
+    // tall empty gap above it on any phone taller than the content.
+    if (!vm.isPro) {
+        ProUpgradeBanner(onClick = { showProDialog = true })
+    }
     }
     if (showProDialog) {
         ProFeaturesDialog(vm = vm) { showProDialog = false }
@@ -130,8 +127,7 @@ internal fun DashboardScreen(
 }
 
 /** Home's own entry point into the same "upgrade to Pro" journey shown at every free-plan cap --
- *  discoverable on its own, not only after hitting a limit. Hidden once already Pro. Pinned as
- *  the screen's bottomBar, so it stays fixed at the bottom rather than scrolling with content. */
+ *  discoverable on its own, not only after hitting a limit. Hidden once already Pro. */
 @Composable
 private fun ProUpgradeBanner(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Card(
