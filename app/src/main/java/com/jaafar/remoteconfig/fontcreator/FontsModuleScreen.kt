@@ -44,6 +44,7 @@ internal fun FontsModuleScreen(
     var projectToDelete by remember { mutableStateOf<FontProject?>(null) }
     var importedToDelete by remember { mutableStateOf<ImportedFont?>(null) }
     var showAddMenu by remember { mutableStateOf(false) }
+    var showImportProDialog by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             val raw = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -205,7 +206,7 @@ internal fun FontsModuleScreen(
             },
             confirmButton = {
                 if (importCapReached) {
-                    UpgradeToProButton(vm)
+                    Button(onClick = { showImportProDialog = true }) { Text("See Pro benefits") }
                 } else {
                     Button(
                         onClick = { vm.importFont(context.contentResolver, uri, importName); pendingImport = null },
@@ -217,6 +218,9 @@ internal fun FontsModuleScreen(
             },
             dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } },
         )
+        if (showImportProDialog) {
+            ProFeaturesDialog(vm = vm) { showImportProDialog = false }
+        }
     }
     projectToDelete?.let { project ->
         AlertDialog(
@@ -300,6 +304,7 @@ private fun FontStatusBadge(text: String, showCheck: Boolean) {
 @Composable
 internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
+    var showProDialog by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val duplicate = name.trim().isNotEmpty() && vm.hasFontName(name)
@@ -336,7 +341,7 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
         },
         confirmButton = {
             if (capReached) {
-                UpgradeToProButton(vm)
+                Button(onClick = { showProDialog = true }) { Text("See Pro benefits") }
             } else {
                 Button(
                     onClick = { if (vm.createProject(name)) { keyboard?.hide(); onCreated() } },
@@ -346,4 +351,7 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
         },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
+    if (showProDialog) {
+        ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
 }

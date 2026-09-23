@@ -95,7 +95,7 @@ private val ModernDarkColors = darkColorScheme(
     outlineVariant = Color(0xFF45464F),
 )
 
-internal enum class Screen { Home, Fonts, Signatures, Stamps, FontCelebration, FontReady, Letters, FillMark, Settings, Paywall }
+internal enum class Screen { Home, Fonts, Signatures, Stamps, FontCelebration, FontReady, Letters, FillMark, Settings }
 
 @Composable
 fun FontCreatorApp(
@@ -115,6 +115,7 @@ fun FontCreatorApp(
     var initialImageText by remember { mutableStateOf("") }
     var fontWorkspaceBack by remember { mutableStateOf(Screen.Home) }
     var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
+    var showFillMarkProDialog by remember { mutableStateOf(false) }
     var showCreateFontDialog by remember { mutableStateOf(false) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         imageUri = uri
@@ -161,12 +162,7 @@ fun FontCreatorApp(
                     showTutorial = false
                 },
             )
-            imageUri != null && viewModel.hasReachedFreeUseOnImageLimit -> ProPaywallScreen(vm = viewModel, lockedFeature = "Use font on image") {
-                imageUri = null
-                preferredImageFontName = null
-                initialImageText = ""
-            }
-            imageUri != null -> ImageTextEditorScreen(
+            imageUri != null && !viewModel.hasReachedFreeUseOnImageLimit -> ImageTextEditorScreen(
                 vm = viewModel,
                 imageUri = imageUri!!,
                 fontOptions = imageFontOptions,
@@ -334,19 +330,21 @@ fun FontCreatorApp(
                         },
                     )
                 } else {
-                    ProPaywallScreen(vm = viewModel, lockedFeature = "Fill & Mark") {
+                    // Screen.FillMark itself has nothing safe to render while capped (unlike
+                    // imageUri, it's not independent of `screen`) -- bounce back to Home and show
+                    // the shared Pro dialog on top of it instead of a dedicated paywall screen.
+                    LaunchedEffect(Unit) {
                         fillMarkUri = null
                         pendingSignatureMark = null
                         screen = Screen.Home
+                        showFillMarkProDialog = true
                     }
                 }
                 Screen.Settings -> SettingsScreen(
                     vm = viewModel,
                     dark = darkTheme,
                     change = { value -> darkTheme = value; preferences.edit().putBoolean("dark_theme", value).apply() },
-                    openPaywall = { screen = Screen.Paywall },
                 ) { screen = Screen.Home }
-                Screen.Paywall -> ProPaywallScreen(vm = viewModel) { screen = Screen.Settings }
                 }
                 if (showCreateFontDialog) {
                     CreateFontDialog(
@@ -359,6 +357,16 @@ fun FontCreatorApp(
                         },
                         onDismiss = { showCreateFontDialog = false },
                     )
+                }
+                if (imageUri != null && viewModel.hasReachedFreeUseOnImageLimit) {
+                    ProFeaturesDialog(vm = viewModel, lockedFeature = "Use font on image") {
+                        imageUri = null
+                        preferredImageFontName = null
+                        initialImageText = ""
+                    }
+                }
+                if (showFillMarkProDialog) {
+                    ProFeaturesDialog(vm = viewModel, lockedFeature = "Fill & Mark") { showFillMarkProDialog = false }
                 }
             }
         }
@@ -457,9 +465,10 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     vm: FontCreatorViewModel,
     dark: Boolean,
     change: (Boolean) -> Unit,
-    openPaywall: () -> Unit,
     back: () -> Unit,
-) = Page("Settings", back, scrollable = true) {
+) {
+    var showProDialog by remember { mutableStateOf(false) }
+    Page("Settings", back, scrollable = true) {
     val context = LocalContext.current
     Text("Membership", style = MaterialTheme.typography.titleMedium)
     if (vm.isPro) {
@@ -474,7 +483,7 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
                 "Use font on image and Fill & Mark.",
             style = MaterialTheme.typography.bodySmall,
         )
-        Button(onClick = openPaywall) { Text("Upgrade to Pro") }
+        Button(onClick = { showProDialog = true }) { Text("Upgrade to Pro") }
     }
     HorizontalDivider()
     Text("Appearance", style = MaterialTheme.typography.titleMedium)
@@ -506,6 +515,10 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
         onClick = { openPlayStoreListing(context) },
         modifier = Modifier.fillMaxWidth(),
     ) { Text("Rate this app") }
+    }
+    if (showProDialog) {
+        ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
 }
 
 private fun openPlayStoreListing(context: android.content.Context) {

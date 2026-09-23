@@ -52,7 +52,11 @@ internal fun DashboardScreen(
         ?: vm.projects.maxByOrNull { it.lastModifiedAt }?.name
         ?: vm.importedFonts.firstOrNull()?.displayName
     val hasAnyFont = vm.projects.isNotEmpty() || vm.importedFonts.isNotEmpty()
+    var showProDialog by remember { mutableStateOf(false) }
 
+    if (!vm.isPro) {
+        ProUpgradeBanner(onClick = { showProDialog = true })
+    }
     Text("Create and use", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     when {
         !hasAnyFont -> DashboardHero(
@@ -114,6 +118,30 @@ internal fun DashboardScreen(
                     Text(action.detail, style = MaterialTheme.typography.labelSmall)
                 }
             }
+        }
+    }
+    if (showProDialog) {
+        ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
+}
+
+/** Home's own entry point into the same "upgrade to Pro" journey shown at every free-plan cap --
+ *  discoverable on its own, not only after hitting a limit. Hidden once already Pro. */
+@Composable
+private fun ProUpgradeBanner(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Font Maker Pro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Unlock unlimited fonts, signatures, stamps & exports", style = MaterialTheme.typography.bodySmall)
+            }
+            Icon(Icons.Filled.ChevronRight, contentDescription = null)
         }
     }
 }

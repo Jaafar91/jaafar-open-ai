@@ -80,6 +80,7 @@ internal fun ImportStampFromImageScreen(
     var removeWhiteBackground by remember { mutableStateOf(true) }
     var status by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
+    var showProDialog by remember { mutableStateOf(false) }
     // Excludes the stamp's own current name -- editing it back to what it already was isn't a
     // duplicate, unlike creating a brand new one under a name already in use.
     val duplicateName = name.trim().isNotEmpty() &&
@@ -149,7 +150,7 @@ internal fun ImportStampFromImageScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
-            UpgradeToProButton(vm, modifier = Modifier.fillMaxWidth())
+            Button(onClick = { showProDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("See Pro benefits") }
         }
         OutlinedButton(
             onClick = { picker.launch(arrayOf("image/*")) },
@@ -202,10 +203,6 @@ internal fun ImportStampFromImageScreen(
                     status = "A saved signature or stamp already uses that name."
                     return@Button
                 }
-                if (capReached) {
-                    status = "Free plan allows ${FontCreatorViewModel.FREE_STAMP_LIMIT} stamp. Upgrade to Pro for unlimited stamps."
-                    return@Button
-                }
                 val uri = selectedUri
                 if (uri == null) {
                     // Editing without picking a new image -- rename only, image unchanged.
@@ -256,6 +253,9 @@ internal fun ImportStampFromImageScreen(
         if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall)
     }
+    if (showProDialog) {
+        ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
 }
 
 @Composable
@@ -271,6 +271,7 @@ internal fun SignatureEditorScreen(
     var active by remember { mutableStateOf<List<GlyphPoint>>(emptyList()) }
     var canvasSize by remember { mutableStateOf(1f to 1f) }
     var status by remember { mutableStateOf("") }
+    var showProDialog by remember { mutableStateOf(false) }
     // The freshest saved copy -- updated in place after each successful edit, so the read-only
     // preview below reflects the latest save without needing to pop back to the signatures list.
     var current by remember { mutableStateOf(existing) }
@@ -350,7 +351,6 @@ internal fun SignatureEditorScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
-                UpgradeToProButton(vm, modifier = Modifier.fillMaxWidth())
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // IconButton, not OutlinedButton -- Outlined's default content padding (~24dp a
@@ -374,38 +374,38 @@ internal fun SignatureEditorScreen(
                         isEditing = false
                     }) { Icon(Icons.Filled.Close, contentDescription = "Cancel") }
                 }
-                Button(
-                    onClick = {
-                        if (duplicateName) {
-                            status = "A saved signature or stamp already uses that name."
-                            return@Button
-                        }
-                        if (capReached) {
-                            status = "Free plan allows ${FontCreatorViewModel.FREE_SIGNATURE_LIMIT} signature. Upgrade to Pro for unlimited signatures."
-                            return@Button
-                        }
-                        val savedName = if (current != null) {
-                            if (vm.updateSignature(current!!.name, name, strokes, canvasSize.first, canvasSize.second)) name.trim().ifEmpty { current!!.name } else null
-                        } else {
-                            vm.saveSignature(name, strokes, canvasSize.first, canvasSize.second)
-                        }
-                        if (savedName != null) {
-                            status = "Saved."
-                            if (current != null) {
-                                // Stays on this same screen, now showing the just-saved result
-                                // as the read-only preview, instead of popping back to the list.
-                                current = vm.signatures.firstOrNull { it.name == savedName }
-                                isEditing = false
-                            } else {
-                                onSaved(savedName)
+                if (capReached) {
+                    Button(onClick = { showProDialog = true }, modifier = Modifier.weight(1f)) { Text("See Pro benefits") }
+                } else {
+                    Button(
+                        onClick = {
+                            if (duplicateName) {
+                                status = "A saved signature or stamp already uses that name."
+                                return@Button
                             }
-                        } else {
-                            status = "A saved signature or stamp already uses that name."
-                        }
-                    },
-                    enabled = strokes.isNotEmpty() && !duplicateName && !capReached,
-                    modifier = Modifier.weight(1f),
-                ) { Text(if (current != null) "Save changes" else "Save signature") }
+                            val savedName = if (current != null) {
+                                if (vm.updateSignature(current!!.name, name, strokes, canvasSize.first, canvasSize.second)) name.trim().ifEmpty { current!!.name } else null
+                            } else {
+                                vm.saveSignature(name, strokes, canvasSize.first, canvasSize.second)
+                            }
+                            if (savedName != null) {
+                                status = "Saved."
+                                if (current != null) {
+                                    // Stays on this same screen, now showing the just-saved result
+                                    // as the read-only preview, instead of popping back to the list.
+                                    current = vm.signatures.firstOrNull { it.name == savedName }
+                                    isEditing = false
+                                } else {
+                                    onSaved(savedName)
+                                }
+                            } else {
+                                status = "A saved signature or stamp already uses that name."
+                            }
+                        },
+                        enabled = strokes.isNotEmpty() && !duplicateName,
+                        modifier = Modifier.weight(1f),
+                    ) { Text(if (current != null) "Save changes" else "Save signature") }
+                }
             }
         }
         // Signing/stamping a document is now Fill & Mark's job -- this just gets you there
