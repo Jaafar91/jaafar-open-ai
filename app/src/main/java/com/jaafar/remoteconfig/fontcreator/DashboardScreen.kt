@@ -34,12 +34,21 @@ internal fun DashboardScreen(
     openFonts: () -> Unit,
     openSignatures: () -> Unit,
     openStamps: () -> Unit,
-) = Page(
-    "Studio",
-    actions = {
-        IconButton(onClick = openSettings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
-    },
 ) {
+    var showProDialog by remember { mutableStateOf(false) }
+    Page(
+        "Studio",
+        actions = {
+            IconButton(onClick = openSettings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
+        },
+        // Pinned outside the scrolling content, like a bottom nav bar, so the upgrade pitch stays
+        // visible and reachable no matter how far down the page the rest of the content runs.
+        bottomBar = {
+            if (!vm.isPro) {
+                ProUpgradeBanner(onClick = { showProDialog = true }, modifier = Modifier.padding(16.dp))
+            }
+        },
+    ) {
     // Picked by lastModifiedAt, matching the iOS app's equivalent defaults -- createProject
     // appends new projects at the end of the list, so indexOfFirst/lastOrNull only ever
     // reflected creation order and went stale the moment an *older* project was edited
@@ -52,11 +61,7 @@ internal fun DashboardScreen(
         ?: vm.projects.maxByOrNull { it.lastModifiedAt }?.name
         ?: vm.importedFonts.firstOrNull()?.displayName
     val hasAnyFont = vm.projects.isNotEmpty() || vm.importedFonts.isNotEmpty()
-    var showProDialog by remember { mutableStateOf(false) }
 
-    if (!vm.isPro) {
-        ProUpgradeBanner(onClick = { showProDialog = true })
-    }
     Text("Create and use", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     when {
         !hasAnyFont -> DashboardHero(
@@ -120,17 +125,19 @@ internal fun DashboardScreen(
             }
         }
     }
+    }
     if (showProDialog) {
         ProFeaturesDialog(vm = vm) { showProDialog = false }
     }
 }
 
 /** Home's own entry point into the same "upgrade to Pro" journey shown at every free-plan cap --
- *  discoverable on its own, not only after hitting a limit. Hidden once already Pro. */
+ *  discoverable on its own, not only after hitting a limit. Hidden once already Pro. Pinned as
+ *  the screen's bottomBar, so it stays fixed at the bottom rather than scrolling with content. */
 @Composable
-private fun ProUpgradeBanner(onClick: () -> Unit) {
+private fun ProUpgradeBanner(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
         shape = RoundedCornerShape(16.dp),
     ) {
