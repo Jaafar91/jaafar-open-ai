@@ -116,6 +116,18 @@ fun FontCreatorApp(
     var fontWorkspaceBack by remember { mutableStateOf(Screen.Home) }
     var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
     var showFillMarkProDialog by remember { mutableStateOf(false) }
+    // The monthly export counts live in SharedPreferences, which Compose can't observe -- and even
+    // if it could, re-evaluating them live would yank the user out of the editor the moment their
+    // last free export lands. So each gate is decided once, when the feature is *entered*, and
+    // stays put until it's left (the remember keys). Pro, which is observable, still overrides it.
+    val imageCapReachedAtEntry = remember(imageUri) {
+        imageUri != null && viewModel.hasReachedFreeUseOnImageLimit
+    }
+    val imageLocked = imageCapReachedAtEntry && !viewModel.isPro
+    val fillMarkCapReachedAtEntry = remember(screen == Screen.FillMark) {
+        screen == Screen.FillMark && viewModel.hasReachedFreeFillMarkLimit
+    }
+    val fillMarkLocked = fillMarkCapReachedAtEntry && !viewModel.isPro
     var showCreateFontDialog by remember { mutableStateOf(false) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         imageUri = uri
@@ -162,7 +174,7 @@ fun FontCreatorApp(
                     showTutorial = false
                 },
             )
-            imageUri != null && !viewModel.hasReachedFreeUseOnImageLimit -> ImageTextEditorScreen(
+            imageUri != null && !imageLocked -> ImageTextEditorScreen(
                 vm = viewModel,
                 imageUri = imageUri!!,
                 fontOptions = imageFontOptions,
@@ -318,7 +330,7 @@ fun FontCreatorApp(
                         imagePicker.launch("image/*")
                     },
                 )
-                Screen.FillMark -> if (!viewModel.hasReachedFreeFillMarkLimit) {
+                Screen.FillMark -> if (!fillMarkLocked) {
                     FillMarkScreen(
                         vm = viewModel,
                         initialUri = fillMarkUri,
@@ -358,8 +370,14 @@ fun FontCreatorApp(
                         onDismiss = { showCreateFontDialog = false },
                     )
                 }
-                if (imageUri != null && viewModel.hasReachedFreeUseOnImageLimit) {
-                    ProFeaturesDialog(vm = viewModel, lockedFeature = "Use font on image") {
+                if (imageUri != null && imageLocked) {
+                    ProFeaturesDialog(
+                        vm = viewModel,
+                        lockedFeature = "Use font on image",
+                        // Buying Pro here must keep the photo they picked -- `imageLocked` flips off
+                        // by itself and the editor takes over, so nothing to clear.
+                        onUnlocked = {},
+                    ) {
                         imageUri = null
                         preferredImageFontName = null
                         initialImageText = ""

@@ -35,12 +35,19 @@ private val PRO_BENEFITS = listOf(
  * "you've used this month's free X" rather than a generic upsell. Auto-dismisses once the
  * purchase actually completes (isPro flips), so a caller stacking this on top of its own dialog
  * (e.g. CreateFontDialog) naturally returns the user to that still-open dialog, now unlocked.
+ * A caller whose [onDismiss] discards the user's work (e.g. closing the photo they were editing)
+ * passes [onUnlocked] to handle the purchase-completed case differently from a plain "Not now".
  */
 @Composable
-internal fun ProFeaturesDialog(vm: FontCreatorViewModel, lockedFeature: String? = null, onDismiss: () -> Unit) {
+internal fun ProFeaturesDialog(
+    vm: FontCreatorViewModel,
+    lockedFeature: String? = null,
+    onUnlocked: (() -> Unit)? = null,
+    onDismiss: () -> Unit,
+) {
     val activity = LocalContext.current as? Activity
     val priceLabel = vm.billing.proPriceLabel
-    LaunchedEffect(vm.isPro) { if (vm.isPro) onDismiss() }
+    LaunchedEffect(vm.isPro) { if (vm.isPro) (onUnlocked ?: onDismiss)() }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Font Maker Pro") },
@@ -55,6 +62,9 @@ internal fun ProFeaturesDialog(vm: FontCreatorViewModel, lockedFeature: String? 
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                vm.billing.message?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     PRO_BENEFITS.forEach { benefit ->
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

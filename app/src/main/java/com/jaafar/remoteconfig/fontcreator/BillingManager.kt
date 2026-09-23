@@ -2,6 +2,7 @@ package com.jaafar.remoteconfig.fontcreator
 
 import android.app.Activity
 import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -25,13 +26,22 @@ import com.android.billingclient.api.QueryPurchasesParams
 internal const val PRO_PRODUCT_ID = "pro_unlock"
 
 /**
- * Owns the Play Billing connection and this app's one Pro entitlement. [isPro] is never set
- * from a locally cached flag -- only from what Play itself reports via [queryPurchasesAsync],
- * on every connection (app launch) and every [refreshPurchases] call (app foreground), so a
- * reinstall, a refund, or a purchase completed on another device is always reflected correctly.
+ * Owns the Play Billing connection and this app's one Pro entitlement. Play is the source of
+ * truth: [isPro] is overwritten by every successful [queryPurchasesAsync] result (app launch and
+ * every [refreshPurchases] call from onResume), so a refund or a purchase made on another device
+ * is picked up. The last confirmed value is cached in SharedPreferences purely as the starting
+ * value, so a paying user isn't treated as free before Play answers, while offline, or on a device
+ * without Play services -- only a *successful* Play response ever changes it (a failed/absent one
+ * never revokes Pro).
  */
 internal class BillingManager(application: Application) {
-    var isPro by mutableStateOf(false)
+    private val prefs = application.getSharedPreferences("billing", Context.MODE_PRIVATE)
+
+    var isPro by mutableStateOf(prefs.getBoolean(KEY_IS_PRO, false))
+        private set
+
+    /** User-facing reason the last billing action failed or Play is unavailable; null if none. */
+    var message by mutableStateOf<String?>(null)
         private set
 
     /** Play-formatted price ("$4.99" etc.) for the paywall, once product details load. */
@@ -41,8 +51,12 @@ internal class BillingManager(application: Application) {
     private var proProductDetails: ProductDetails? = null
 
     private val purchasesUpdatedListener = PurchasesUpdatedListener { billingResult, purchases ->
-        if (billingResult.responseCode == BillingResponseCode.OK) {
-            purchases?.forEach(::handlePurchase)
+        when (billingResult.responseCode) {
+            BillingResponseCode.OK -> purchases?.forEach(::handlePurchase)
+            BillingResponseCode.USER_CANCELED -> Unit
+            // Already bought (e.g. reinstall before the launch query finished): just re-sync.
+            BillingResponseCode.ITEM_ALREADY_OWNED -> refreshPurchases()
+            else -> message = "The purchase didn't go through. You haven't been charged."
         }
     }
 
@@ -56,8 +70,11 @@ internal class BillingManager(application: Application) {
         billingClient.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(billingResult: BillingResult) {
                 if (billingResult.responseCode == BillingResponseCode.OK) {
+                    message = null
                     queryProProductDetails()
                     refreshPurchases()
+                } else {
+                    message = "Google Play isn't available right now, so Pro can't be purchased."
                 }
             }
 
@@ -75,9 +92,11 @@ internal class BillingManager(application: Application) {
         val params = QueryPurchasesParams.newBuilder().setProductType(ProductType.INAPP).build()
         billingClient.queryPurchasesAsync(params) { billingResult, purchases ->
             if (billingResult.responseCode == BillingResponseCode.OK) {
-                isPro = purchases.any {
-                    it.products.contains(PRO_PRODUCT_ID) && it.purchaseState == Purchase.PurchaseState.PURCHASED
-                }
+                setPro(
+                    purchases.any {
+                        it.products.contains(PRO_PRODUCT_ID) && it.purchaseState == Purchase.PurchaseState.PURCHASED
+                    },
+                )
                 purchases.forEach(::handlePurchase)
             }
         }
@@ -99,6 +118,9 @@ internal class BillingManager(application: Application) {
                 val details = result.productDetailsList.firstOrNull()
                 proProductDetails = details
                 proPriceLabel = details?.oneTimePurchaseOfferDetailsList?.firstOrNull()?.formattedPrice
+                if (details == null) message = "Pro isn't available to buy right now. Please try again later."
+            } else {
+                message = "Couldn't load the Pro price from Google Play."
             }
         }
     }
@@ -107,8 +129,12 @@ internal class BillingManager(application: Application) {
      *  product details haven't loaded yet -- callers should keep the buy button disabled
      *  until [proPriceLabel] is non-null, but a stale tap during that window should be safe. */
     fun launchPurchase(activity: Activity) {
-        val details = proProductDetails ?: return
-        val offerToken = details.oneTimePurchaseOfferDetailsList?.firstOrNull()?.offerToken ?: return
+        val details = proProductDetails
+        val offerToken = details?.oneTimePurchaseOfferDetailsList?.firstOrNull()?.offerToken
+        if (details == null || offerToken == null) {
+            message = "Pro isn't available to buy right now. Please try again later."
+            return
+        }
         val params = BillingFlowParams.newBuilder()
             .setProductDetailsParamsList(
                 listOf(
@@ -119,13 +145,14 @@ internal class BillingManager(application: Application) {
                 )
             )
             .build()
-        billingClient.launchBillingFlow(activity, params)
+        val result = billingClient.launchBillingFlow(activity, params)
+        if (result.responseCode != BillingResponseCode.OK) message = "Couldn't open Google Play checkout."
     }
 
     private fun handlePurchase(purchase: Purchase) {
         if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return
         if (!purchase.products.contains(PRO_PRODUCT_ID)) return
-        isPro = true
+        setPro(true)
         // Play auto-refunds an unacknowledged purchase after 3 days, so every purchase this
         // listener/query sees must be acknowledged -- there's nothing else to deliver (the
         // unlock is just this flag), so acknowledge immediately rather than deferring it.
@@ -133,5 +160,14 @@ internal class BillingManager(application: Application) {
             val ackParams = AcknowledgePurchaseParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build()
             billingClient.acknowledgePurchase(ackParams) { }
         }
+    }
+
+    private fun setPro(value: Boolean) {
+        isPro = value
+        prefs.edit().putBoolean(KEY_IS_PRO, value).apply()
+    }
+
+    private companion object {
+        const val KEY_IS_PRO = "is_pro"
     }
 }
