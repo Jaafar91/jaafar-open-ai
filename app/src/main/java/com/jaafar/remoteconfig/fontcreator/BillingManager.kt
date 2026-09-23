@@ -92,7 +92,7 @@ internal class BillingManager(application: Application) {
         val params = QueryPurchasesParams.newBuilder().setProductType(ProductType.INAPP).build()
         billingClient.queryPurchasesAsync(params) { billingResult, purchases ->
             if (billingResult.responseCode == BillingResponseCode.OK) {
-                setPro(
+                updateEntitlement(
                     purchases.any {
                         it.products.contains(PRO_PRODUCT_ID) && it.purchaseState == Purchase.PurchaseState.PURCHASED
                     },
@@ -152,7 +152,7 @@ internal class BillingManager(application: Application) {
     private fun handlePurchase(purchase: Purchase) {
         if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return
         if (!purchase.products.contains(PRO_PRODUCT_ID)) return
-        setPro(true)
+        updateEntitlement(true)
         // Play auto-refunds an unacknowledged purchase after 3 days, so every purchase this
         // listener/query sees must be acknowledged -- there's nothing else to deliver (the
         // unlock is just this flag), so acknowledge immediately rather than deferring it.
@@ -162,7 +162,7 @@ internal class BillingManager(application: Application) {
         }
     }
 
-    private fun setPro(value: Boolean) {
+    private fun updateEntitlement(value: Boolean) {
         isPro = value
         prefs.edit().putBoolean(KEY_IS_PRO, value).apply()
     }
