@@ -2,9 +2,6 @@ package com.jaafar.remoteconfig.fontcreator
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -107,14 +104,12 @@ internal fun DashboardScreen(
         DashboardAction("Signatures", "${vm.signatures.count { it.imageFileName == null }} saved", Icons.Filled.Draw, openSignatures),
         DashboardAction("Stamps", "${vm.signatures.count { it.imageFileName != null }} saved", Icons.Filled.Approval, openStamps),
     )
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
-        modifier = Modifier.weight(1f),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(assets, key = { it.title }) { action ->
-            OutlinedCard(Modifier.fillMaxWidth().aspectRatio(.82f).clickable(onClick = action.click)) {
+    // A fixed 3-item row (Fonts/Signatures/Stamps), not a growing list -- a plain Row sizes to
+    // its own content instead of a Lazy grid's weight(1f) claiming all leftover height and
+    // leaving a large gap above the pinned Pro tile below.
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        assets.forEach { action ->
+            OutlinedCard(Modifier.weight(1f).aspectRatio(.82f).clickable(onClick = action.click)) {
                 Column(
                     Modifier.fillMaxSize().padding(10.dp),
                     verticalArrangement = Arrangement.Center,
