@@ -45,7 +45,10 @@ internal fun DashboardScreen(
         // visible and reachable no matter how far down the page the rest of the content runs.
         bottomBar = {
             if (!vm.isPro) {
-                ProUpgradeBanner(onClick = { showProDialog = true }, modifier = Modifier.padding(16.dp))
+                ProUpgradeBanner(
+                    onClick = { showProDialog = true },
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
+                )
             }
         },
     ) {
