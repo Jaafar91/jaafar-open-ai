@@ -45,6 +45,7 @@ internal fun FontsModuleScreen(
     var importedToDelete by remember { mutableStateOf<ImportedFont?>(null) }
     var showAddMenu by remember { mutableStateOf(false) }
     var showImportProDialog by remember { mutableStateOf(false) }
+    var showAddMenuProDialog by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             val raw = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -62,12 +63,22 @@ internal fun FontsModuleScreen(
         actions = {
             IconButton(onClick = { showAddMenu = true }) { ActionIcon(ActionIconType.Add, "Add font") }
             DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
-                DropdownMenuItem(text = { Text("Draw new font") }, onClick = { showAddMenu = false; createFont() })
+                DropdownMenuItem(
+                    text = { Text("Draw new font") },
+                    onClick = {
+                        showAddMenu = false
+                        if (vm.hasReachedFreeFontLimit) showAddMenuProDialog = true else createFont()
+                    },
+                )
                 DropdownMenuItem(
                     text = { Text("Import font file") },
                     onClick = {
                         showAddMenu = false
-                        picker.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream", "*/*"))
+                        if (vm.hasReachedFreeFontLimit) {
+                            showAddMenuProDialog = true
+                        } else {
+                            picker.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream", "*/*"))
+                        }
                     },
                 )
             }
@@ -239,6 +250,9 @@ internal fun FontsModuleScreen(
             confirmButton = { TextButton(onClick = { vm.deleteImportedFont(font.fileName); importedToDelete = null }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { importedToDelete = null }) { Text("Cancel") } },
         )
+    }
+    if (showAddMenuProDialog) {
+        ProFeaturesDialog(vm = vm) { showAddMenuProDialog = false }
     }
 }
 
