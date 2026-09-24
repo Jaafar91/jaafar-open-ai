@@ -64,7 +64,10 @@ import com.jaafar.remoteconfig.R
 ) = Page("Font workspace", back, actions = {
     val file = vm.generatedFont
     val project = vm.activeProject
-    if (file != null && project != null && vm.isProjectComplete(project)) ShareButton(file, project.name)
+    if (file != null && project != null && vm.isProjectComplete(project)) {
+        DownloadButton(file, project.name)
+        ShareButton(file, project.name)
+    }
 }) {
     val project = vm.activeProject
     val total = vm.activeCharacterOrder.size
