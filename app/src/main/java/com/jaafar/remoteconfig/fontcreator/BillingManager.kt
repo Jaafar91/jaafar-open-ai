@@ -44,9 +44,18 @@ internal class BillingManager(application: Application) {
     var message by mutableStateOf<String?>(null)
         private set
 
-    /** Play-formatted price ("$4.99" etc.) for the paywall, once product details load. */
+    /** Play-formatted price ("$4.99" etc.) for the paywall, once product details load. This is
+     *  the cheapest offer the user is currently eligible for (a discount offer if there is one). */
     var proPriceLabel by mutableStateOf<String?>(null)
         private set
+
+    /** Regular (undiscounted) price, only set when [proPriceLabel] is a genuine discount from it,
+     *  so the paywall can show it crossed out. */
+    var proOriginalPriceLabel by mutableStateOf<String?>(null)
+        private set
+
+    /** Offer token of the offer priced at [proPriceLabel] -- what launchPurchase buys. */
+    private var proOfferToken: String? = null
 
     private var proProductDetails: ProductDetails? = null
 
@@ -117,7 +126,15 @@ internal class BillingManager(application: Application) {
             if (billingResult.responseCode == BillingResponseCode.OK) {
                 val details = result.productDetailsList.firstOrNull()
                 proProductDetails = details
-                proPriceLabel = details?.oneTimePurchaseOfferDetailsList?.firstOrNull()?.formattedPrice
+                // The list holds the regular purchase option plus any discount offer this user
+                // is eligible for -- the app must pick the cheapest, not just the first.
+                val offers = details?.oneTimePurchaseOfferDetailsList.orEmpty()
+                val best = offers.minByOrNull { it.priceAmountMicros }
+                val regular = offers.maxByOrNull { it.priceAmountMicros }
+                proOfferToken = best?.offerToken
+                proPriceLabel = best?.formattedPrice
+                proOriginalPriceLabel =
+                    if (best != null && regular != null && regular.priceAmountMicros > best.priceAmountMicros) regular.formattedPrice else null
                 if (details == null) message = "Pro isn't available to buy right now. Please try again later."
             } else {
                 message = "Couldn't load the Pro price from Google Play."
@@ -130,7 +147,7 @@ internal class BillingManager(application: Application) {
      *  until [proPriceLabel] is non-null, but a stale tap during that window should be safe. */
     fun launchPurchase(activity: Activity) {
         val details = proProductDetails
-        val offerToken = details?.oneTimePurchaseOfferDetailsList?.firstOrNull()?.offerToken
+        val offerToken = proOfferToken
         if (details == null || offerToken == null) {
             message = "Pro isn't available to buy right now. Please try again later."
             return
