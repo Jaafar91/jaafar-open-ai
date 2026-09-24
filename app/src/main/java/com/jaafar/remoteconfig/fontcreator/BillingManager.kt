@@ -54,10 +54,6 @@ internal class BillingManager(application: Application) {
     var proOriginalPriceLabel by mutableStateOf<String?>(null)
         private set
 
-    /** When the discount offer ends (epoch millis), if Play reports an end time for it. */
-    var proOfferEndsAtMillis by mutableStateOf<Long?>(null)
-        private set
-
     /** Offer token of the offer priced at [proPriceLabel] -- what launchPurchase buys. */
     private var proOfferToken: String? = null
 
@@ -137,9 +133,8 @@ internal class BillingManager(application: Application) {
                 val regular = offers.maxByOrNull { it.priceAmountMicros }
                 proOfferToken = best?.offerToken
                 proPriceLabel = best?.formattedPrice
-                val discounted = best != null && regular != null && regular.priceAmountMicros > best.priceAmountMicros
-                proOriginalPriceLabel = if (discounted) regular?.formattedPrice else null
-                proOfferEndsAtMillis = if (discounted) best?.validTimeWindow?.endTimeMillis else null
+                proOriginalPriceLabel =
+                    if (best != null && regular != null && regular.priceAmountMicros > best.priceAmountMicros) regular.formattedPrice else null
                 if (details == null) message = "Pro isn't available to buy right now. Please try again later."
             } else {
                 message = "Couldn't load the Pro price from Google Play."

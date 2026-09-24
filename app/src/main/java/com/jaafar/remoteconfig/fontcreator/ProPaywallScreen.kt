@@ -76,13 +76,6 @@ internal fun ProFeaturesDialog(
                         Text(priceLabel, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                     }
                 }
-                vm.billing.proOfferEndsAtMillis?.takeIf { originalPriceLabel != null }?.let { endsAt ->
-                    Text(
-                        "Offer ends ${java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(endsAt))}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
                 vm.billing.message?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
