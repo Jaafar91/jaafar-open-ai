@@ -324,14 +324,13 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             .putString(PREFS_LAST_PHRASE, cleanPhrase)
             .putBoolean(PREFS_PHRASE_MODE, true)
             .apply()
-        val missingCharacters = phraseCharacters.filter { it !in drawings }
-        if (missingCharacters.isEmpty()) {
-            closeEditor()
-            clearPhraseModeState()
-            status = "Phrase ready — all required characters are already available."
-        } else {
-            startQueue(missingCharacters, "Phrase ready — all required characters are already available.")
-        }
+        // Queues every character of the phrase, not just the ones still missing -- so this also
+        // works as a "review/edit this phrase" flow for an already-complete font (e.g. from
+        // Fine-tune, touching up a letter the customer doesn't like), not only a "draw what's
+        // left" one. An already-drawn character just opens pre-loaded with its existing strokes
+        // (GlyphEditorScreen already does this via `initial = drawings[codePoint]`), so this is a
+        // genuine edit, not a blank redraw.
+        startQueue(phraseCharacters, "Phrase ready — nothing to draw or review.")
         return true
     }
 

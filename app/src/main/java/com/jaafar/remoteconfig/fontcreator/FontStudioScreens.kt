@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
@@ -129,6 +130,18 @@ import kotlinx.coroutines.delay
                     textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
                 )
             }
+        }
+        // Drops straight into the drawing canvas for the letters in previewText -- reusing
+        // phrase mode, now that it queues already-drawn characters too (see startPhrase) --
+        // instead of leaving "I don't like this letter" with no obvious way to fix it.
+        OutlinedButton(
+            onClick = { vm.startPhrase(previewText) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = previewText.isNotBlank(),
+        ) {
+            Icon(Icons.Filled.Edit, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Don't like a letter? Edit it")
         }
         if (vm.previewTypeface != null) {
             Surface(
