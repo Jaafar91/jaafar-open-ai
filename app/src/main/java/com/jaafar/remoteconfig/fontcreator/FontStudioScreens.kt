@@ -218,34 +218,62 @@ private fun SpacingSlider(
     }
 }
 
-@Composable internal fun ShareButton(file: java.io.File, name: String) {
-    val context = LocalContext.current
-    IconButton(onClick = { val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file); context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "font/ttf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Share $name")) }) { ActionIcon(ActionIconType.Share, "Share $name") }
+/** Lets the customer pick TTF/OTF/WOFF before [onFormatSelected] runs -- shared by [ShareButton]
+ *  and [DownloadButton] so the format choice looks and behaves the same in both places. */
+@Composable
+private fun FormatMenuIconButton(iconType: ActionIconType, description: String, onFormatSelected: (FontExportFormat) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) { ActionIcon(iconType, description) }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            FontExportFormat.entries.forEach { format ->
+                DropdownMenuItem(
+                    text = { Text(format.label) },
+                    onClick = { expanded = false; onFormatSelected(format) },
+                )
+            }
+        }
+    }
 }
 
-/** Saves the generated .ttf into the device's Downloads folder, distinct from [ShareButton]'s
+private fun shareExportedFont(context: android.content.Context, exported: java.io.File, format: FontExportFormat, name: String) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", exported)
+    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+        type = format.mimeType
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }, "Share $name"))
+}
+
+@Composable internal fun ShareButton(file: java.io.File, name: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    FormatMenuIconButton(ActionIconType.Share, "Share $name") { format ->
+        scope.launch {
+            val exported = withContext(Dispatchers.IO) { exportFontFile(context, file, name, format) }
+            shareExportedFont(context, exported, format, name)
+        }
+    }
+}
+
+/** Saves the generated font into the device's Downloads folder, distinct from [ShareButton]'s
  *  share sheet -- a customer who just wants a copy on their phone shouldn't have to go through
  *  another app to get one. Below Android 10 (no permission-free MediaStore.Downloads path,
  *  see [downloadToPublicDownloads]) this falls back to the same share sheet as [ShareButton]. */
 @Composable internal fun DownloadButton(file: java.io.File, name: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    IconButton(onClick = {
+    FormatMenuIconButton(ActionIconType.Download, "Download $name") { format ->
         scope.launch {
-            val displayName = "${normalizedFontStorageKey(name).ifBlank { "font" }}.ttf"
-            val saved = withContext(Dispatchers.IO) { downloadToPublicDownloads(context, file, displayName, "font/ttf") }
+            val exported = withContext(Dispatchers.IO) { exportFontFile(context, file, name, format) }
+            val saved = withContext(Dispatchers.IO) { downloadToPublicDownloads(context, exported, exported.name, format.mimeType) }
             if (saved) {
-                Toast.makeText(context, "Saved \"$displayName\" to Downloads", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Saved \"${exported.name}\" to Downloads", Toast.LENGTH_SHORT).show()
             } else {
-                val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-                context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                    type = "font/ttf"
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }, "Save $name"))
+                shareExportedFont(context, exported, format, name)
             }
         }
-    }) { ActionIcon(ActionIconType.Download, "Download $name") }
+    }
 }
 
 internal enum class ActionIconType { Add, Edit, Share, Import, Download }
