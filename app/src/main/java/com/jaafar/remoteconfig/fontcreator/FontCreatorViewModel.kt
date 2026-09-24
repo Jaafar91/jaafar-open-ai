@@ -279,7 +279,17 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun closeProject() { syncActive(); activeProjectIndex = null; drawings.clear(); generatedFont = null; previewTypeface = null }
-    fun edit(codePoint: Int) { lastEditedCodePoint = codePoint; isPagingMode = false; selectedCodePoint = codePoint }
+    /** Captured once per editing session (here and in [startQueue], its paging-mode equivalent)
+     *  so a save that finishes the session can tell a touch-up of an already-complete font (this
+     *  was already true when editing started) apart from a genuine first-time completion (it
+     *  wasn't) -- the former should return to wherever the customer was, not show the
+     *  celebration screen again. */
+    var wasCompleteBeforeCurrentEdit: Boolean = false
+        private set
+    fun edit(codePoint: Int) {
+        wasCompleteBeforeCurrentEdit = activeProject?.let(::isProjectComplete) == true
+        lastEditedCodePoint = codePoint; isPagingMode = false; selectedCodePoint = codePoint
+    }
     fun editLetters() {
         val order = activeCharacterOrder
         if (order.isEmpty()) { status = "No characters available."; return }
@@ -358,6 +368,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun startQueue(queue: List<Int>, emptyMessage: String) {
         if (queue.isEmpty()) { status = emptyMessage; return }
+        wasCompleteBeforeCurrentEdit = activeProject?.let(::isProjectComplete) == true
         pagingQueue = queue
         pagingHistory = emptyList()
         pagingTotal = queue.size

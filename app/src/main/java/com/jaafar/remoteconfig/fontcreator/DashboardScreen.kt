@@ -23,29 +23,21 @@ private data class DashboardAction(
 
 /** A square, icon-over-title-over-detail card -- the "asset" tile style from Home's "Your
  *  assets" row. Shared (not Home-only) so any screen wanting that same at-a-glance-tappable look
- *  gets it pixel-identical instead of a close approximation. The icon is a composable slot
- *  rather than a fixed [ImageVector] so a screen using its own hand-drawn icon glyphs (see
- *  [ActionIcon]) can still use this same card shape. */
+ *  gets it pixel-identical instead of a close approximation. */
 @Composable
-internal fun AssetStyleCard(title: String, detail: String, modifier: Modifier = Modifier, onClick: () -> Unit, icon: @Composable () -> Unit) {
+internal fun AssetStyleCard(title: String, detail: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
     OutlinedCard(modifier.aspectRatio(.82f).clickable(onClick = onClick)) {
         Column(
             Modifier.fillMaxSize().padding(10.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) { icon() }
+            Icon(icon, contentDescription = null, modifier = Modifier.size(30.dp))
             Spacer(Modifier.height(8.dp))
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
             Text(detail, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
         }
     }
-}
-
-/** Convenience overload for the common case of a plain Material [ImageVector] icon. */
-@Composable
-internal fun AssetStyleCard(title: String, detail: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    AssetStyleCard(title, detail, modifier, onClick) { Icon(icon, contentDescription = null, modifier = Modifier.size(30.dp)) }
 }
 
 @Composable

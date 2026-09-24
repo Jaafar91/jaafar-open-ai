@@ -212,27 +212,26 @@ fun FontCreatorApp(
                 onSelectCharacter = viewModel::edit,
                 onSkip = viewModel::skipLetter,
                 onSave = { drawing ->
+                    val wasComplete = viewModel.wasCompleteBeforeCurrentEdit
                     viewModel.saveDrawing(drawing)
                     if (viewModel.selectedCodePoint == null) {
                         viewModel.disablePhraseMode()
                         viewModel.generate()
-                        screen = if (viewModel.activeProject?.let(viewModel::isProjectComplete) == true) {
-                            Screen.FontCelebration
-                        } else {
-                            Screen.FontReady
-                        }
+                        val isComplete = viewModel.activeProject?.let(viewModel::isProjectComplete) == true
+                        // Only a genuine first-time completion earns the celebration screen -- a
+                        // touch-up edit of a font that was already complete (e.g. from Fine-tune's
+                        // "Don't like a letter? Edit it") returns to Fine-tune instead.
+                        screen = if (isComplete && !wasComplete) Screen.FontCelebration else Screen.FontReady
                     }
                 },
                 onSaveAndContinue = { drawing ->
+                    val wasComplete = viewModel.wasCompleteBeforeCurrentEdit
                     viewModel.saveDrawingAndContinue(drawing)
                     if (viewModel.selectedCodePoint == null) {
                         viewModel.disablePhraseMode()
                         viewModel.generate()
-                        screen = if (viewModel.activeProject?.let(viewModel::isProjectComplete) == true) {
-                            Screen.FontCelebration
-                        } else {
-                            Screen.FontReady
-                        }
+                        val isComplete = viewModel.activeProject?.let(viewModel::isProjectComplete) == true
+                        screen = if (isComplete && !wasComplete) Screen.FontCelebration else Screen.FontReady
                     }
                 },
                 onSaveAndStay = viewModel::saveDrawingAndStay,

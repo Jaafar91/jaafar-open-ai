@@ -61,13 +61,23 @@ import com.jaafar.remoteconfig.R
     back: () -> Unit,
     fineTune: () -> Unit,
     useOnImage: (String) -> Unit,
-) = Page("Font workspace", back, scrollable = true) {
+) = Page(
+    "Font workspace",
+    back,
+    scrollable = true,
+    actions = {
+        val file = vm.generatedFont
+        val project = vm.activeProject
+        if (file != null && project != null && vm.isProjectComplete(project)) {
+            DownloadButton(file, project.name)
+            ShareButton(file, project.name)
+        }
+    },
+) {
     val project = vm.activeProject
     val total = vm.activeCharacterOrder.size
     val drawn = vm.drawings.size
     val nextCode = vm.activeCharacterOrder.firstOrNull { it !in vm.drawings }
-    val file = vm.generatedFont
-    val isComplete = nextCode == null
     val useCurrentFont: () -> Unit = {
         project?.let {
             vm.generate()
@@ -140,14 +150,6 @@ import com.jaafar.remoteconfig.R
             icon = Icons.Filled.Tune,
             click = fineTune,
         )
-    }
-
-    if (file != null && project != null && isComplete) {
-        Text("Export", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ShareButton(file, project.name, Modifier.weight(1f))
-            DownloadButton(file, project.name, Modifier.weight(1f))
-        }
     }
 
     if (showRenameDialog && project != null) {

@@ -247,9 +247,7 @@ private fun shareExportedFont(context: android.content.Context, exported: java.i
     }, "Share $name"))
 }
 
-/** Renders as an [AssetStyleCard] -- the same tappable "asset tile" style Home uses -- so it
- *  reads as a real action on the screen instead of a small icon a customer might miss. */
-@Composable internal fun ShareButton(file: java.io.File, name: String, modifier: Modifier = Modifier) {
+@Composable internal fun ShareButton(file: java.io.File, name: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     FormatMenuAnchor(onFormatSelected = { format ->
@@ -258,16 +256,15 @@ private fun shareExportedFont(context: android.content.Context, exported: java.i
             shareExportedFont(context, exported, format, name)
         }
     }) { onClick ->
-        AssetStyleCard("Share", "Send to another app", modifier, onClick) { ActionIcon(ActionIconType.Share, "Share $name") }
+        IconButton(onClick = onClick) { ActionIcon(ActionIconType.Share, "Share $name") }
     }
 }
 
 /** Saves the generated font into the device's Downloads folder, distinct from [ShareButton]'s
  *  share sheet -- a customer who just wants a copy on their phone shouldn't have to go through
  *  another app to get one. Below Android 10 (no permission-free MediaStore.Downloads path,
- *  see [downloadToPublicDownloads]) this falls back to the same share sheet as [ShareButton].
- *  Renders as an [AssetStyleCard], matching [ShareButton]. */
-@Composable internal fun DownloadButton(file: java.io.File, name: String, modifier: Modifier = Modifier) {
+ *  see [downloadToPublicDownloads]) this falls back to the same share sheet as [ShareButton]. */
+@Composable internal fun DownloadButton(file: java.io.File, name: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     FormatMenuAnchor(onFormatSelected = { format ->
@@ -281,7 +278,7 @@ private fun shareExportedFont(context: android.content.Context, exported: java.i
             }
         }
     }) { onClick ->
-        AssetStyleCard("Download", "Save to your device", modifier, onClick) { ActionIcon(ActionIconType.Download, "Download $name") }
+        IconButton(onClick = onClick) { ActionIcon(ActionIconType.Download, "Download $name") }
     }
 }
 
