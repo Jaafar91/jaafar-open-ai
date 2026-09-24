@@ -16,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 
 private val PRO_BENEFITS = listOf(
@@ -48,7 +47,6 @@ internal fun ProFeaturesDialog(
 ) {
     val activity = LocalContext.current as? Activity
     val priceLabel = vm.billing.proPriceLabel
-    val originalPriceLabel = vm.billing.proOriginalPriceLabel
     LaunchedEffect(vm.isPro) { if (vm.isPro) (onUnlocked ?: onDismiss)() }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -64,18 +62,6 @@ internal fun ProFeaturesDialog(
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                if (priceLabel != null && originalPriceLabel != null) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Special offer:", style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            originalPriceLabel,
-                            style = MaterialTheme.typography.bodyMedium,
-                            textDecoration = TextDecoration.LineThrough,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(priceLabel, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                    }
-                }
                 vm.billing.message?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
