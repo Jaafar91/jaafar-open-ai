@@ -32,12 +32,21 @@ enum class LanguageScript(
     val codePoints: List<Int> by lazy { ranges.flatMap { it.toList() } }
 }
 
+/** What a font project is being made for -- asked once, at creation, only of a brand-new user
+ *  with no fonts yet (see CreateFontDialog); every other project keeps the default [EXPORT].
+ *  Only changes what [FontCreatorViewModel] requires for "complete": [USE_ON_IMAGE] only needs
+ *  letters and digits drawn (no punctuation/symbols) to unlock Fine-tune/Share/Download/the
+ *  celebration screen, since that covers what typically shows up captioning a photo; [EXPORT]
+ *  needs every character in the project's selected languages, as before this existed. */
+enum class FontGoal { USE_ON_IMAGE, EXPORT }
+
 data class FontProject(
     val name: String,
     val drawings: List<GlyphDrawing> = emptyList(),
     val letterSpacingMm: Float = 0f,
     val wordSpacingMm: Float = 3f,
     val selectedLanguages: Set<LanguageScript> = setOf(LanguageScript.BASIC_LATIN),
+    val goal: FontGoal = FontGoal.EXPORT,
     /** When this project was created or last edited -- matches the iOS app's
      *  `SavedAsset.lastModifiedAt`, used to find "the most recently created or modified
      *  font" for defaults like the dashboard's "Continue" card and "Use font on image",

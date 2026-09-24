@@ -329,6 +329,44 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
     // glyph-drawing canvas, which has none -- so without an explicit hide() here the keyboard
     // is left floating over whatever's shown next.
     val dismiss = { keyboard?.hide(); onDismiss() }
+
+    // Only a brand-new user (no fonts at all yet) is asked this -- an existing user creating
+    // another font keeps today's flow unchanged and always gets the full EXPORT requirement.
+    val isNewUser = vm.projects.isEmpty() && vm.importedFonts.isEmpty()
+    var askingGoal by remember { mutableStateOf(isNewUser) }
+    var goal by remember { mutableStateOf(FontGoal.EXPORT) }
+
+    if (askingGoal) {
+        AlertDialog(
+            onDismissRequest = dismiss,
+            title = { Text("What's this font for?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "This just decides how many characters you'll need to draw to finish -- you can always keep drawing more later.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    GoalOption(
+                        title = "Use it on images",
+                        detail = "Letters and numbers only -- the fastest way to start writing on photos.",
+                        selected = goal == FontGoal.USE_ON_IMAGE,
+                        onClick = { goal = FontGoal.USE_ON_IMAGE },
+                    )
+                    GoalOption(
+                        title = "Export a full font",
+                        detail = "Every character, including punctuation -- for installing or sharing the font file.",
+                        selected = goal == FontGoal.EXPORT,
+                        onClick = { goal = FontGoal.EXPORT },
+                    )
+                }
+            },
+            confirmButton = { Button(onClick = { askingGoal = false }) { Text("Next") } },
+            dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+        )
+        return
+    }
+
     AlertDialog(
         onDismissRequest = dismiss,
         title = { Text("Name your font") },
@@ -359,7 +397,7 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
                 Button(onClick = { showProDialog = true }) { Text("See Pro benefits") }
             } else {
                 Button(
-                    onClick = { if (vm.createProject(name)) { keyboard?.hide(); onCreated() } },
+                    onClick = { if (vm.createProject(name, goal)) { keyboard?.hide(); onCreated() } },
                     enabled = name.isNotBlank() && !duplicate,
                 ) { Text("Create font") }
             }
@@ -368,5 +406,16 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
     )
     if (showProDialog) {
         ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
+}
+
+@Composable
+private fun GoalOption(title: String, detail: String, selected: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick), verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(selected = selected, onClick = onClick)
+        Column {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }

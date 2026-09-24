@@ -52,18 +52,25 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         private const val PREFS_SUCCESSFUL_SHARE_COUNT = "successful_share_count_for_rating"
     }
 
-    /** Returns the ordered code points for the active project's selected languages. */
-    val activeCharacterOrder: List<Int> get() {
-        val project = activeProject ?: return CHARACTER_ORDER
+    /** The code points [project] actually needs drawn to be "complete" -- every character in its
+     *  selected languages, except a [FontGoal.USE_ON_IMAGE] project, which only needs letters and
+     *  digits (no punctuation/symbols): that's what typically shows up captioning a photo, so
+     *  such a project can unlock Fine-tune/Share/Download/the celebration screen sooner. Ordered
+     *  letters-then-digits(-then-symbols), the order [activeCharacterOrder] draws them in. */
+    private fun requiredCodePoints(project: FontProject): List<Int> {
         val codePoints = project.selectedLanguages
             .flatMap { it.codePoints }
             .distinct()
             .filter { it != 0x20 } // exclude plain space (handled separately in spacing)
         val letters = codePoints.filter { it.toChar().isLetter() }.sorted()
         val digits = codePoints.filter { it.toChar().isDigit() }.sorted()
+        if (project.goal == FontGoal.USE_ON_IMAGE) return letters + digits
         val symbols = codePoints.filter { !it.toChar().isLetter() && !it.toChar().isDigit() }.sorted()
         return letters + digits + symbols
     }
+
+    /** Returns the ordered code points for the active project's selected languages. */
+    val activeCharacterOrder: List<Int> get() = activeProject?.let(::requiredCodePoints) ?: CHARACTER_ORDER
 
     val phraseCharacterOrder: List<Int>
         get() = applicablePhraseCodePoints(lastPhrase, activeCharacterOrder.toSet())
@@ -71,13 +78,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     val editorCharacterOrder: List<Int>
         get() = if (phraseModeEnabled) phraseCharacterOrder else activeCharacterOrder
 
-    fun characterCount(project: FontProject): Int = project.selectedLanguages
-        .flatMap { it.codePoints }
-        .distinct()
-        .count { it != 0x20 }
+    fun characterCount(project: FontProject): Int = requiredCodePoints(project).size
 
     fun isProjectComplete(project: FontProject): Boolean {
-        val required = project.selectedLanguages.flatMap { it.codePoints }.filter { it != 0x20 }.toSet()
+        val required = requiredCodePoints(project)
         return required.isNotEmpty() && project.drawings.map { it.codePoint }.toSet().containsAll(required)
     }
 
@@ -220,7 +224,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return (generated + imported).sortedByDescending { it.modifiedAt }.map { it.name to it.typeface }
     }
 
-    fun createProject(name: String): Boolean {
+    fun createProject(name: String, goal: FontGoal = FontGoal.EXPORT): Boolean {
         if (hasReachedFreeFontLimit) {
             status = "Free plan allows $FREE_FONT_LIMIT font. Upgrade to Pro for unlimited fonts."
             return false
@@ -233,7 +237,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             status = "A font with that name already exists."
             return false
         }
-        projects.add(FontProject(clean)); openProject(projects.lastIndex); persist(); return true
+        projects.add(FontProject(clean, goal = goal)); openProject(projects.lastIndex); persist(); return true
     }
 
     fun hasFontName(name: String, excludingProjectIndex: Int? = null): Boolean {
