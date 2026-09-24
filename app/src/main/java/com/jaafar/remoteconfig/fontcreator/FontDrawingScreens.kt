@@ -98,8 +98,15 @@ import com.jaafar.remoteconfig.R
 
     // Same list-item card style as "Fonts"/"Signatures" (icon box, title + status badge,
     // subtitle, progress bar) instead of a stack of plain buttons -- percentage only, never a
-    // raw "N of 94" count.
-    Text("Draw and refine", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    // raw "N of 94" count. A muted section-label style here (rather than matching the font
+    // name's own heading style) keeps the two from reading as two stacked page titles.
+    Text(
+        "Draw and refine",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 4.dp),
+    )
     if (nextCode != null) {
         ActionListCard(
             icon = Icons.Filled.Edit,
@@ -109,22 +116,10 @@ import com.jaafar.remoteconfig.R
             progress = percentage / 100f,
             onClick = { vm.edit(nextCode) },
         )
-        ActionListCard(
-            icon = Icons.Filled.Image,
-            title = "Use this font on an image",
-            detail = "Try it out before you finish",
-            onClick = useCurrentFont,
-        )
     } else {
         // No badge/progress here -- this card is the action to take next, not a status; a
         // "Complete" badge plus a full progress bar plus "ready to use" said the same thing
         // three times.
-        ActionListCard(
-            icon = Icons.Filled.Image,
-            title = "Use this font on an image",
-            detail = "Your font is ready to use",
-            onClick = useCurrentFont,
-        )
         ActionListCard(
             icon = Icons.Filled.Edit,
             title = "Edit letters",
@@ -141,6 +136,14 @@ import com.jaafar.remoteconfig.R
             onClick = fineTune,
         )
     }
+
+    // Always last -- a secondary "try it out" action, not the primary thing to do next.
+    ActionListCard(
+        icon = Icons.Filled.Image,
+        title = "Use this font on an image",
+        detail = if (nextCode != null) "Try it out before you finish" else "Your font is ready to use",
+        onClick = useCurrentFont,
+    )
 
     if (showRenameDialog && project != null) {
         val cleanName = renameName.trim()
