@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /** Matches iOS's "Complete" green -- Material has no built-in success color. */
-private val CompleteGreen = Color(0xFF2E7D32)
+internal val CompleteGreen = Color(0xFF2E7D32)
 
 @Composable
 internal fun FontsModuleScreen(
@@ -112,6 +112,7 @@ internal fun FontsModuleScreen(
                         val complete = vm.isProjectComplete(project)
                         val total = vm.characterCount(project).coerceAtLeast(1)
                         val drawn = project.drawings.size.coerceAtMost(total)
+                        val percentage = (drawn * 100 / total).coerceIn(0, 100)
                         // The *real* generated font, loaded off the main thread -- the same one
                         // Fine-tune shows -- so the name and thumbnail here match that screen
                         // exactly instead of approximating it from raw pen strokes.
@@ -137,7 +138,7 @@ internal fun FontsModuleScreen(
                                             fontFamily = previewTypeface?.let { androidx.compose.ui.text.font.FontFamily(it) },
                                             modifier = Modifier.weight(1f, fill = false),
                                         )
-                                        FontStatusBadge(if (complete) "Complete" else "$drawn of $total", showCheck = complete)
+                                        FontStatusBadge(if (complete) "Complete" else "$percentage%", showCheck = complete)
                                     }
                                     Text(
                                         "Created font",
@@ -299,9 +300,9 @@ private fun AaThumbnail(typeface: android.graphics.Typeface?) {
     }
 }
 
-/** Small colored capsule, e.g. "Complete" or "12 of 94". */
+/** Small colored capsule, e.g. "Complete" or "42%". */
 @Composable
-private fun FontStatusBadge(text: String, showCheck: Boolean) {
+internal fun FontStatusBadge(text: String, showCheck: Boolean) {
     val color = if (showCheck) CompleteGreen else MaterialTheme.colorScheme.primary
     Row(
         Modifier

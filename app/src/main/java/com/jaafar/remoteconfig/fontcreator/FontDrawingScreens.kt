@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
@@ -42,6 +43,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -93,62 +95,51 @@ import com.jaafar.remoteconfig.R
             Icon(Icons.Filled.Edit, contentDescription = "Rename font")
         }
     }
-    // Same information as before (progress toward a complete font), same rounding as the rest
-    // of the app's status/promo cards -- just no longer the only visually "card-like" element
-    // on a screen that's otherwise a stack of plain buttons.
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(16.dp)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("$drawn of $total letters", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            if (total > 0) LinearProgressIndicator(progress = (drawn.toFloat() / total).coerceIn(0f, 1f), modifier = Modifier.fillMaxWidth())
-        }
-    }
+    val percentage = if (total > 0) (drawn * 100 / total).coerceIn(0, 100) else 0
 
-    // Same Hero-for-the-main-action, RowAction-for-everything-else language as Home, so the
-    // most important thing to do next is exactly as visible here as it is there.
+    // Same list-item card style as "Fonts"/"Signatures" (icon box, title + status badge,
+    // subtitle, progress bar) instead of a stack of plain buttons -- percentage only, never a
+    // raw "N of 94" count.
     Text("Draw and refine", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-    when {
-        drawn == 0 && nextCode != null -> DashboardHero(
-            title = "Start your font",
-            detail = "Draw your first letter to begin",
+    if (nextCode != null) {
+        ActionListCard(
             icon = Icons.Filled.Edit,
-            click = { vm.edit(nextCode) },
+            title = if (drawn == 0) "Start your font" else "Continue drawing",
+            detail = if (drawn == 0) "Draw your first letter to begin" else "Keep going -- draw your next letter",
+            badge = "$percentage%",
+            progress = percentage / 100f,
+            onClick = { vm.edit(nextCode) },
         )
-        nextCode != null -> {
-            DashboardHero(
-                title = "Continue drawing",
-                detail = "$drawn of $total letters -- keep going!",
-                icon = Icons.Filled.Edit,
-                click = { vm.edit(nextCode) },
-            )
-            DashboardRowAction(
-                title = "Use this font on an image",
-                detail = "Try it out before you finish",
-                icon = Icons.Filled.Image,
-                click = useCurrentFont,
-            )
-        }
-        else -> {
-            DashboardHero(
-                title = "Use this font on an image",
-                detail = "All $total letters complete -- ready to use",
-                icon = Icons.Filled.Image,
-                click = useCurrentFont,
-            )
-            DashboardRowAction(
-                title = "Edit letters",
-                detail = "Touch up any letter, any time",
-                icon = Icons.Filled.Edit,
-                click = vm::editLetters,
-            )
-        }
+        ActionListCard(
+            icon = Icons.Filled.Image,
+            title = "Use this font on an image",
+            detail = "Try it out before you finish",
+            onClick = useCurrentFont,
+        )
+    } else {
+        ActionListCard(
+            icon = Icons.Filled.CheckCircle,
+            title = "Use this font on an image",
+            detail = "Your font is ready to use",
+            badge = "Complete",
+            badgeComplete = true,
+            progress = 1f,
+            onClick = useCurrentFont,
+        )
+        ActionListCard(
+            icon = Icons.Filled.Edit,
+            title = "Edit letters",
+            detail = "Touch up any letter, any time",
+            onClick = vm::editLetters,
+        )
     }
 
     if (drawn > 0) {
-        DashboardRowAction(
+        ActionListCard(
+            icon = Icons.Filled.Tune,
             title = "Fine-tune your font",
             detail = "Adjust spacing and preview",
-            icon = Icons.Filled.Tune,
-            click = fineTune,
+            onClick = fineTune,
         )
     }
 
@@ -184,6 +175,53 @@ import com.jaafar.remoteconfig.R
             },
             dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/** A full-width row card -- icon box, title (+ optional status badge), subtitle, optional
+ *  progress bar -- matching the "Fonts"/"Signatures" list-item card style used when browsing
+ *  saved items from Home, so a workflow's next action reads with that same familiar weight
+ *  instead of a plain button or a Home-style tile. */
+@Composable
+private fun ActionListCard(
+    icon: ImageVector,
+    title: String,
+    detail: String,
+    onClick: () -> Unit,
+    badge: String? = null,
+    badgeComplete: Boolean = false,
+    progress: Float? = null,
+) {
+    OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(56.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (badge != null) FontStatusBadge(badge, showCheck = badgeComplete)
+                }
+                Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (progress != null) {
+                    LinearProgressIndicator(
+                        progress = progress.coerceIn(0f, 1f),
+                        modifier = Modifier.fillMaxWidth(),
+                        color = if (badgeComplete) CompleteGreen else MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -465,8 +503,9 @@ internal fun SpacingControl(
                 Spacer(Modifier.height(8.dp))
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                val percentage = if (characterOrder.isEmpty()) 0 else (completedCharacterCount * 100 / characterOrder.size).coerceIn(0, 100)
                 Text(
-                    "$completedCharacterCount / ${characterOrder.size} completed",
+                    "$percentage% completed",
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
