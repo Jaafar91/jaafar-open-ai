@@ -26,6 +26,9 @@ class GlyphRepository(context: Context) {
                 // Projects saved before this field existed have no recorded goal -- EXPORT
                 // matches their actual behavior (the full character set was always required).
                 val goal = runCatching { FontGoal.valueOf(item.getString("goal")) }.getOrDefault(FontGoal.EXPORT)
+                // Projects saved before this field existed have no recorded preview phrase --
+                // the shared default text is the same thing every project effectively used.
+                val previewPhrase = item.optString("previewPhrase", DEFAULT_PREVIEW_TEXT)
                 add(FontProject(
                     name = item.getString("name"),
                     drawings = buildList {
@@ -35,6 +38,7 @@ class GlyphRepository(context: Context) {
                     wordSpacingMm = item.optDouble("wordSpacingMm", 3.0).toFloat(),
                     selectedLanguages = selectedLanguages,
                     goal = goal,
+                    previewPhrase = previewPhrase,
                     // Projects saved before this field existed have no recorded edit time --
                     // 0 sorts them before anything with a real timestamp, same as iOS's
                     // decodeIfPresent-with-createdAt-fallback does for its equivalent field.
@@ -57,6 +61,7 @@ class GlyphRepository(context: Context) {
                 put("wordSpacingMm", project.wordSpacingMm.toDouble())
                 put("selectedLanguages", JSONArray().apply { project.selectedLanguages.forEach { put(it.name) } })
                 put("goal", project.goal.name)
+                put("previewPhrase", project.previewPhrase)
                 put("lastModifiedAt", project.lastModifiedAt)
                 put("drawings", JSONArray().apply {
                     project.drawings.sortedBy { it.codePoint }.forEach { put(it.toJson()) }

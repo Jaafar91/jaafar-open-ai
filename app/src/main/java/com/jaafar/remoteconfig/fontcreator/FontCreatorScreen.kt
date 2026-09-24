@@ -107,7 +107,6 @@ fun FontCreatorApp(
     val preferences = remember { context.getSharedPreferences("appearance", 0) }
     var darkTheme by remember { mutableStateOf(preferences.getBoolean("dark_theme", false)) }
     var showTutorial by remember { mutableStateOf(sharedUri == null && !preferences.getBoolean("feature_tutorial_seen", false)) }
-    var previewText by remember { mutableStateOf(preferences.getString("preview_text", DEFAULT_PREVIEW_TEXT) ?: DEFAULT_PREVIEW_TEXT) }
     var screen by remember { mutableStateOf(if (sharedUri != null) Screen.FillMark else Screen.Home) }
     var fillMarkUri by remember { mutableStateOf<Uri?>(sharedUri) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
@@ -197,15 +196,7 @@ fun FontCreatorApp(
                 referenceTypeface = referenceTypeface,
                 phraseModeEnabled = viewModel.phraseModeEnabled,
                 phraseText = viewModel.lastPhrase,
-                onCreatePhrase = { phrase ->
-                    if (viewModel.startPhrase(phrase)) {
-                        previewText = phrase.trim()
-                        preferences.edit().putString("preview_text", previewText).apply()
-                        true
-                    } else {
-                        false
-                    }
-                },
+                onCreatePhrase = viewModel::startPhrase,
                 onDisablePhrase = viewModel::disablePhraseMode,
                 onCancel = viewModel::closeEditor,
                 onPrevious = viewModel::previousLetter,
@@ -307,8 +298,8 @@ fun FontCreatorApp(
                 }
                 Screen.FontReady -> FontReadyScreen(
                     vm = viewModel,
-                    previewText = previewText,
-                    changePreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
+                    previewText = viewModel.lastPhrase,
+                    changePreviewText = viewModel::setPreviewPhrase,
                     back = { screen = Screen.Letters },
                     useOnImage = { fontName, text ->
                         preferredImageFontName = fontName
@@ -325,7 +316,7 @@ fun FontCreatorApp(
                     },
                     useOnImage = { fontName ->
                         preferredImageFontName = fontName
-                        initialImageText = previewText
+                        initialImageText = viewModel.lastPhrase
                         imagePicker.launch("image/*")
                     },
                 )

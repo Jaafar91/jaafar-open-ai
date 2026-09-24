@@ -95,9 +95,22 @@ import kotlinx.coroutines.withContext
             if (vm.setSpacing(letterSpacing.toString(), wordSpacing.toString())) vm.generate()
         }
     }
+    // Local echo of the project's own preview phrase for responsive typing; committed to the
+    // project (debounced), not on every keystroke -- same reasoning as the spacing sliders
+    // above, just without needing a font regenerate/reload on each commit.
+    var localPreviewText by remember(project.name) { mutableStateOf(previewText) }
+    var isFirstPreviewTextChange by remember(project.name) { mutableStateOf(true) }
+    LaunchedEffect(localPreviewText) {
+        if (isFirstPreviewTextChange) {
+            isFirstPreviewTextChange = false
+        } else {
+            delay(150)
+            changePreviewText(localPreviewText)
+        }
+    }
     // Word spacing has no visible effect with only one word in the preview -- there's nothing
     // to space apart -- so its control is disabled rather than left inertly interactive.
-    val previewWordCount = previewText.trim().split(Regex("\\s+")).count { it.isNotBlank() }
+    val previewWordCount = localPreviewText.trim().split(Regex("\\s+")).count { it.isNotBlank() }
 
     // Matches the iOS app's "Fine-tune your font" screen: the preview *is* the screen --
     // a big live-rendered card with the text field woven directly into it, a single
@@ -138,7 +151,7 @@ import kotlinx.coroutines.withContext
                         CircularProgressIndicator()
                     } else {
                         Text(
-                            previewText.ifBlank { " " },
+                            localPreviewText.ifBlank { " " },
                             style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily(typeface)),
                             textAlign = TextAlign.Center,
                             maxLines = 3,
@@ -146,8 +159,8 @@ import kotlinx.coroutines.withContext
                     }
                 }
                 OutlinedTextField(
-                    value = previewText,
-                    onValueChange = changePreviewText,
+                    value = localPreviewText,
+                    onValueChange = { localPreviewText = it },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Type something to preview") },
                     textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
@@ -158,9 +171,9 @@ import kotlinx.coroutines.withContext
         // phrase mode, now that it queues already-drawn characters too (see startPhrase) --
         // instead of leaving "I don't like this letter" with no obvious way to fix it.
         OutlinedButton(
-            onClick = { vm.startPhrase(previewText) },
+            onClick = { vm.startPhrase(localPreviewText) },
             modifier = Modifier.fillMaxWidth(),
-            enabled = previewText.isNotBlank(),
+            enabled = localPreviewText.isNotBlank(),
         ) {
             Icon(Icons.Filled.Edit, contentDescription = null)
             Spacer(Modifier.width(8.dp))
@@ -189,7 +202,7 @@ import kotlinx.coroutines.withContext
                     )
                 }
             }
-            Button(onClick = { useOnImage(project.name, previewText) }, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { useOnImage(project.name, localPreviewText) }, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.Image, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Use on an image")

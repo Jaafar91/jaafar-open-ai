@@ -47,6 +47,10 @@ data class FontProject(
     val wordSpacingMm: Float = 3f,
     val selectedLanguages: Set<LanguageScript> = setOf(LanguageScript.BASIC_LATIN),
     val goal: FontGoal = FontGoal.EXPORT,
+    /** The Fine-tune preview/phrase text this project was last shown or drawn with -- kept per
+     *  font (not one shared value used by every font) so switching fonts doesn't carry over
+     *  another font's preview text or leak its phrase-mode drawing queue into this one. */
+    val previewPhrase: String = DEFAULT_PREVIEW_TEXT,
     /** When this project was created or last edited -- matches the iOS app's
      *  `SavedAsset.lastModifiedAt`, used to find "the most recently created or modified
      *  font" for defaults like the dashboard's "Continue" card and "Use font on image",

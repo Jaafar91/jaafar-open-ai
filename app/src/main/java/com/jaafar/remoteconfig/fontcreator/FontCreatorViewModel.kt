@@ -25,8 +25,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     companion object {
         private const val PREFS_DEFAULT_SIGNATURE = "default_signature_name"
         private const val PREFS_DEFAULT_STAMP = "default_stamp_name"
-        private const val PREFS_PHRASE_MODE = "phrase_mode_enabled"
-        private const val PREFS_LAST_PHRASE = "last_phrase"
         val CHARACTER_ORDER: List<Int> = buildList {
             addAll('A'.code..'Z'.code); addAll('a'.code..'z'.code); addAll('0'.code..'9'.code)
             " .,!?\'\"-:;()".forEach { add(it.code) }; addAll((33..126).filter { it !in this })
@@ -179,8 +177,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     var defaultStampName by mutableStateOf(prefs.getString(PREFS_DEFAULT_STAMP, null)); private set
     var lastEditedCodePoint by mutableStateOf<Int?>(null); private set
     var lastStrokeWidth by mutableFloatStateOf(8f); private set
-    var phraseModeEnabled by mutableStateOf(prefs.getBoolean(PREFS_PHRASE_MODE, false)); private set
-    var lastPhrase by mutableStateOf(prefs.getString(PREFS_LAST_PHRASE, "") ?: ""); private set
+    var phraseModeEnabled by mutableStateOf(false); private set
+    /** The active project's own remembered preview/phrase text -- kept per font via
+     *  [FontProject.previewPhrase], not one value shared across every font. */
+    val lastPhrase: String get() = activeProject?.previewPhrase ?: DEFAULT_PREVIEW_TEXT
 
     /** Returns all available typefaces (generated + imported) with their display labels. */
     fun hasGeneratedFont(name: String): Boolean = generatedFile(name).exists()
@@ -306,6 +306,14 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         selectedCodePoint = null; generatedFont = generatedFile(project.name).takeIf { it.exists() }
         previewTypeface = generatedFont?.let { runCatching { loadTypeface(it) }.getOrNull() }
         lastStrokeWidth = 8f
+        // Phrase/paging mode is a live editing-session state, not something a font should
+        // remember -- without this, switching fonts mid-phrase left the next font's editor
+        // still in phrase mode, filtering its queue by the *previous* font's phrase.
+        phraseModeEnabled = false
+        isPagingMode = false
+        pagingQueue = emptyList()
+        pagingHistory = emptyList()
+        pagingTotal = 0
         status = ""
     }
 
@@ -359,12 +367,8 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             status = "The phrase has no characters supported by the selected languages."
             return false
         }
-        lastPhrase = cleanPhrase
+        updateActive { it.copy(previewPhrase = cleanPhrase) }
         phraseModeEnabled = true
-        prefs.edit()
-            .putString(PREFS_LAST_PHRASE, cleanPhrase)
-            .putBoolean(PREFS_PHRASE_MODE, true)
-            .apply()
         // Queues every character of the phrase, not just the ones still missing -- so this also
         // works as a "review/edit this phrase" flow for an already-complete font (e.g. from
         // Fine-tune, touching up a letter the customer doesn't like), not only a "draw what's
@@ -377,7 +381,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     fun disablePhraseMode() {
         phraseModeEnabled = false
-        prefs.edit().putBoolean(PREFS_PHRASE_MODE, false).apply()
         if (isPagingMode) {
             isPagingMode = false
             pagingQueue = emptyList()
@@ -387,14 +390,9 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun clearPhraseModeState() {
         phraseModeEnabled = false
-        lastPhrase = ""
         pagingQueue = emptyList()
         pagingHistory = emptyList()
         pagingTotal = 0
-        prefs.edit()
-            .remove(PREFS_PHRASE_MODE)
-            .remove(PREFS_LAST_PHRASE)
-            .apply()
     }
 
     private fun startQueue(queue: List<Int>, emptyMessage: String) {
@@ -415,6 +413,12 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         updateActive { it.copy(letterSpacingMm = letterValue, wordSpacingMm = wordValue) }
         status = "Spacing updated."
         return true
+    }
+
+    /** Persists the active project's own Fine-tune preview/phrase text -- kept per font, so a
+     *  different font's Fine-tune screen shows that font's own last-used text, not this one's. */
+    fun setPreviewPhrase(text: String) {
+        updateActive { it.copy(previewPhrase = text) }
     }
 
     fun closeEditor() {
