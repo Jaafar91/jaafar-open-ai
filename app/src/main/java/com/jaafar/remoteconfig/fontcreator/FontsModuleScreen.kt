@@ -3,16 +3,19 @@ package com.jaafar.remoteconfig.fontcreator
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -348,12 +352,14 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     GoalOption(
+                        icon = Icons.Filled.Image,
                         title = "Use it on images",
                         detail = "Letters and numbers only -- the fastest way to start writing on photos.",
                         selected = goal == FontGoal.USE_ON_IMAGE,
                         onClick = { goal = FontGoal.USE_ON_IMAGE },
                     )
                     GoalOption(
+                        icon = Icons.Filled.Description,
                         title = "Export a full font",
                         detail = "Every character, including punctuation -- for installing or sharing the font file.",
                         selected = goal == FontGoal.EXPORT,
@@ -410,12 +416,32 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
 }
 
 @Composable
-private fun GoalOption(title: String, detail: String, selected: Boolean, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick), verticalAlignment = Alignment.CenterVertically) {
-        RadioButton(selected = selected, onClick = onClick)
-        Column {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun GoalOption(icon: ImageVector, title: String, detail: String, selected: Boolean, onClick: () -> Unit) {
+    OutlinedCard(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (selected) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            }
         }
     }
 }
