@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Modifier
@@ -113,16 +114,34 @@ import kotlinx.coroutines.withContext
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Box(Modifier.fillMaxWidth().heightIn(min = 130.dp), contentAlignment = Alignment.Center) {
+                // A writing-line guide at 78% down the box, same baseline convention as the
+                // drawing canvas's own guides -- grounds the preview like ruled paper instead
+                // of leaving the text floating in an oversized, otherwise-empty box.
+                val guideLineColor = MaterialTheme.colorScheme.outline.copy(alpha = .4f)
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(110.dp)
+                        .drawBehind {
+                            val y = size.height * .78f
+                            drawLine(
+                                guideLineColor,
+                                Offset(size.width * .08f, y),
+                                Offset(size.width * .92f, y),
+                                strokeWidth = 1.5.dp.toPx(),
+                            )
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
                     val typeface = vm.previewTypeface
                     if (typeface == null) {
                         CircularProgressIndicator()
                     } else {
                         Text(
                             previewText.ifBlank { " " },
-                            style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(typeface)),
+                            style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily(typeface)),
                             textAlign = TextAlign.Center,
-                            maxLines = 4,
+                            maxLines = 3,
                         )
                     }
                 }
