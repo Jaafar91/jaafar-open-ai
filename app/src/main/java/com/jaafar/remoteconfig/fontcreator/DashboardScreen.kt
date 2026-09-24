@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 private data class DashboardAction(
@@ -19,6 +20,33 @@ private data class DashboardAction(
     val icon: ImageVector,
     val click: () -> Unit,
 )
+
+/** A square, icon-over-title-over-detail card -- the "asset" tile style from Home's "Your
+ *  assets" row. Shared (not Home-only) so any screen wanting that same at-a-glance-tappable look
+ *  gets it pixel-identical instead of a close approximation. The icon is a composable slot
+ *  rather than a fixed [ImageVector] so a screen using its own hand-drawn icon glyphs (see
+ *  [ActionIcon]) can still use this same card shape. */
+@Composable
+internal fun AssetStyleCard(title: String, detail: String, modifier: Modifier = Modifier, onClick: () -> Unit, icon: @Composable () -> Unit) {
+    OutlinedCard(modifier.aspectRatio(.82f).clickable(onClick = onClick)) {
+        Column(
+            Modifier.fillMaxSize().padding(10.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) { icon() }
+            Spacer(Modifier.height(8.dp))
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            Text(detail, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+/** Convenience overload for the common case of a plain Material [ImageVector] icon. */
+@Composable
+internal fun AssetStyleCard(title: String, detail: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    AssetStyleCard(title, detail, modifier, onClick) { Icon(icon, contentDescription = null, modifier = Modifier.size(30.dp)) }
+}
 
 @Composable
 internal fun DashboardScreen(
@@ -101,18 +129,7 @@ internal fun DashboardScreen(
     // leaving a large gap above the pinned Pro tile below.
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         assets.forEach { action ->
-            OutlinedCard(Modifier.weight(1f).aspectRatio(.82f).clickable(onClick = action.click)) {
-                Column(
-                    Modifier.fillMaxSize().padding(10.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Icon(action.icon, contentDescription = null, modifier = Modifier.size(30.dp))
-                    Spacer(Modifier.height(8.dp))
-                    Text(action.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text(action.detail, style = MaterialTheme.typography.labelSmall)
-                }
-            }
+            AssetStyleCard(action.title, action.detail, action.icon, Modifier.weight(1f), action.click)
         }
     }
     // Sits directly under the assets (not pinned to the screen bottom): a pinned tile leaves a
@@ -147,8 +164,9 @@ private fun ProUpgradeBanner(onClick: () -> Unit, modifier: Modifier = Modifier)
     }
 }
 
+/** An icon-and-two-lines-of-text row card -- Home's style for a full-width tappable action. */
 @Composable
-private fun DashboardRowAction(title: String, detail: String, icon: ImageVector, click: () -> Unit) {
+internal fun DashboardRowAction(title: String, detail: String, icon: ImageVector, click: () -> Unit) {
     OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = click)) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, contentDescription = null)
@@ -161,8 +179,10 @@ private fun DashboardRowAction(title: String, detail: String, icon: ImageVector,
     }
 }
 
+/** The big primary-colored "main call to action" card -- Home's style for the one most
+ *  prominent action on a screen. */
 @Composable
-private fun DashboardHero(title: String, detail: String, icon: ImageVector, click: () -> Unit) {
+internal fun DashboardHero(title: String, detail: String, icon: ImageVector, click: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = click),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),

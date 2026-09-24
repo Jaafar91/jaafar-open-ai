@@ -61,18 +61,13 @@ import com.jaafar.remoteconfig.R
     back: () -> Unit,
     fineTune: () -> Unit,
     useOnImage: (String) -> Unit,
-) = Page("Font workspace", back, actions = {
-    val file = vm.generatedFont
-    val project = vm.activeProject
-    if (file != null && project != null && vm.isProjectComplete(project)) {
-        DownloadButton(file, project.name)
-        ShareButton(file, project.name)
-    }
-}) {
+) = Page("Font workspace", back, scrollable = true) {
     val project = vm.activeProject
     val total = vm.activeCharacterOrder.size
     val drawn = vm.drawings.size
     val nextCode = vm.activeCharacterOrder.firstOrNull { it !in vm.drawings }
+    val file = vm.generatedFont
+    val isComplete = nextCode == null
     val useCurrentFont: () -> Unit = {
         project?.let {
             vm.generate()
@@ -88,57 +83,70 @@ import com.jaafar.remoteconfig.R
             Icon(Icons.Filled.Edit, contentDescription = "Rename font")
         }
     }
-    Text("Draw one letter at a time.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(14.dp)) {
+    // Same information as before (progress toward a complete font), same rounding as the rest
+    // of the app's status/promo cards -- just no longer the only visually "card-like" element
+    // on a screen that's otherwise a stack of plain buttons.
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(16.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("$drawn of $total letters", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             if (total > 0) LinearProgressIndicator(progress = (drawn.toFloat() / total).coerceIn(0f, 1f), modifier = Modifier.fillMaxWidth())
         }
     }
 
-    if (drawn == 0 && nextCode != null) {
-        Text("Start your font", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Button(onClick = { vm.edit(nextCode) }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Edit, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Start drawing")
-        }
-    } else if (nextCode != null) {
-        Text("Keep building your font.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Button(onClick = { vm.edit(nextCode) }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Edit, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Continue drawing")
-        }
-        OutlinedButton(onClick = useCurrentFont, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Image, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Use this font on an image")
-        }
-    } else {
-        Text("Your font is ready!", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(
-            "You completed all characters. Now put your handwriting to use.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    // Same Hero-for-the-main-action, RowAction-for-everything-else language as Home, so the
+    // most important thing to do next is exactly as visible here as it is there.
+    Text("Draw and refine", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    when {
+        drawn == 0 && nextCode != null -> DashboardHero(
+            title = "Start your font",
+            detail = "Draw your first letter to begin",
+            icon = Icons.Filled.Edit,
+            click = { vm.edit(nextCode) },
         )
-        Button(onClick = useCurrentFont, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Image, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Use this font on an image")
+        nextCode != null -> {
+            DashboardHero(
+                title = "Continue drawing",
+                detail = "$drawn of $total letters -- keep going!",
+                icon = Icons.Filled.Edit,
+                click = { vm.edit(nextCode) },
+            )
+            DashboardRowAction(
+                title = "Use this font on an image",
+                detail = "Try it out before you finish",
+                icon = Icons.Filled.Image,
+                click = useCurrentFont,
+            )
         }
-        OutlinedButton(onClick = vm::editLetters, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Edit, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Edit letters")
+        else -> {
+            DashboardHero(
+                title = "Use this font on an image",
+                detail = "All $total letters complete -- ready to use",
+                icon = Icons.Filled.Image,
+                click = useCurrentFont,
+            )
+            DashboardRowAction(
+                title = "Edit letters",
+                detail = "Touch up any letter, any time",
+                icon = Icons.Filled.Edit,
+                click = vm::editLetters,
+            )
         }
     }
 
     if (drawn > 0) {
-        OutlinedButton(onClick = fineTune, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Tune, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Fine-tune your font")
+        DashboardRowAction(
+            title = "Fine-tune your font",
+            detail = "Adjust spacing and preview",
+            icon = Icons.Filled.Tune,
+            click = fineTune,
+        )
+    }
+
+    if (file != null && project != null && isComplete) {
+        Text("Export", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ShareButton(file, project.name, Modifier.weight(1f))
+            DownloadButton(file, project.name, Modifier.weight(1f))
         }
     }
 

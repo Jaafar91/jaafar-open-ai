@@ -219,12 +219,14 @@ private fun SpacingSlider(
 }
 
 /** Lets the customer pick TTF/OTF/WOFF before [onFormatSelected] runs -- shared by [ShareButton]
- *  and [DownloadButton] so the format choice looks and behaves the same in both places. */
+ *  and [DownloadButton] so the format choice looks and behaves the same in both places. [trigger]
+ *  gets an onClick that opens the menu, so either caller can use whatever tappable it wants
+ *  (an icon button, a full card) as the anchor. */
 @Composable
-private fun FormatMenuIconButton(iconType: ActionIconType, description: String, onFormatSelected: (FontExportFormat) -> Unit) {
+private fun FormatMenuAnchor(onFormatSelected: (FontExportFormat) -> Unit, trigger: @Composable (onClick: () -> Unit) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { expanded = true }) { ActionIcon(iconType, description) }
+        trigger { expanded = true }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             FontExportFormat.entries.forEach { format ->
                 DropdownMenuItem(
@@ -245,25 +247,30 @@ private fun shareExportedFont(context: android.content.Context, exported: java.i
     }, "Share $name"))
 }
 
-@Composable internal fun ShareButton(file: java.io.File, name: String) {
+/** Renders as an [AssetStyleCard] -- the same tappable "asset tile" style Home uses -- so it
+ *  reads as a real action on the screen instead of a small icon a customer might miss. */
+@Composable internal fun ShareButton(file: java.io.File, name: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    FormatMenuIconButton(ActionIconType.Share, "Share $name") { format ->
+    FormatMenuAnchor(onFormatSelected = { format ->
         scope.launch {
             val exported = withContext(Dispatchers.IO) { exportFontFile(context, file, name, format) }
             shareExportedFont(context, exported, format, name)
         }
+    }) { onClick ->
+        AssetStyleCard("Share", "Send to another app", modifier, onClick) { ActionIcon(ActionIconType.Share, "Share $name") }
     }
 }
 
 /** Saves the generated font into the device's Downloads folder, distinct from [ShareButton]'s
  *  share sheet -- a customer who just wants a copy on their phone shouldn't have to go through
  *  another app to get one. Below Android 10 (no permission-free MediaStore.Downloads path,
- *  see [downloadToPublicDownloads]) this falls back to the same share sheet as [ShareButton]. */
-@Composable internal fun DownloadButton(file: java.io.File, name: String) {
+ *  see [downloadToPublicDownloads]) this falls back to the same share sheet as [ShareButton].
+ *  Renders as an [AssetStyleCard], matching [ShareButton]. */
+@Composable internal fun DownloadButton(file: java.io.File, name: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    FormatMenuIconButton(ActionIconType.Download, "Download $name") { format ->
+    FormatMenuAnchor(onFormatSelected = { format ->
         scope.launch {
             val exported = withContext(Dispatchers.IO) { exportFontFile(context, file, name, format) }
             val saved = withContext(Dispatchers.IO) { downloadToPublicDownloads(context, exported, exported.name, format.mimeType) }
@@ -273,6 +280,8 @@ private fun shareExportedFont(context: android.content.Context, exported: java.i
                 shareExportedFont(context, exported, format, name)
             }
         }
+    }) { onClick ->
+        AssetStyleCard("Download", "Save to your device", modifier, onClick) { ActionIcon(ActionIconType.Download, "Download $name") }
     }
 }
 
