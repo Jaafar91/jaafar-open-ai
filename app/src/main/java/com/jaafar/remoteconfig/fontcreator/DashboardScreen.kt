@@ -2,9 +2,6 @@ package com.jaafar.remoteconfig.fontcreator
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -34,12 +31,16 @@ internal fun DashboardScreen(
     openFonts: () -> Unit,
     openSignatures: () -> Unit,
     openStamps: () -> Unit,
-) = Page(
-    "Studio",
-    actions = {
-        IconButton(onClick = openSettings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
-    },
 ) {
+    var showProDialog by remember { mutableStateOf(false) }
+    Page(
+        "Studio",
+        actions = {
+            IconButton(onClick = openSettings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
+        },
+        // Scrollable so the extra Pro tile below the assets can't be clipped on a short screen.
+        scrollable = true,
+    ) {
     // Picked by lastModifiedAt, matching the iOS app's equivalent defaults -- createProject
     // appends new projects at the end of the list, so indexOfFirst/lastOrNull only ever
     // reflected creation order and went stale the moment an *older* project was edited
@@ -95,14 +96,12 @@ internal fun DashboardScreen(
         DashboardAction("Signatures", "${vm.signatures.count { it.imageFileName == null }} saved", Icons.Filled.Draw, openSignatures),
         DashboardAction("Stamps", "${vm.signatures.count { it.imageFileName != null }} saved", Icons.Filled.Approval, openStamps),
     )
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
-        modifier = Modifier.weight(1f),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(assets, key = { it.title }) { action ->
-            OutlinedCard(Modifier.fillMaxWidth().aspectRatio(.82f).clickable(onClick = action.click)) {
+    // A fixed 3-item row (Fonts/Signatures/Stamps), not a growing list -- a plain Row sizes to
+    // its own content instead of a Lazy grid's weight(1f) claiming all leftover height and
+    // leaving a large gap above the pinned Pro tile below.
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        assets.forEach { action ->
+            OutlinedCard(Modifier.weight(1f).aspectRatio(.82f).clickable(onClick = action.click)) {
                 Column(
                     Modifier.fillMaxSize().padding(10.dp),
                     verticalArrangement = Arrangement.Center,
@@ -114,6 +113,36 @@ internal fun DashboardScreen(
                     Text(action.detail, style = MaterialTheme.typography.labelSmall)
                 }
             }
+        }
+    }
+    // Sits directly under the assets (not pinned to the screen bottom): a pinned tile leaves a
+    // tall empty gap above it on any phone taller than the content.
+    if (!vm.isPro) {
+        ProUpgradeBanner(onClick = { showProDialog = true })
+    }
+    }
+    if (showProDialog) {
+        ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
+}
+
+/** Home's own entry point into the same "upgrade to Pro" journey shown at every free-plan cap --
+ *  discoverable on its own, not only after hitting a limit. Hidden once already Pro. */
+@Composable
+private fun ProUpgradeBanner(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Font Maker Pro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Unlock unlimited fonts, signatures, stamps & exports", style = MaterialTheme.typography.bodySmall)
+            }
+            Icon(Icons.Filled.ChevronRight, contentDescription = null)
         }
     }
 }

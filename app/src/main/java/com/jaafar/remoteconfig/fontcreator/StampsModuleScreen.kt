@@ -17,6 +17,13 @@ import androidx.compose.ui.unit.dp
 internal fun StampsModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useInDocument: (String) -> Unit) {
     var importing by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<SavedSignature?>(null) }
+    var showProDialog by remember { mutableStateOf(false) }
+    // Already at the free plan's 1-stamp cap -- go straight to the Pro pitch instead of opening
+    // the import screen just to disable its Save button once they get there.
+    val startImporting = { if (vm.hasReachedFreeStampLimit) showProDialog = true else importing = true }
+    if (showProDialog) {
+        ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
     if (importing) {
         ImportStampFromImageScreen(vm = vm, onSaved = { importing = false }, back = { importing = false })
         return
@@ -42,7 +49,7 @@ internal fun StampsModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useI
         // a redundant second way to do the same thing.
         actions = {
             if (stamps.isNotEmpty()) {
-                IconButton(onClick = { importing = true }) { ActionIcon(ActionIconType.Add, "Add stamp") }
+                IconButton(onClick = startImporting) { ActionIcon(ActionIconType.Add, "Add stamp") }
             }
         },
     ) {
@@ -60,7 +67,7 @@ internal fun StampsModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useI
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
-                Button(onClick = { importing = true }) { Text("Add stamp") }
+                Button(onClick = startImporting) { Text("Add stamp") }
             }
         } else {
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {

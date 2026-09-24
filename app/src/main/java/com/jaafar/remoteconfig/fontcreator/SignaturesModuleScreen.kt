@@ -17,6 +17,13 @@ import androidx.compose.ui.unit.dp
 internal fun SignaturesModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useInDocument: (String) -> Unit) {
     var creating by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<SavedSignature?>(null) }
+    var showProDialog by remember { mutableStateOf(false) }
+    // Already at the free plan's 1-signature cap -- go straight to the Pro pitch instead of
+    // opening the drawing screen just to disable its Save button once they get there.
+    val startCreating = { if (vm.hasReachedFreeSignatureLimit) showProDialog = true else creating = true }
+    if (showProDialog) {
+        ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
     if (creating) {
         SignatureEditorScreen(vm = vm, onSaved = { creating = false }, back = { creating = false })
         return
@@ -42,7 +49,7 @@ internal fun SignaturesModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, 
         // a redundant second way to do the same thing.
         actions = {
             if (signatures.isNotEmpty()) {
-                IconButton(onClick = { creating = true }) { ActionIcon(ActionIconType.Add, "Create signature") }
+                IconButton(onClick = startCreating) { ActionIcon(ActionIconType.Add, "Create signature") }
             }
         },
     ) {
@@ -60,7 +67,7 @@ internal fun SignaturesModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, 
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
-                Button(onClick = { creating = true }) { Text("Create signature") }
+                Button(onClick = startCreating) { Text("Create signature") }
             }
         } else {
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {

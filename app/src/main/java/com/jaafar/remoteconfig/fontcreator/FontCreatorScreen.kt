@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
@@ -114,6 +115,19 @@ fun FontCreatorApp(
     var initialImageText by remember { mutableStateOf("") }
     var fontWorkspaceBack by remember { mutableStateOf(Screen.Home) }
     var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
+    var showFillMarkProDialog by remember { mutableStateOf(false) }
+    // The monthly export counts live in SharedPreferences, which Compose can't observe -- and even
+    // if it could, re-evaluating them live would yank the user out of the editor the moment their
+    // last free export lands. So each gate is decided once, when the feature is *entered*, and
+    // stays put until it's left (the remember keys). Pro, which is observable, still overrides it.
+    val imageCapReachedAtEntry = remember(imageUri) {
+        imageUri != null && viewModel.hasReachedFreeUseOnImageLimit
+    }
+    val imageLocked = imageCapReachedAtEntry && !viewModel.isPro
+    val fillMarkCapReachedAtEntry = remember(screen == Screen.FillMark) {
+        screen == Screen.FillMark && viewModel.hasReachedFreeFillMarkLimit
+    }
+    val fillMarkLocked = fillMarkCapReachedAtEntry && !viewModel.isPro
     var showCreateFontDialog by remember { mutableStateOf(false) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         imageUri = uri
@@ -160,7 +174,8 @@ fun FontCreatorApp(
                     showTutorial = false
                 },
             )
-            imageUri != null -> ImageTextEditorScreen(
+            imageUri != null && !imageLocked -> ImageTextEditorScreen(
+                vm = viewModel,
                 imageUri = imageUri!!,
                 fontOptions = imageFontOptions,
                 initiallySelectedFont = preferredImageFontName,
@@ -315,16 +330,28 @@ fun FontCreatorApp(
                         imagePicker.launch("image/*")
                     },
                 )
-                Screen.FillMark -> FillMarkScreen(
-                    vm = viewModel,
-                    initialUri = fillMarkUri,
-                    initialMarkName = pendingSignatureMark,
-                    back = {
+                Screen.FillMark -> if (!fillMarkLocked) {
+                    FillMarkScreen(
+                        vm = viewModel,
+                        initialUri = fillMarkUri,
+                        initialMarkName = pendingSignatureMark,
+                        back = {
+                            fillMarkUri = null
+                            pendingSignatureMark = null
+                            screen = Screen.Home
+                        },
+                    )
+                } else {
+                    // Screen.FillMark itself has nothing safe to render while capped (unlike
+                    // imageUri, it's not independent of `screen`) -- bounce back to Home and show
+                    // the shared Pro dialog on top of it instead of a dedicated paywall screen.
+                    LaunchedEffect(Unit) {
                         fillMarkUri = null
                         pendingSignatureMark = null
                         screen = Screen.Home
-                    },
-                )
+                        showFillMarkProDialog = true
+                    }
+                }
                 Screen.Settings -> SettingsScreen(
                     vm = viewModel,
                     dark = darkTheme,
@@ -342,6 +369,22 @@ fun FontCreatorApp(
                         },
                         onDismiss = { showCreateFontDialog = false },
                     )
+                }
+                if (imageUri != null && imageLocked) {
+                    ProFeaturesDialog(
+                        vm = viewModel,
+                        lockedFeature = "Use font on image",
+                        // Buying Pro here must keep the photo they picked -- `imageLocked` flips off
+                        // by itself and the editor takes over, so nothing to clear.
+                        onUnlocked = {},
+                    ) {
+                        imageUri = null
+                        preferredImageFontName = null
+                        initialImageText = ""
+                    }
+                }
+                if (showFillMarkProDialog) {
+                    ProFeaturesDialog(vm = viewModel, lockedFeature = "Fill & Mark") { showFillMarkProDialog = false }
                 }
             }
         }
@@ -441,8 +484,26 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     dark: Boolean,
     change: (Boolean) -> Unit,
     back: () -> Unit,
-) = Page("Settings", back, scrollable = true) {
+) {
+    var showProDialog by remember { mutableStateOf(false) }
+    Page("Settings", back, scrollable = true) {
     val context = LocalContext.current
+    Text("Membership", style = MaterialTheme.typography.titleMedium)
+    if (vm.isPro) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Text("Font Maker Pro is active. Thank you!", style = MaterialTheme.typography.bodyMedium)
+        }
+    } else {
+        Text(
+            "Free plan: 1 saved font, 1 signature, 1 stamp, and " +
+                "${FontCreatorViewModel.FREE_MONTHLY_FEATURE_EXPORTS} free exports a month each for " +
+                "Use font on image and Fill & Mark.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(onClick = { showProDialog = true }) { Text("Upgrade to Pro") }
+    }
+    HorizontalDivider()
     Text("Appearance", style = MaterialTheme.typography.titleMedium)
     Row(
         horizontalArrangement = Arrangement.spacedBy(20.dp),
@@ -472,6 +533,10 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
         onClick = { openPlayStoreListing(context) },
         modifier = Modifier.fillMaxWidth(),
     ) { Text("Rate this app") }
+    }
+    if (showProDialog) {
+        ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
 }
 
 private fun openPlayStoreListing(context: android.content.Context) {

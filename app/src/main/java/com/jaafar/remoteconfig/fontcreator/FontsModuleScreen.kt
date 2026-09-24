@@ -44,6 +44,8 @@ internal fun FontsModuleScreen(
     var projectToDelete by remember { mutableStateOf<FontProject?>(null) }
     var importedToDelete by remember { mutableStateOf<ImportedFont?>(null) }
     var showAddMenu by remember { mutableStateOf(false) }
+    var showImportProDialog by remember { mutableStateOf(false) }
+    var showAddMenuProDialog by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             val raw = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -61,12 +63,22 @@ internal fun FontsModuleScreen(
         actions = {
             IconButton(onClick = { showAddMenu = true }) { ActionIcon(ActionIconType.Add, "Add font") }
             DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
-                DropdownMenuItem(text = { Text("Draw new font") }, onClick = { showAddMenu = false; createFont() })
+                DropdownMenuItem(
+                    text = { Text("Draw new font") },
+                    onClick = {
+                        showAddMenu = false
+                        if (vm.hasReachedFreeFontLimit) showAddMenuProDialog = true else createFont()
+                    },
+                )
                 DropdownMenuItem(
                     text = { Text("Import font file") },
                     onClick = {
                         showAddMenu = false
-                        picker.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream", "*/*"))
+                        if (vm.hasReachedFreeFontLimit) {
+                            showAddMenuProDialog = true
+                        } else {
+                            picker.launch(arrayOf("font/ttf", "font/otf", "application/octet-stream", "*/*"))
+                        }
                     },
                 )
             }
@@ -187,17 +199,39 @@ internal fun FontsModuleScreen(
     }
 
     pendingImport?.let { uri ->
+        val importCapReached = vm.hasReachedFreeFontLimit
         AlertDialog(
             onDismissRequest = { pendingImport = null },
             title = { Text("Name imported font") },
-            text = { OutlinedTextField(importName, { importName = it }, label = { Text("Font name") }, singleLine = true) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(importName, { importName = it }, label = { Text("Font name") }, singleLine = true)
+                    if (importCapReached) {
+                        Text(
+                            "Free plan allows ${FontCreatorViewModel.FREE_FONT_LIMIT} font. Upgrade to Pro for unlimited fonts.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
             confirmButton = {
-                Button(onClick = { vm.importFont(context.contentResolver, uri, importName); pendingImport = null }, enabled = importName.isNotBlank()) {
-                    Text("Import")
+                if (importCapReached) {
+                    Button(onClick = { showImportProDialog = true }) { Text("See Pro benefits") }
+                } else {
+                    Button(
+                        onClick = { vm.importFont(context.contentResolver, uri, importName); pendingImport = null },
+                        enabled = importName.isNotBlank(),
+                    ) {
+                        Text("Import")
+                    }
                 }
             },
             dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } },
         )
+        if (showImportProDialog) {
+            ProFeaturesDialog(vm = vm) { showImportProDialog = false }
+        }
     }
     projectToDelete?.let { project ->
         AlertDialog(
@@ -216,6 +250,9 @@ internal fun FontsModuleScreen(
             confirmButton = { TextButton(onClick = { vm.deleteImportedFont(font.fileName); importedToDelete = null }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { importedToDelete = null }) { Text("Cancel") } },
         )
+    }
+    if (showAddMenuProDialog) {
+        ProFeaturesDialog(vm = vm) { showAddMenuProDialog = false }
     }
 }
 
@@ -281,9 +318,11 @@ private fun FontStatusBadge(text: String, showCheck: Boolean) {
 @Composable
 internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
+    var showProDialog by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val duplicate = name.trim().isNotEmpty() && vm.hasFontName(name)
+    val capReached = vm.hasReachedFreeFontLimit
     // keyboard.show() below opens the IME for this dialog's own field, but dismissing the
     // dialog never hands focus to another text field -- Create jumps straight into the
     // glyph-drawing canvas, which has none -- so without an explicit hide() here the keyboard
@@ -305,14 +344,28 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
                     isError = duplicate,
                     supportingText = { if (duplicate) Text("A font with that name already exists.") },
                 )
+                if (capReached) {
+                    Text(
+                        "Free plan allows ${FontCreatorViewModel.FREE_FONT_LIMIT} font. Upgrade to Pro for unlimited fonts.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         },
         confirmButton = {
-            Button(
-                onClick = { if (vm.createProject(name)) { keyboard?.hide(); onCreated() } },
-                enabled = name.isNotBlank() && !duplicate,
-            ) { Text("Create font") }
+            if (capReached) {
+                Button(onClick = { showProDialog = true }) { Text("See Pro benefits") }
+            } else {
+                Button(
+                    onClick = { if (vm.createProject(name)) { keyboard?.hide(); onCreated() } },
+                    enabled = name.isNotBlank() && !duplicate,
+                ) { Text("Create font") }
+            }
         },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
+    if (showProDialog) {
+        ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
 }

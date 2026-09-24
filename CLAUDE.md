@@ -7,8 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Font Maker (`applicationId`/package `com.mjaafar.fontcreator`) is a Kotlin + Jetpack Compose
 Android app: draw your own handwriting letter-by-letter to generate a real, installable TrueType
 font, then use it to write on photos or to fill, sign, and stamp documents/PDFs. It is fully
-offline for its actual features — no accounts/login, no analytics, no IAP. Do not add network
-calls, auth, or third-party dependencies without the user explicitly asking.
+offline for its actual features — no accounts/login, no analytics. The one exception is the
+Google Play Billing "Pro" one-time unlock (`BillingManager.kt`, product ID `pro_unlock`); Play's
+response is the source of truth, with the last confirmed value cached in prefs so a paying user is
+never treated as free offline. Do not add other network calls, auth, or third-party dependencies
+without the user explicitly asking.
 
 This is the Android counterpart to a **from-scratch, hand-ported SwiftUI iOS app** in
 `Jaafar91/jaafar-fonts-ios`. There is **no shared code** between the two — every feature is

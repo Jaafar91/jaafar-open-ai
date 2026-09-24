@@ -25,6 +25,12 @@ class MainActivity : ComponentActivity() {
         setContent { FontCreatorApp(viewModel, sharedUri, shareRequestId) }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Picks up a refund, or a purchase made elsewhere, while the app was in the background.
+        ViewModelProvider(this)[FontCreatorViewModel::class.java].billing.refreshPurchases()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

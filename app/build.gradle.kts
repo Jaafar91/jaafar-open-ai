@@ -76,6 +76,12 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+    // Plain "billing", not "billing-ktx": BillingManager only uses the callback-based API
+    // (matching this codebase's existing non-coroutine style), never the KTX suspend
+    // extensions -- and billing-ktx's compiled Kotlin metadata needs a newer Kotlin compiler
+    // than this project's 2.0.21 can read, which plain "billing" (a Java-only artifact,
+    // carrying no Kotlin metadata to be incompatible) sidesteps entirely.
+    implementation("com.android.billingclient:billing:9.1.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }
