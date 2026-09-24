@@ -3,6 +3,7 @@ package com.jaafar.remoteconfig.fontcreator
 import android.content.Intent
 import android.graphics.Typeface
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -52,7 +53,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.jaafar.remoteconfig.R
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Font creation, preview, export, and import screens. */
 
@@ -219,7 +223,32 @@ private fun SpacingSlider(
     IconButton(onClick = { val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file); context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "font/ttf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Share $name")) }) { ActionIcon(ActionIconType.Share, "Share $name") }
 }
 
-internal enum class ActionIconType { Add, Edit, Share, Import }
+/** Saves the generated .ttf into the device's Downloads folder, distinct from [ShareButton]'s
+ *  share sheet -- a customer who just wants a copy on their phone shouldn't have to go through
+ *  another app to get one. Below Android 10 (no permission-free MediaStore.Downloads path,
+ *  see [downloadToPublicDownloads]) this falls back to the same share sheet as [ShareButton]. */
+@Composable internal fun DownloadButton(file: java.io.File, name: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    IconButton(onClick = {
+        scope.launch {
+            val displayName = "${normalizedFontStorageKey(name).ifBlank { "font" }}.ttf"
+            val saved = withContext(Dispatchers.IO) { downloadToPublicDownloads(context, file, displayName, "font/ttf") }
+            if (saved) {
+                Toast.makeText(context, "Saved \"$displayName\" to Downloads", Toast.LENGTH_SHORT).show()
+            } else {
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+                context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                    type = "font/ttf"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }, "Save $name"))
+            }
+        }
+    }) { ActionIcon(ActionIconType.Download, "Download $name") }
+}
+
+internal enum class ActionIconType { Add, Edit, Share, Import, Download }
 
 /** Hand-drawn action glyph (this app's own icon set, not Material Icons) -- reused wherever
  *  an add/edit/share/import action needs an icon-only control instead of a text button. */
@@ -247,8 +276,10 @@ internal enum class ActionIconType { Add, Edit, Share, Import }
                 drawCircle(color, radius, top)
                 drawCircle(color, radius, bottom)
             }
-            ActionIconType.Import -> {
-                // Down-arrow-into-tray icon
+            ActionIconType.Import, ActionIconType.Download -> {
+                // Down-arrow-into-tray icon -- Import brings an external file in, Download saves
+                // this app's own generated file out to the device; same "incoming" shape reads
+                // right for both, so one glyph covers them.
                 drawLine(color, Offset(size.width / 2, size.height * .15f), Offset(size.width / 2, size.height * .7f), stroke)
                 drawLine(color, Offset(size.width * .3f, size.height * .5f), Offset(size.width / 2, size.height * .7f), stroke)
                 drawLine(color, Offset(size.width * .7f, size.height * .5f), Offset(size.width / 2, size.height * .7f), stroke)

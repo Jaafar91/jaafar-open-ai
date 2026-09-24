@@ -1,6 +1,7 @@
 package com.jaafar.remoteconfig.fontcreator
 
 import android.content.ContentResolver
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -14,6 +15,8 @@ import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
@@ -144,6 +147,28 @@ internal fun shareDocument(context: Context, file: File, mimeType: String) {
     context.startActivity(Intent.createChooser(intent, "Share file").apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     })
+}
+
+/**
+ * Saves [file] into the device's public Downloads folder via MediaStore, so it shows up in the
+ * system Downloads app/file manager -- distinct from [shareDocument]'s share sheet, which hands
+ * the file to another app rather than leaving a copy the customer can find on-device themselves.
+ * Only available from API 29 (scoped storage's MediaStore.Downloads needs no permission there);
+ * below that this app has no download path, so callers should fall back to [shareDocument].
+ * Blocking I/O -- call from a background dispatcher, matching [renderPdfPage] et al.
+ */
+internal fun downloadToPublicDownloads(context: Context, file: File, displayName: String, mimeType: String): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+    return runCatching {
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+        }
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
+        resolver.openOutputStream(uri)?.use { output -> file.inputStream().use { input -> input.copyTo(output) } } != null
+    }.getOrDefault(false)
 }
 
 internal fun loadSignatureBitmap(context: Context, signature: SavedSignature): Bitmap? {
