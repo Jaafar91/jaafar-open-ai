@@ -44,6 +44,12 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         private const val PREFS_IMAGE_EXPORT_COUNT = "image_export_count"
         private const val PREFS_FILLMARK_EXPORT_MONTH = "fillmark_export_month"
         private const val PREFS_FILLMARK_EXPORT_COUNT = "fillmark_export_count"
+
+        // Ask for a rating once, after a few successful shares from either Use font on image or
+        // Fill & Mark -- never again after that, whatever the customer chooses, so it never nags.
+        private const val SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT = 3
+        private const val PREFS_RATING_PROMPT_SHOWN = "rating_prompt_shown"
+        private const val PREFS_SUCCESSFUL_SHARE_COUNT = "successful_share_count_for_rating"
     }
 
     /** Returns the ordered code points for the active project's selected languages. */
@@ -106,6 +112,27 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     /** Call once a Fill & Mark export actually completes -- same "only a completed export
      *  counts" rule as [recordUseOnImageExport]. */
     fun recordFillMarkExport() = recordMonthlyExport(PREFS_FILLMARK_EXPORT_MONTH, PREFS_FILLMARK_EXPORT_COUNT)
+
+    var showRatingPrompt by mutableStateOf(false)
+        private set
+
+    /** Call alongside [recordUseOnImageExport]/[recordFillMarkExport] on every successful share
+     *  from either feature -- unlike those, this counts Pro customers too (free-tier quota
+     *  tracking skips them, but they're just as worth asking for a rating). Surfaces
+     *  [showRatingPrompt] exactly once, after [SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT] of these. */
+    fun recordSuccessfulShareForRating() {
+        if (prefs.getBoolean(PREFS_RATING_PROMPT_SHOWN, false)) return
+        val count = prefs.getInt(PREFS_SUCCESSFUL_SHARE_COUNT, 0) + 1
+        prefs.edit().putInt(PREFS_SUCCESSFUL_SHARE_COUNT, count).apply()
+        if (count >= SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT) showRatingPrompt = true
+    }
+
+    /** Dismisses the prompt and marks it shown for good, whether the customer rated or declined --
+     *  it never asks again. */
+    fun dismissRatingPrompt() {
+        showRatingPrompt = false
+        prefs.edit().putBoolean(PREFS_RATING_PROMPT_SHOWN, true).apply()
+    }
 
     // Hand-drawn (projects) and imported fonts are two separate lists/models, but count
     // together against the free plan's single shared font cap.

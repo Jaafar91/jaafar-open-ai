@@ -222,6 +222,7 @@ fun ImageTextEditorScreen(
                             bitmap?.let { source ->
                                 shareImage(context, renderImage(source, layers, ::typefaceFor))
                                 vm.recordUseOnImageExport()
+                                vm.recordSuccessfulShareForRating()
                             }
                         },
                     ) { ActionIcon(ActionIconType.Share, "Share image") }

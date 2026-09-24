@@ -541,6 +541,7 @@ private fun FillMarkEditorScreen(
             if (result != null) {
                 shareDocument(context, result.file, result.mimeType)
                 vm.recordFillMarkExport()
+                vm.recordSuccessfulShareForRating()
                 status = "Export ready to share."
             } else {
                 status = "Export failed."
