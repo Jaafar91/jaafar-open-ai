@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
@@ -117,13 +116,13 @@ import com.jaafar.remoteconfig.R
             onClick = useCurrentFont,
         )
     } else {
+        // No badge/progress here -- this card is the action to take next, not a status; a
+        // "Complete" badge plus a full progress bar plus "ready to use" said the same thing
+        // three times.
         ActionListCard(
-            icon = Icons.Filled.CheckCircle,
+            icon = Icons.Filled.Image,
             title = "Use this font on an image",
             detail = "Your font is ready to use",
-            badge = "Complete",
-            badgeComplete = true,
-            progress = 1f,
             onClick = useCurrentFont,
         )
         ActionListCard(
