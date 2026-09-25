@@ -78,8 +78,10 @@ internal fun DashboardScreen(
     // appends new projects at the end of the list, so indexOfFirst/lastOrNull only ever
     // reflected creation order and went stale the moment an *older* project was edited
     // instead of a brand new one being added.
+    // Only cares about missing letters/digits -- once those are done, remaining punctuation/
+    // symbols are a Font workspace/Fine-tune concern, not something Home keeps nagging about.
     val unfinishedIndex = vm.projects.withIndex()
-        .filter { (_, project) -> !vm.isProjectComplete(project) }
+        .filter { (_, project) -> vm.hasMissingAlphanumeric(project) }
         .maxByOrNull { (_, project) -> project.lastModifiedAt }
         ?.index
     val preferredFont = vm.activeProject?.name
@@ -97,8 +99,7 @@ internal fun DashboardScreen(
         )
         unfinishedIndex != null -> {
             val project = vm.projects[unfinishedIndex]
-            val total = vm.characterCount(project).coerceAtLeast(1)
-            val percentage = (vm.progressCount(project) * 100 / total).coerceIn(0, 100)
+            val percentage = vm.alphanumericPercentage(project)
             DashboardHero(
                 title = "Continue ${project.name}",
                 detail = "$percentage% complete · Nice progress—keep going!",

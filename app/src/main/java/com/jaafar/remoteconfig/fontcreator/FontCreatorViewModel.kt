@@ -84,6 +84,25 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun progressCount(project: FontProject): Int =
         (project.drawings.map { it.codePoint }.toSet() + project.skippedCodePoints).size
 
+    /** Whether [project] still has a letter or digit not yet drawn -- ignores punctuation/
+     *  symbols entirely. Home's "Continue X" nudge only cares about this core set: once it's
+     *  done, remaining symbols are a Font workspace/Fine-tune concern, not something to keep
+     *  nagging about on Home. */
+    fun hasMissingAlphanumeric(project: FontProject): Boolean {
+        val drawn = project.drawings.map { it.codePoint }.toSet()
+        return requiredCodePoints(project).any { it.toChar().isLetterOrDigit() && it !in drawn }
+    }
+
+    /** [project]'s letter/digit-only progress (0-100) -- drawn letters/digits out of all
+     *  letters/digits required, ignoring punctuation/symbols. Shown alongside Home's "Continue X"
+     *  nudge, which -- per [hasMissingAlphanumeric] -- is only ever about finishing that set. */
+    fun alphanumericPercentage(project: FontProject): Int {
+        val required = requiredCodePoints(project).filter { it.toChar().isLetterOrDigit() }
+        if (required.isEmpty()) return 100
+        val drawn = project.drawings.map { it.codePoint }.toSet()
+        return (required.count { it in drawn } * 100 / required.size).coerceIn(0, 100)
+    }
+
     /** Everything the active project still needs, in [activeCharacterOrder]'s order, excluding
      *  what's already drawn or skipped -- shared by Font workspace and the drawing screen so
      *  both offer "skip remaining symbols" (see [skipRemainingSymbols]) under the exact same
