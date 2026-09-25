@@ -82,6 +82,11 @@ dependencies {
     // than this project's 2.0.21 can read, which plain "billing" (a Java-only artifact,
     // carrying no Kotlin metadata to be incompatible) sidesteps entirely.
     implementation("com.android.billingclient:billing:9.1.0")
+    // Plain "app-update", not "app-update-ktx", for the same reason as billing above: this app's
+    // Kotlin compiler (2.0.21) can't reliably read newer -ktx artifacts' Kotlin metadata. The
+    // ActivityResultLauncher-accepting startUpdateFlowForResult() overload AppUpdateHelper uses
+    // is part of this plain Java artifact already, so no KTX extension is needed for it.
+    implementation("com.google.android.play:app-update:2.1.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }
