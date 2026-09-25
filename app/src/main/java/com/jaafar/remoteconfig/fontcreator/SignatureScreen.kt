@@ -58,6 +58,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.jaafar.remoteconfig.logFeatureEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
@@ -234,6 +235,7 @@ internal fun ImportStampFromImageScreen(
                     saving = false
                     if (savedName != null) {
                         status = "Stamp saved."
+                        if (existing == null) logFeatureEvent(context, "stamp_created")
                         onSaved(savedName)
                     } else {
                         status = "Could not save this stamp image."
@@ -266,6 +268,7 @@ internal fun SignatureEditorScreen(
     existing: SavedSignature? = null,
     useInFillMark: ((String) -> Unit)? = null,
 ) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf(existing?.name ?: vm.suggestedSignatureName("My signature")) }
     var strokes by remember { mutableStateOf(existing?.strokes ?: emptyList()) }
     var active by remember { mutableStateOf<List<GlyphPoint>>(emptyList()) }
@@ -396,6 +399,7 @@ internal fun SignatureEditorScreen(
                                     current = vm.signatures.firstOrNull { it.name == savedName }
                                     isEditing = false
                                 } else {
+                                    logFeatureEvent(context, "signature_created")
                                     onSaved(savedName)
                                 }
                             } else {

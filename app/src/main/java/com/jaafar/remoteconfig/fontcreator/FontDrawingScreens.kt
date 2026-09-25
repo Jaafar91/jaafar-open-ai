@@ -22,7 +22,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
@@ -42,7 +44,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -61,15 +65,26 @@ import com.jaafar.remoteconfig.R
     back: () -> Unit,
     fineTune: () -> Unit,
     useOnImage: (String) -> Unit,
-) = Page("Font workspace", back, actions = {
-    val file = vm.generatedFont
-    val project = vm.activeProject
-    if (file != null && project != null && vm.isProjectComplete(project)) ShareButton(file, project.name)
-}) {
+) = Page(
+    "Font workspace",
+    back,
+    scrollable = true,
+    actions = {
+        val file = vm.generatedFont
+        val project = vm.activeProject
+        // Exporting the real font file needs every character drawn, not just what this
+        // project's own goal requires -- a "Use it on images" font can be done for its own
+        // purpose while still missing punctuation/symbols a real font file would need.
+        if (file != null && project != null && vm.isReadyToExport(project)) {
+            DownloadButton(file, project.name)
+            ShareButton(file, project.name)
+        }
+    },
+) {
     val project = vm.activeProject
     val total = vm.activeCharacterOrder.size
-    val drawn = vm.drawings.size
-    val nextCode = vm.activeCharacterOrder.firstOrNull { it !in vm.drawings }
+    val drawn = project?.let(vm::progressCount) ?: vm.drawings.size
+    val nextCode = vm.remainingCodePoints.firstOrNull()
     val useCurrentFont: () -> Unit = {
         project?.let {
             vm.generate()
@@ -85,59 +100,56 @@ import com.jaafar.remoteconfig.R
             Icon(Icons.Filled.Edit, contentDescription = "Rename font")
         }
     }
-    Text("Draw one letter at a time.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(14.dp)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("$drawn of $total letters", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            if (total > 0) LinearProgressIndicator(progress = (drawn.toFloat() / total).coerceIn(0f, 1f), modifier = Modifier.fillMaxWidth())
-        }
-    }
+    val percentage = if (total > 0) (drawn * 100 / total).coerceIn(0, 100) else 0
 
-    if (drawn == 0 && nextCode != null) {
-        Text("Start your font", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Button(onClick = { vm.edit(nextCode) }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Edit, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Start drawing")
-        }
-    } else if (nextCode != null) {
-        Text("Keep building your font.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Button(onClick = { vm.edit(nextCode) }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Edit, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Continue drawing")
-        }
-        OutlinedButton(onClick = useCurrentFont, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Image, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Use this font on an image")
-        }
-    } else {
-        Text("Your font is ready!", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(
-            "You completed all characters. Now put your handwriting to use.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    // Same list-item card style as "Fonts"/"Signatures" (icon box, title + status badge,
+    // subtitle, progress bar) instead of a stack of plain buttons -- percentage only, never a
+    // raw "N of 94" count. A muted section-label style here (rather than matching the font
+    // name's own heading style) keeps the two from reading as two stacked page titles.
+    Text(
+        "Draw and refine",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 4.dp),
+    )
+    if (nextCode != null) {
+        ActionListCard(
+            icon = Icons.Filled.Edit,
+            title = if (drawn == 0) "Start your font" else "Continue drawing",
+            detail = if (drawn == 0) "Draw your first letter to begin" else "Keep going -- draw your next letter",
+            badge = "$percentage%",
+            progress = percentage / 100f,
+            onClick = { vm.edit(nextCode) },
         )
-        Button(onClick = useCurrentFont, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Image, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Use this font on an image")
-        }
-        OutlinedButton(onClick = vm::editLetters, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Edit, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Edit letters")
-        }
+    } else {
+        // No badge/progress here -- this card is the action to take next, not a status; a
+        // "Complete" badge plus a full progress bar plus "ready to use" said the same thing
+        // three times.
+        ActionListCard(
+            icon = Icons.Filled.Edit,
+            title = "Edit letters",
+            detail = "Touch up any letter, any time",
+            onClick = vm::editLetters,
+        )
     }
 
     if (drawn > 0) {
-        OutlinedButton(onClick = fineTune, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Tune, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Fine-tune your font")
-        }
+        ActionListCard(
+            icon = Icons.Filled.Tune,
+            title = "Fine-tune your font",
+            detail = "Adjust spacing and preview",
+            onClick = fineTune,
+        )
     }
+
+    // Always last -- a secondary "try it out" action, not the primary thing to do next.
+    ActionListCard(
+        icon = Icons.Filled.Image,
+        title = "Use this font on an image",
+        detail = if (nextCode != null) "Try it out before you finish" else "Your font is ready to use",
+        onClick = useCurrentFont,
+    )
 
     if (showRenameDialog && project != null) {
         val cleanName = renameName.trim()
@@ -171,6 +183,53 @@ import com.jaafar.remoteconfig.R
             },
             dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/** A full-width row card -- icon box, title (+ optional status badge), subtitle, optional
+ *  progress bar -- matching the "Fonts"/"Signatures" list-item card style used when browsing
+ *  saved items from Home, so a workflow's next action reads with that same familiar weight
+ *  instead of a plain button or a Home-style tile. */
+@Composable
+private fun ActionListCard(
+    icon: ImageVector,
+    title: String,
+    detail: String,
+    onClick: () -> Unit,
+    badge: String? = null,
+    badgeComplete: Boolean = false,
+    progress: Float? = null,
+) {
+    OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(56.dp).background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center,
+            ) { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (badge != null) FontStatusBadge(badge, showCheck = badgeComplete)
+                }
+                Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (progress != null) {
+                    LinearProgressIndicator(
+                        progress = progress.coerceIn(0f, 1f),
+                        modifier = Modifier.fillMaxWidth(),
+                        color = if (badgeComplete) CompleteGreen else MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -295,6 +354,7 @@ internal fun SpacingControl(
     initial: GlyphDrawing?,
     defaultStrokeWidth: Float,
     drawings: Map<Int, GlyphDrawing>,
+    skippedCodePoints: Set<Int>,
     characterOrder: List<Int>,
     pagingMode: Boolean,
     pagingProgress: Pair<Int, Int>?,
@@ -307,10 +367,14 @@ internal fun SpacingControl(
     onCancel: () -> Unit,
     onPrevious: () -> Unit,
     onSelectCharacter: (Int) -> Unit,
-    onSkip: () -> Unit,
     onSave: (GlyphDrawing) -> Unit,
     onSaveAndContinue: (GlyphDrawing) -> Unit,
     onSaveAndStay: (GlyphDrawing) -> Unit,
+    // True once every letter/digit is drawn and only punctuation/symbols are left on a "Use it
+    // on images" font -- shows a banner offering to skip the rest and go straight to Fine-tune,
+    // right where the customer lands the moment that becomes true.
+    canSkipRemainingSymbols: Boolean = false,
+    onSkipRemainingSymbols: () -> Unit = {},
 ) {
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
@@ -318,9 +382,20 @@ internal fun SpacingControl(
     var strokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: defaultStrokeWidth) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
+    // A small badge on the "more options" icon hints that Reference letter/Phrase mode live in
+    // there -- both are otherwise easy to never discover, tucked behind a plain overflow icon.
+    // Cleared the first time the customer actually opens the menu (not just once it's been shown
+    // a while), same "seen" pattern as the app's other one-time hints.
+    val context = LocalContext.current
+    val moreMenuPrefs = remember { context.getSharedPreferences("appearance", 0) }
+    var hasOpenedMoreMenu by remember { mutableStateOf(moreMenuPrefs.getBoolean("more_menu_opened", false)) }
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phraseDraft by remember(phraseText) { mutableStateOf(phraseText) }
     var showReference by remember { mutableStateOf(true) }
+    // Dismissing just hides the banner for this screen visit -- it comes back if the customer
+    // reopens the drawing screen later with symbols still remaining, same as it would if they'd
+    // never dismissed it, rather than being suppressed forever after one accidental tap.
+    var skipBannerDismissed by remember { mutableStateOf(false) }
     var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var savedStrokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var savedStrokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: defaultStrokeWidth) }
@@ -338,7 +413,7 @@ internal fun SpacingControl(
     val char = codePoint.toChar().toString()
     val title = "Draw $char"
     val characterIndex = characterOrder.indexOf(codePoint)
-    val completedCharacterCount = characterOrder.count { it in drawings }
+    val completedCharacterCount = characterOrder.count { it in drawings || it in skippedCodePoints }
     val letterBarState = rememberLazyListState()
     LaunchedEffect(codePoint, characterOrder) {
         if (characterIndex >= 0) {
@@ -383,8 +458,16 @@ internal fun SpacingControl(
                     ) { Text("Previous") }
                 }
                 Box {
-                    IconButton(onClick = { showMoreMenu = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                    IconButton(onClick = {
+                        showMoreMenu = true
+                        if (!hasOpenedMoreMenu) {
+                            hasOpenedMoreMenu = true
+                            moreMenuPrefs.edit().putBoolean("more_menu_opened", true).apply()
+                        }
+                    }) {
+                        BadgedBox(badge = { if (!hasOpenedMoreMenu) Badge() }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                        }
                     }
                     DropdownMenu(expanded = showMoreMenu, onDismissRequest = { showMoreMenu = false }) {
                         DropdownMenuItem(
@@ -410,130 +493,187 @@ internal fun SpacingControl(
             }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (!pagingMode || phraseModeEnabled) {
-                BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val centerPadding = ((maxWidth - 48.dp) / 2).coerceAtLeast(0.dp)
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        state = letterBarState,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        contentPadding = PaddingValues(horizontal = centerPadding),
-                    ) {
-                        items(characterOrder) { candidate ->
-                            val selected = candidate == codePoint
-                            val savedDrawing = drawings[candidate]
-                            val tileColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-                            val tileContentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                            Surface(
-                                onClick = { if (!selected) navigateSafely { onSelectCharacter(candidate) } },
-                                shape = MaterialTheme.shapes.small,
-                                color = tileColor,
-                                contentColor = tileContentColor,
-                                modifier = Modifier.size(48.dp),
-                            ) {
-                                if (savedDrawing != null) {
-                                    GlyphBarPreview(savedDrawing, tileContentColor, Modifier.fillMaxSize().padding(6.dp))
-                                } else {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Text(candidate.toChar().toString(), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
-                                        Text(
-                                            "*",
-                                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 5.dp),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                        )
+        // Boxed rather than having the banner sit inline at the top of the Column: an inline
+        // banner pushes every sibling below it, including the Canvas -- which sizes off
+        // whatever's left via weight(1f), so the canvas box itself would resize the moment the
+        // banner appears/disappears (e.g. on dismiss) and misalign strokes already drawn against
+        // its old size. Overlaid on top instead, so appearing/disappearing never changes the
+        // Column's own layout or the Canvas's measured size at all.
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            Column(Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                if (!pagingMode || phraseModeEnabled) {
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val centerPadding = ((maxWidth - 48.dp) / 2).coerceAtLeast(0.dp)
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            state = letterBarState,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            contentPadding = PaddingValues(horizontal = centerPadding),
+                        ) {
+                            items(characterOrder) { candidate ->
+                                val selected = candidate == codePoint
+                                val savedDrawing = drawings[candidate]
+                                val tileColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                                val tileContentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                Surface(
+                                    onClick = { if (!selected) navigateSafely { onSelectCharacter(candidate) } },
+                                    shape = MaterialTheme.shapes.small,
+                                    color = tileColor,
+                                    contentColor = tileContentColor,
+                                    modifier = Modifier.size(48.dp),
+                                ) {
+                                    if (savedDrawing != null) {
+                                        GlyphBarPreview(savedDrawing, tileContentColor, Modifier.fillMaxSize().padding(6.dp))
+                                    } else {
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            Text(candidate.toChar().toString(), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                                            Text(
+                                                "*",
+                                                modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 5.dp),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                    Spacer(Modifier.height(8.dp))
                 }
-                Spacer(Modifier.height(8.dp))
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "$completedCharacterCount / ${characterOrder.size} completed",
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    val percentage = if (characterOrder.isEmpty()) 0 else (completedCharacterCount * 100 / characterOrder.size).coerceIn(0, 100)
+                    Text(
+                        "$percentage% completed",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = if (characterOrder.isEmpty()) 0f else (completedCharacterCount.toFloat() / characterOrder.size).coerceIn(0f, 1f),
+                    modifier = Modifier.fillMaxWidth().height(3.dp),
                 )
-            }
-            LinearProgressIndicator(
-                progress = if (characterOrder.isEmpty()) 0f else (completedCharacterCount.toFloat() / characterOrder.size).coerceIn(0f, 1f),
-                modifier = Modifier.fillMaxWidth().height(3.dp),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text("Use the guides to keep every letter aligned and evenly sized.", style = MaterialTheme.typography.bodySmall)
-            Canvas(
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(vertical = 12.dp)
-                    .background(Color.White)
-                    .border(1.dp, Color.Gray)
-                    .pointerInput(codePoint, strokes) {
-                        detectDragGestures(
-                            onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                val next = GlyphPoint(change.position.x, change.position.y)
-                                if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) active = active + next
-                            },
-                            onDragEnd = {
-                                if (active.size > 1) strokes = strokes + GlyphStroke(active)
-                                active = emptyList()
-                            },
-                            onDragCancel = { active = emptyList() },
-                        )
-                    },
-            ) {
-                canvasSize = size.width to size.height
-                if (showReference) {
-                    drawIntoCanvas { canvas ->
-                        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                            typeface = referenceTypeface
-                            textSize = size.height * .68f
-                            color = android.graphics.Color.argb(35, 25, 35, 55)
-                            textAlign = android.graphics.Paint.Align.CENTER
+                Spacer(Modifier.height(4.dp))
+                Text("Use the guides to keep every letter aligned and evenly sized.", style = MaterialTheme.typography.bodySmall)
+                Canvas(
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(vertical = 12.dp)
+                        .background(Color.White)
+                        .border(1.dp, Color.Gray)
+                        // Strokes are stored as raw pixel coordinates of whatever canvas box they were
+                        // drawn on. That box can resize after strokes already exist -- a saved drawing
+                        // reopened on a different-size canvas, or (in principle) a live resize. The
+                        // skip-symbols banner itself is overlaid rather than inline (see below) so it
+                        // can no longer be the cause, but this stays as a safety net for any other
+                        // live resize (rotation, multi-window) so old points always rescale instead of
+                        // staying at their stale pixel positions.
+                        .onSizeChanged { newSize ->
+                            val (oldWidth, oldHeight) = canvasSize
+                            if (oldWidth > 0f && oldHeight > 0f &&
+                                (newSize.width.toFloat() != oldWidth || newSize.height.toFloat() != oldHeight)
+                            ) {
+                                val scaleX = newSize.width / oldWidth
+                                val scaleY = newSize.height / oldHeight
+                                fun GlyphPoint.rescaled() = GlyphPoint(x * scaleX, y * scaleY, onCurve)
+                                strokes = strokes.map { it.copy(points = it.points.map { point -> point.rescaled() }) }
+                                active = active.map { it.rescaled() }
+                            }
+                            canvasSize = newSize.width.toFloat() to newSize.height.toFloat()
                         }
-                        canvas.nativeCanvas.drawText(char, size.width / 2f, size.height * .78f, paint)
+                        .pointerInput(codePoint, strokes) {
+                            detectDragGestures(
+                                onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    val next = GlyphPoint(change.position.x, change.position.y)
+                                    if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) active = active + next
+                                },
+                                onDragEnd = {
+                                    if (active.size > 1) strokes = strokes + GlyphStroke(active)
+                                    active = emptyList()
+                                },
+                                onDragCancel = { active = emptyList() },
+                            )
+                        },
+                ) {
+                    canvasSize = size.width to size.height
+                    if (showReference) {
+                        drawIntoCanvas { canvas ->
+                            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                typeface = referenceTypeface
+                                textSize = size.height * .68f
+                                color = android.graphics.Color.argb(35, 25, 35, 55)
+                                textAlign = android.graphics.Paint.Align.CENTER
+                            }
+                            canvas.nativeCanvas.drawText(char, size.width / 2f, size.height * .78f, paint)
+                        }
+                    }
+                    drawFontGuides()
+                    (strokes.map { it.points } + listOf(active)).forEach { points ->
+                        if (points.size > 1) {
+                            drawPath(
+                                Path().apply {
+                                    moveTo(points[0].x, points[0].y)
+                                    points.drop(1).forEach { lineTo(it.x, it.y) }
+                                },
+                                Color.Black,
+                                style = Stroke(strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                            )
+                        }
                     }
                 }
-                drawFontGuides()
-                (strokes.map { it.points } + listOf(active)).forEach { points ->
-                    if (points.size > 1) {
-                        drawPath(
-                            Path().apply {
-                                moveTo(points[0].x, points[0].y)
-                                points.drop(1).forEach { lineTo(it.x, it.y) }
-                            },
-                            Color.Black,
-                            style = Stroke(strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
-                        )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Thickness", style = MaterialTheme.typography.bodySmall)
+                    Slider(
+                        value = strokeWidth,
+                        onValueChange = { strokeWidth = it },
+                        valueRange = 2f..24f,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text("${strokeWidth.toInt()}", style = MaterialTheme.typography.bodySmall)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) {
+                        Icon(Icons.Default.Undo, contentDescription = "Undo")
+                    }
+                    IconButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
+                        Icon(Icons.Default.Clear, contentDescription = "Clear")
+                    }
+                    Button(savePrimary, Modifier.weight(1f), enabled = strokes.isNotEmpty() && (isDirty || initial == null || pagingMode)) {
+                        Text(saveLabel, maxLines = 1)
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Thickness", style = MaterialTheme.typography.bodySmall)
-                Slider(
-                    value = strokeWidth,
-                    onValueChange = { strokeWidth = it },
-                    valueRange = 2f..24f,
-                    modifier = Modifier.weight(1f),
-                )
-                Text("${strokeWidth.toInt()}", style = MaterialTheme.typography.bodySmall)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) {
-                    Icon(Icons.Default.Undo, contentDescription = "Undo")
-                }
-                IconButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
-                    Icon(Icons.Default.Clear, contentDescription = "Clear")
-                }
-                if (pagingMode && !phraseModeEnabled) TextButton(onSkip) { Text("Skip") }
-                Button(savePrimary, Modifier.weight(1f), enabled = strokes.isNotEmpty() && (isDirty || initial == null || pagingMode)) {
-                    Text(saveLabel, maxLines = 1)
+            // Overlaid on top of the Column instead of sitting inline at its top: an inline banner
+            // pushes every sibling below it, including the Canvas above -- which sizes off whatever
+            // space is left via weight(1f), so the canvas box itself would resize the moment this
+            // banner appears/disappears (e.g. on dismiss) and misalign strokes already drawn against
+            // its old size. Overlaid, appearing/disappearing never changes the Column's layout or the
+            // Canvas's measured size at all.
+            if (canSkipRemainingSymbols && !skipBannerDismissed) {
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Letters done!", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text("Skip symbols and fine-tune your font", style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = onSkipRemainingSymbols, contentPadding = PaddingValues(vertical = 4.dp)) { Text("Skip & fine-tune") }
+                        }
+                        IconButton(onClick = { skipBannerDismissed = true }) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
+                    }
                 }
             }
         }

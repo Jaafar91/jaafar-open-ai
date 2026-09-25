@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import com.jaafar.remoteconfig.logFeatureEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -25,8 +26,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     companion object {
         private const val PREFS_DEFAULT_SIGNATURE = "default_signature_name"
         private const val PREFS_DEFAULT_STAMP = "default_stamp_name"
-        private const val PREFS_PHRASE_MODE = "phrase_mode_enabled"
-        private const val PREFS_LAST_PHRASE = "last_phrase"
         val CHARACTER_ORDER: List<Int> = buildList {
             addAll('A'.code..'Z'.code); addAll('a'.code..'z'.code); addAll('0'.code..'9'.code)
             " .,!?\'\"-:;()".forEach { add(it.code) }; addAll((33..126).filter { it !in this })
@@ -44,11 +43,21 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         private const val PREFS_IMAGE_EXPORT_COUNT = "image_export_count"
         private const val PREFS_FILLMARK_EXPORT_MONTH = "fillmark_export_month"
         private const val PREFS_FILLMARK_EXPORT_COUNT = "fillmark_export_count"
+
+        // Ask for a rating once, after a few successful shares from either Use font on image or
+        // Fill & Mark -- never again after that, whatever the customer chooses, so it never nags.
+        private const val SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT = 3
+        private const val PREFS_RATING_PROMPT_SHOWN = "rating_prompt_shown"
+        private const val PREFS_SUCCESSFUL_SHARE_COUNT = "successful_share_count_for_rating"
     }
 
-    /** Returns the ordered code points for the active project's selected languages. */
-    val activeCharacterOrder: List<Int> get() {
-        val project = activeProject ?: return CHARACTER_ORDER
+    /** The code points [project] actually needs to be "complete" -- every character in its
+     *  selected languages, letters-then-digits-then-symbols, the order [activeCharacterOrder]
+     *  draws them in. Always the *full* set regardless of [FontProject.goal] -- a
+     *  [FontGoal.USE_ON_IMAGE] project doesn't shrink this list, it just lets the customer bulk-
+     *  skip whatever non-alphanumeric characters remain instead of drawing them (see
+     *  [skipRemainingSymbols]/[isProjectComplete]). */
+    private fun requiredCodePoints(project: FontProject): List<Int> {
         val codePoints = project.selectedLanguages
             .flatMap { it.codePoints }
             .distinct()
@@ -59,19 +68,80 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return letters + digits + symbols
     }
 
+    /** Returns the ordered code points for the active project's selected languages. */
+    val activeCharacterOrder: List<Int> get() = activeProject?.let(::requiredCodePoints) ?: CHARACTER_ORDER
+
     val phraseCharacterOrder: List<Int>
         get() = applicablePhraseCodePoints(lastPhrase, activeCharacterOrder.toSet())
 
     val editorCharacterOrder: List<Int>
         get() = if (phraseModeEnabled) phraseCharacterOrder else activeCharacterOrder
 
-    fun characterCount(project: FontProject): Int = project.selectedLanguages
-        .flatMap { it.codePoints }
-        .distinct()
-        .count { it != 0x20 }
+    fun characterCount(project: FontProject): Int = requiredCodePoints(project).size
 
+    /** [project]'s drawn-or-skipped character count -- skipping still counts as progress toward
+     *  "done" (see [isProjectComplete]), so a percentage shown against [characterCount] doesn't
+     *  stall once a character's been explicitly skipped rather than drawn. */
+    fun progressCount(project: FontProject): Int =
+        (project.drawings.map { it.codePoint }.toSet() + project.skippedCodePoints).size
+
+    /** Whether [project] still has a letter or digit not yet drawn -- ignores punctuation/
+     *  symbols entirely. Home's "Continue X" nudge only cares about this core set: once it's
+     *  done, remaining symbols are a Font workspace/Fine-tune concern, not something to keep
+     *  nagging about on Home. */
+    fun hasMissingAlphanumeric(project: FontProject): Boolean {
+        val drawn = project.drawings.map { it.codePoint }.toSet()
+        return requiredCodePoints(project).any { it.toChar().isLetterOrDigit() && it !in drawn }
+    }
+
+    /** [project]'s letter/digit-only progress (0-100) -- drawn letters/digits out of all
+     *  letters/digits required, ignoring punctuation/symbols. Shown alongside Home's "Continue X"
+     *  nudge, which -- per [hasMissingAlphanumeric] -- is only ever about finishing that set. */
+    fun alphanumericPercentage(project: FontProject): Int {
+        val required = requiredCodePoints(project).filter { it.toChar().isLetterOrDigit() }
+        if (required.isEmpty()) return 100
+        val drawn = project.drawings.map { it.codePoint }.toSet()
+        return (required.count { it in drawn } * 100 / required.size).coerceIn(0, 100)
+    }
+
+    /** Everything the active project still needs, in [activeCharacterOrder]'s order, excluding
+     *  what's already drawn or skipped -- shared by Font workspace and the drawing screen so
+     *  both offer "skip remaining symbols" (see [skipRemainingSymbols]) under the exact same
+     *  condition. */
+    val remainingCodePoints: List<Int>
+        get() {
+            val skipped = activeProject?.skippedCodePoints ?: emptySet()
+            return activeCharacterOrder.filter { it !in drawings && it !in skipped }
+        }
+
+    /** Whether the active project has nothing left but non-alphanumeric characters -- the
+     *  trigger for offering "skip remaining symbols" on both Font workspace and the drawing
+     *  screen itself. Only ever true for a [FontGoal.USE_ON_IMAGE] project: letters/digits are
+     *  always required, and [FontGoal.EXPORT] offers no shortcut past punctuation/symbols. */
+    val canSkipRemainingSymbols: Boolean
+        get() {
+            if (activeProject?.goal != FontGoal.USE_ON_IMAGE) return false
+            val remaining = remainingCodePoints
+            return remaining.isNotEmpty() && remaining.none { it.toChar().isLetterOrDigit() }
+        }
+
+    /** A character counts as satisfied once it's either drawn or explicitly skipped (see
+     *  [skipRemainingSymbols]) -- skipping is only ever offered for non-alphanumeric characters
+     *  on a [FontGoal.USE_ON_IMAGE] project, so letters/digits and any [FontGoal.EXPORT] project
+     *  still need everything actually drawn to reach this. */
     fun isProjectComplete(project: FontProject): Boolean {
-        val required = project.selectedLanguages.flatMap { it.codePoints }.filter { it != 0x20 }.toSet()
+        val required = requiredCodePoints(project)
+        val satisfied = project.drawings.map { it.codePoint }.toSet() + project.skippedCodePoints
+        return required.isNotEmpty() && satisfied.containsAll(required)
+    }
+
+    /** Whether [project] has every character actually drawn -- unlike [isProjectComplete], a
+     *  skipped character doesn't count here. Gates exporting the font as a real file (Download/
+     *  Share): offering to export/share a font that's still missing punctuation and symbols
+     *  (skipped or simply not yet drawn) would ship a file that looks done but silently has
+     *  glyphs missing. */
+    fun isReadyToExport(project: FontProject): Boolean {
+        val required = requiredCodePoints(project)
         return required.isNotEmpty() && project.drawings.map { it.codePoint }.toSet().containsAll(required)
     }
 
@@ -106,6 +176,30 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     /** Call once a Fill & Mark export actually completes -- same "only a completed export
      *  counts" rule as [recordUseOnImageExport]. */
     fun recordFillMarkExport() = recordMonthlyExport(PREFS_FILLMARK_EXPORT_MONTH, PREFS_FILLMARK_EXPORT_COUNT)
+
+    /** Call alongside [recordUseOnImageExport]/[recordFillMarkExport] on every successful share
+     *  from either feature -- unlike those, this counts Pro customers too (free-tier quota
+     *  tracking skips them, but they're just as worth asking for a rating). Surfaces
+     *  [showRatingPrompt] once [SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT] of these is reached. */
+    fun recordSuccessfulShareForRating() {
+        if (prefs.getBoolean(PREFS_RATING_PROMPT_SHOWN, false)) return
+        val count = prefs.getInt(PREFS_SUCCESSFUL_SHARE_COUNT, 0) + 1
+        prefs.edit().putInt(PREFS_SUCCESSFUL_SHARE_COUNT, count).apply()
+        if (count >= SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT) showRatingPrompt = true
+    }
+
+    /** Hides the Home banner for this app session only -- not marked as answered, so it comes
+     *  back next time the app is opened, instead of a "not now" silencing it for good. */
+    fun dismissRatingPromptForNow() {
+        showRatingPrompt = false
+    }
+
+    /** Called once the customer actually opens the Play Store listing from the banner -- its job
+     *  is done, so unlike [dismissRatingPromptForNow] this marks it answered for good. */
+    fun markRatingPromptAnswered() {
+        showRatingPrompt = false
+        prefs.edit().putBoolean(PREFS_RATING_PROMPT_SHOWN, true).apply()
+    }
 
     // Hand-drawn (projects) and imported fonts are two separate lists/models, but count
     // together against the free plan's single shared font cap.
@@ -146,10 +240,19 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     var importStatus by mutableStateOf(""); private set
     var defaultSignatureName by mutableStateOf(prefs.getString(PREFS_DEFAULT_SIGNATURE, null)); private set
     var defaultStampName by mutableStateOf(prefs.getString(PREFS_DEFAULT_STAMP, null)); private set
+    // Starts reflecting whatever was already earned in a previous session -- unlike a one-shot
+    // dialog, this is a Home banner meant to keep showing up (even across an app restart) until
+    // the customer actually rates, not just until they first see it once.
+    var showRatingPrompt by mutableStateOf(
+        !prefs.getBoolean(PREFS_RATING_PROMPT_SHOWN, false) &&
+            prefs.getInt(PREFS_SUCCESSFUL_SHARE_COUNT, 0) >= SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT
+    ); private set
     var lastEditedCodePoint by mutableStateOf<Int?>(null); private set
     var lastStrokeWidth by mutableFloatStateOf(8f); private set
-    var phraseModeEnabled by mutableStateOf(prefs.getBoolean(PREFS_PHRASE_MODE, false)); private set
-    var lastPhrase by mutableStateOf(prefs.getString(PREFS_LAST_PHRASE, "") ?: ""); private set
+    var phraseModeEnabled by mutableStateOf(false); private set
+    /** The active project's own remembered preview/phrase text -- kept per font via
+     *  [FontProject.previewPhrase], not one value shared across every font. */
+    val lastPhrase: String get() = activeProject?.previewPhrase ?: DEFAULT_PREVIEW_TEXT
 
     /** Returns all available typefaces (generated + imported) with their display labels. */
     fun hasGeneratedFont(name: String): Boolean = generatedFile(name).exists()
@@ -193,7 +296,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return (generated + imported).sortedByDescending { it.modifiedAt }.map { it.name to it.typeface }
     }
 
-    fun createProject(name: String): Boolean {
+    fun createProject(name: String, goal: FontGoal = FontGoal.EXPORT): Boolean {
         if (hasReachedFreeFontLimit) {
             status = "Free plan allows $FREE_FONT_LIMIT font. Upgrade to Pro for unlimited fonts."
             return false
@@ -206,7 +309,9 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             status = "A font with that name already exists."
             return false
         }
-        projects.add(FontProject(clean)); openProject(projects.lastIndex); persist(); return true
+        projects.add(FontProject(clean, goal = goal)); openProject(projects.lastIndex); persist()
+        logFeatureEvent(getApplication(), "font_created")
+        return true
     }
 
     fun hasFontName(name: String, excludingProjectIndex: Int? = null): Boolean {
@@ -275,11 +380,34 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         selectedCodePoint = null; generatedFont = generatedFile(project.name).takeIf { it.exists() }
         previewTypeface = generatedFont?.let { runCatching { loadTypeface(it) }.getOrNull() }
         lastStrokeWidth = 8f
+        // lastEditedCodePoint isn't scoped to a project -- without this, editLetters() on a
+        // brand-new (or just different) font could jump straight to whatever character was last
+        // edited in the *previous* font, landing the customer on an unrelated letter the moment
+        // they open an empty project instead of starting at its first character.
+        lastEditedCodePoint = null
+        // Phrase/paging mode is a live editing-session state, not something a font should
+        // remember -- without this, switching fonts mid-phrase left the next font's editor
+        // still in phrase mode, filtering its queue by the *previous* font's phrase.
+        phraseModeEnabled = false
+        isPagingMode = false
+        pagingQueue = emptyList()
+        pagingHistory = emptyList()
+        pagingTotal = 0
         status = ""
     }
 
     fun closeProject() { syncActive(); activeProjectIndex = null; drawings.clear(); generatedFont = null; previewTypeface = null }
-    fun edit(codePoint: Int) { lastEditedCodePoint = codePoint; isPagingMode = false; selectedCodePoint = codePoint }
+    /** Captured once per editing session (here and in [startQueue], its paging-mode equivalent)
+     *  so a save that finishes the session can tell a touch-up of an already-complete font (this
+     *  was already true when editing started) apart from a genuine first-time completion (it
+     *  wasn't) -- the former should return to wherever the customer was, not show the
+     *  celebration screen again. */
+    var wasCompleteBeforeCurrentEdit: Boolean = false
+        private set
+    fun edit(codePoint: Int) {
+        wasCompleteBeforeCurrentEdit = activeProject?.let(::isProjectComplete) == true
+        lastEditedCodePoint = codePoint; isPagingMode = false; selectedCodePoint = codePoint
+    }
     fun editLetters() {
         val order = activeCharacterOrder
         if (order.isEmpty()) { status = "No characters available."; return }
@@ -305,7 +433,13 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return true
     }
 
-    fun startPaging() = startQueue(activeCharacterOrder.filter { it !in drawings }, "All supported characters have already been drawn.")
+    fun startPaging() {
+        val skipped = activeProject?.skippedCodePoints ?: emptySet()
+        // Already-skipped characters don't requeue here -- otherwise "Continue drawing" would
+        // force the customer back through every symbol they already chose to skip, every time,
+        // just to reach whatever's genuinely still undrawn. They stay reachable via Edit letters.
+        startQueue(activeCharacterOrder.filter { it !in drawings && it !in skipped }, "All supported characters have already been drawn.")
+    }
 
     fun startPhrase(phrase: String): Boolean {
         val cleanPhrase = phrase.trim()
@@ -318,26 +452,20 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             status = "The phrase has no characters supported by the selected languages."
             return false
         }
-        lastPhrase = cleanPhrase
+        updateActive { it.copy(previewPhrase = cleanPhrase) }
         phraseModeEnabled = true
-        prefs.edit()
-            .putString(PREFS_LAST_PHRASE, cleanPhrase)
-            .putBoolean(PREFS_PHRASE_MODE, true)
-            .apply()
-        val missingCharacters = phraseCharacters.filter { it !in drawings }
-        if (missingCharacters.isEmpty()) {
-            closeEditor()
-            clearPhraseModeState()
-            status = "Phrase ready — all required characters are already available."
-        } else {
-            startQueue(missingCharacters, "Phrase ready — all required characters are already available.")
-        }
+        // Queues every character of the phrase, not just the ones still missing -- so this also
+        // works as a "review/edit this phrase" flow for an already-complete font (e.g. from
+        // Fine-tune, touching up a letter the customer doesn't like), not only a "draw what's
+        // left" one. An already-drawn character just opens pre-loaded with its existing strokes
+        // (GlyphEditorScreen already does this via `initial = drawings[codePoint]`), so this is a
+        // genuine edit, not a blank redraw.
+        startQueue(phraseCharacters, "Phrase ready — nothing to draw or review.")
         return true
     }
 
     fun disablePhraseMode() {
         phraseModeEnabled = false
-        prefs.edit().putBoolean(PREFS_PHRASE_MODE, false).apply()
         if (isPagingMode) {
             isPagingMode = false
             pagingQueue = emptyList()
@@ -347,18 +475,14 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun clearPhraseModeState() {
         phraseModeEnabled = false
-        lastPhrase = ""
         pagingQueue = emptyList()
         pagingHistory = emptyList()
         pagingTotal = 0
-        prefs.edit()
-            .remove(PREFS_PHRASE_MODE)
-            .remove(PREFS_LAST_PHRASE)
-            .apply()
     }
 
     private fun startQueue(queue: List<Int>, emptyMessage: String) {
         if (queue.isEmpty()) { status = emptyMessage; return }
+        wasCompleteBeforeCurrentEdit = activeProject?.let(::isProjectComplete) == true
         pagingQueue = queue
         pagingHistory = emptyList()
         pagingTotal = queue.size
@@ -376,18 +500,28 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return true
     }
 
+    /** Persists the active project's own Fine-tune preview/phrase text -- kept per font, so a
+     *  different font's Fine-tune screen shows that font's own last-used text, not this one's. */
+    fun setPreviewPhrase(text: String) {
+        updateActive { it.copy(previewPhrase = text) }
+    }
+
     fun closeEditor() {
         selectedCodePoint = null
         isPagingMode = false
         pagingQueue = emptyList()
         pagingHistory = emptyList()
     }
-    fun skipLetter() {
-        if (!isPagingMode) return
-        selectedCodePoint?.let { pagingHistory = pagingHistory + it }
-        pagingQueue = pagingQueue.filterNot { it == selectedCodePoint }
-        selectedCodePoint = if (pagingQueue.isNotEmpty()) pagingQueue.first() else null
-        if (selectedCodePoint == null) isPagingMode = false
+    /** Bulk-skips every remaining non-alphanumeric character on the active project in one shot
+     *  (see [FontProject.skippedCodePoints]) -- offered on Font workspace and the drawing screen
+     *  once every letter/digit is drawn, as a single "skip the rest and use it now" action
+     *  instead of clicking past each punctuation/symbol character one at a time. Never touches a
+     *  letter/digit -- those stay required regardless of goal. */
+    fun skipRemainingSymbols() {
+        val remaining = remainingCodePoints.filter { !it.toChar().isLetterOrDigit() }
+        if (remaining.isEmpty()) return
+        updateActive { it.copy(skippedCodePoints = it.skippedCodePoints + remaining) }
+        logFeatureEvent(getApplication(), "font_skip_remaining_symbols")
     }
 
     fun previousLetter() {
@@ -401,6 +535,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun saveDrawing(drawing: GlyphDrawing) {
         lastStrokeWidth = drawing.strokeWidth
         drawings[drawing.codePoint] = drawing
+        logFeatureEvent(getApplication(), "font_letter_drawn")
         if (isPagingMode) {
             pagingHistory = pagingHistory + drawing.codePoint
             pagingQueue = pagingQueue.filterNot { it == drawing.codePoint }
@@ -418,6 +553,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         val wasExisting = drawing.codePoint in drawings
         lastStrokeWidth = drawing.strokeWidth
         drawings[drawing.codePoint] = drawing
+        logFeatureEvent(getApplication(), "font_letter_drawn")
         syncActive(); persist(); status = "Letter saved."
         val order = activeCharacterOrder
         selectedCodePoint = characterAfterSave(order, drawing.codePoint, drawings.keys, wasExisting)
@@ -428,6 +564,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun saveDrawingAndStay(drawing: GlyphDrawing) {
         lastStrokeWidth = drawing.strokeWidth
         drawings[drawing.codePoint] = drawing
+        logFeatureEvent(getApplication(), "font_letter_drawn")
         syncActive(); persist(); status = "Letter saved."
         selectedCodePoint = drawing.codePoint
         isPagingMode = false
@@ -441,7 +578,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             val file = generatedFile(snapshot.name)
             writeFontFileAtomically(file, TrueTypeGenerator().generate(snapshot.drawings, snapshot.wordSpacingMm, snapshot.letterSpacingMm, snapshot.name))
             file to loadTypeface(file)
-        }.onSuccess { (file, typeface) -> main.post { generatedFont = file; previewTypeface = typeface; status = "${snapshot.name} generated and saved." } }
+        }.onSuccess { (file, typeface) -> main.post {
+            generatedFont = file; previewTypeface = typeface; status = "${snapshot.name} generated and saved."
+            logFeatureEvent(getApplication(), "font_generated")
+        } }
             .onFailure { error -> main.post { status = "Could not generate font: ${error.message ?: "unknown error"}" } } }
     }
 

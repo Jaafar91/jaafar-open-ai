@@ -3,6 +3,7 @@ package com.jaafar.remoteconfig.fontcreator
 import android.content.Intent
 import android.graphics.Typeface
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,6 +24,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
@@ -51,7 +53,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.jaafar.remoteconfig.R
+import com.jaafar.remoteconfig.logFeatureEvent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Font creation, preview, export, and import screens. */
 
@@ -89,15 +95,42 @@ import kotlinx.coroutines.delay
             if (vm.setSpacing(letterSpacing.toString(), wordSpacing.toString())) vm.generate()
         }
     }
+    // Local echo of the project's own preview phrase for responsive typing; committed to the
+    // project (debounced), not on every keystroke -- same reasoning as the spacing sliders
+    // above, just without needing a font regenerate/reload on each commit.
+    var localPreviewText by remember(project.name) { mutableStateOf(previewText) }
+    var isFirstPreviewTextChange by remember(project.name) { mutableStateOf(true) }
+    LaunchedEffect(localPreviewText) {
+        if (isFirstPreviewTextChange) {
+            isFirstPreviewTextChange = false
+        } else {
+            delay(150)
+            changePreviewText(localPreviewText)
+        }
+    }
     // Word spacing has no visible effect with only one word in the preview -- there's nothing
     // to space apart -- so its control is disabled rather than left inertly interactive.
-    val previewWordCount = previewText.trim().split(Regex("\\s+")).count { it.isNotBlank() }
+    val previewWordCount = localPreviewText.trim().split(Regex("\\s+")).count { it.isNotBlank() }
 
     // Matches the iOS app's "Fine-tune your font" screen: the preview *is* the screen --
     // a big live-rendered card with the text field woven directly into it, a single
     // slider-based spacing card, and one primary action -- instead of a status banner,
     // a completion badge, +/- spacing steppers, and two competing buttons.
-    Page("Fine-tune your font", back, scrollable = true) {
+    Page(
+        "Fine-tune your font",
+        back,
+        scrollable = true,
+        // Same export actions, same completion gate as Font workspace's top bar -- exporting the
+        // real font file needs every character drawn, not just what this project's own goal
+        // requires, so it's only offered once nothing at all is left (see isReadyToExport).
+        actions = {
+            val file = vm.generatedFont
+            if (file != null && vm.isReadyToExport(project)) {
+                DownloadButton(file, project.name)
+                ShareButton(file, project.name)
+            }
+        },
+    ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f),
@@ -108,27 +141,44 @@ import kotlinx.coroutines.delay
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Box(Modifier.fillMaxWidth().heightIn(min = 130.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(110.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
                     val typeface = vm.previewTypeface
                     if (typeface == null) {
                         CircularProgressIndicator()
                     } else {
                         Text(
-                            previewText.ifBlank { " " },
-                            style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily(typeface)),
+                            localPreviewText.ifBlank { " " },
+                            style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily(typeface)),
                             textAlign = TextAlign.Center,
-                            maxLines = 4,
+                            maxLines = 3,
                         )
                     }
                 }
                 OutlinedTextField(
-                    value = previewText,
-                    onValueChange = changePreviewText,
+                    value = localPreviewText,
+                    onValueChange = { localPreviewText = it },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Type something to preview") },
                     textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
                 )
             }
+        }
+        // Drops straight into the drawing canvas for the letters in previewText -- reusing
+        // phrase mode, now that it queues already-drawn characters too (see startPhrase) --
+        // instead of leaving "I don't like this letter" with no obvious way to fix it.
+        OutlinedButton(
+            onClick = { vm.startPhrase(localPreviewText) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = localPreviewText.isNotBlank(),
+        ) {
+            Icon(Icons.Filled.Edit, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Don't like a letter? Edit it")
         }
         if (vm.previewTypeface != null) {
             Surface(
@@ -153,7 +203,7 @@ import kotlinx.coroutines.delay
                     )
                 }
             }
-            Button(onClick = { useOnImage(project.name, previewText) }, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { useOnImage(project.name, localPreviewText) }, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.Image, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Use on an image")
@@ -201,12 +251,74 @@ private fun SpacingSlider(
     }
 }
 
-@Composable internal fun ShareButton(file: java.io.File, name: String) {
-    val context = LocalContext.current
-    IconButton(onClick = { val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file); context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "font/ttf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "Share $name")) }) { ActionIcon(ActionIconType.Share, "Share $name") }
+/** Lets the customer pick TTF/OTF/WOFF before [onFormatSelected] runs -- shared by [ShareButton]
+ *  and [DownloadButton] so the format choice looks and behaves the same in both places. [trigger]
+ *  gets an onClick that opens the menu, so either caller can use whatever tappable it wants
+ *  (an icon button, a full card) as the anchor. */
+@Composable
+private fun FormatMenuAnchor(onFormatSelected: (FontExportFormat) -> Unit, trigger: @Composable (onClick: () -> Unit) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        trigger { expanded = true }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            FontExportFormat.entries.forEach { format ->
+                DropdownMenuItem(
+                    text = { Text(format.label) },
+                    onClick = { expanded = false; onFormatSelected(format) },
+                )
+            }
+        }
+    }
 }
 
-internal enum class ActionIconType { Add, Edit, Share, Import }
+private fun shareExportedFont(context: android.content.Context, exported: java.io.File, format: FontExportFormat, name: String) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", exported)
+    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+        type = format.mimeType
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }, "Share $name"))
+}
+
+@Composable internal fun ShareButton(file: java.io.File, name: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    FormatMenuAnchor(onFormatSelected = { format ->
+        scope.launch {
+            val exported = withContext(Dispatchers.IO) { exportFontFile(context, file, name, format) }
+            shareExportedFont(context, exported, format, name)
+            logFeatureEvent(context, "font_shared")
+        }
+    }) { onClick ->
+        IconButton(onClick = onClick) { ActionIcon(ActionIconType.Share, "Share $name") }
+    }
+}
+
+/** Saves the generated font into the device's Downloads folder, distinct from [ShareButton]'s
+ *  share sheet -- a customer who just wants a copy on their phone shouldn't have to go through
+ *  another app to get one. Below Android 10 (no permission-free MediaStore.Downloads path,
+ *  see [downloadToPublicDownloads]) this falls back to the same share sheet as [ShareButton]. */
+@Composable internal fun DownloadButton(file: java.io.File, name: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    FormatMenuAnchor(onFormatSelected = { format ->
+        scope.launch {
+            val exported = withContext(Dispatchers.IO) { exportFontFile(context, file, name, format) }
+            val saved = withContext(Dispatchers.IO) { downloadToPublicDownloads(context, exported, exported.name, format.mimeType) }
+            if (saved) {
+                Toast.makeText(context, "Saved \"${exported.name}\" to Downloads", Toast.LENGTH_SHORT).show()
+                logFeatureEvent(context, "font_downloaded")
+            } else {
+                shareExportedFont(context, exported, format, name)
+                logFeatureEvent(context, "font_shared")
+            }
+        }
+    }) { onClick ->
+        IconButton(onClick = onClick) { ActionIcon(ActionIconType.Download, "Download $name") }
+    }
+}
+
+internal enum class ActionIconType { Add, Edit, Share, Import, Download }
 
 /** Hand-drawn action glyph (this app's own icon set, not Material Icons) -- reused wherever
  *  an add/edit/share/import action needs an icon-only control instead of a text button. */
@@ -234,8 +346,10 @@ internal enum class ActionIconType { Add, Edit, Share, Import }
                 drawCircle(color, radius, top)
                 drawCircle(color, radius, bottom)
             }
-            ActionIconType.Import -> {
-                // Down-arrow-into-tray icon
+            ActionIconType.Import, ActionIconType.Download -> {
+                // Down-arrow-into-tray icon -- Import brings an external file in, Download saves
+                // this app's own generated file out to the device; same "incoming" shape reads
+                // right for both, so one glyph covers them.
                 drawLine(color, Offset(size.width / 2, size.height * .15f), Offset(size.width / 2, size.height * .7f), stroke)
                 drawLine(color, Offset(size.width * .3f, size.height * .5f), Offset(size.width / 2, size.height * .7f), stroke)
                 drawLine(color, Offset(size.width * .7f, size.height * .5f), Offset(size.width / 2, size.height * .7f), stroke)

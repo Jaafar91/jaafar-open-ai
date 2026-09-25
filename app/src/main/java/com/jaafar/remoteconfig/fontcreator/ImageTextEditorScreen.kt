@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.jaafar.remoteconfig.logFeatureEvent
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.roundToInt
@@ -121,6 +122,7 @@ fun ImageTextEditorScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    LaunchedEffect(imageUri) { logFeatureEvent(context, "use_font_on_image_opened") }
     val density = LocalDensity.current
     val keyboard = LocalSoftwareKeyboardController.current
     val textFocusRequester = remember { FocusRequester() }
@@ -222,6 +224,8 @@ fun ImageTextEditorScreen(
                             bitmap?.let { source ->
                                 shareImage(context, renderImage(source, layers, ::typefaceFor))
                                 vm.recordUseOnImageExport()
+                                vm.recordSuccessfulShareForRating()
+                                logFeatureEvent(context, "image_text_exported")
                             }
                         },
                     ) { ActionIcon(ActionIconType.Share, "Share image") }
@@ -612,10 +616,25 @@ private fun wrapSingleLine(line: String, maxWidth: Float, paint: Paint): List<St
     val result = mutableListOf<String>()
     var currentLine = ""
     line.trim().split(Regex("\\s+")).forEach { word ->
-        val candidate = if (currentLine.isEmpty()) word else "$currentLine $word"
+        var remainingWord = word
+        // A single word wider than maxWidth all on its own -- no spaces to break at, e.g. a run
+        // of gibberish test text, a long name, a URL -- would otherwise sit on one line forever
+        // and overflow the image, exactly like the screenshot this was reported from. Break it
+        // character-by-character once it alone exceeds maxWidth, the same fallback CSS's
+        // overflow-wrap: break-word uses, instead of only ever breaking at whitespace.
+        while (paint.measureText(remainingWord) > maxWidth && remainingWord.length > 1) {
+            var breakIndex = remainingWord.length
+            while (breakIndex > 1 && paint.measureText(remainingWord.substring(0, breakIndex)) > maxWidth) {
+                breakIndex--
+            }
+            if (currentLine.isNotEmpty()) { result += currentLine; currentLine = "" }
+            result += remainingWord.substring(0, breakIndex)
+            remainingWord = remainingWord.substring(breakIndex)
+        }
+        val candidate = if (currentLine.isEmpty()) remainingWord else "$currentLine $remainingWord"
         if (currentLine.isNotEmpty() && paint.measureText(candidate) > maxWidth) {
             result += currentLine
-            currentLine = word
+            currentLine = remainingWord
         } else {
             currentLine = candidate
         }

@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -98,6 +99,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jaafar.remoteconfig.logFeatureEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -164,9 +166,16 @@ internal fun FillMarkScreen(
     vm: FontCreatorViewModel,
     initialUri: Uri? = null,
     initialMarkName: String? = null,
+    // Tapping Sign/Stamp with nothing saved yet goes to create one instead of placing an empty
+    // mark -- these hand back the document currently open here so the caller can return to this
+    // same document (not a fresh picker) once a signature/stamp exists.
+    createSignature: (Uri) -> Unit,
+    createStamp: (Uri) -> Unit,
     back: () -> Unit,
 ) {
     var documentUri by remember { mutableStateOf(initialUri) }
+    val context = LocalContext.current
+    LaunchedEffect(Unit) { logFeatureEvent(context, "fill_mark_opened") }
 
     // Update the editor when another document is shared while the app is already open.
     LaunchedEffect(initialUri) {
@@ -181,6 +190,8 @@ internal fun FillMarkScreen(
             vm = vm,
             documentUri = documentUri!!,
             initialMarkName = initialMarkName,
+            createSignature = { createSignature(documentUri!!) },
+            createStamp = { createStamp(documentUri!!) },
             // Exits Fill & Mark entirely, matching this back button everywhere else in the
             // app -- previously this reset to the document picker instead, which (now that
             // picker auto-launches immediately, with no landing screen to land on) meant back
@@ -236,6 +247,8 @@ private fun FillMarkEditorScreen(
     documentUri: Uri,
     initialText: String? = null,
     initialMarkName: String? = null,
+    createSignature: () -> Unit,
+    createStamp: () -> Unit,
     back: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -323,13 +336,10 @@ private fun FillMarkEditorScreen(
     }
 
     val selectedMark = marks.firstOrNull { it.id == selectedMarkId }
-    val availableTools = MarkType.entries.filter { tool ->
-        when (tool) {
-            MarkType.Signature -> vm.signatures.any { it.imageFileName == null }
-            MarkType.Stamp -> vm.signatures.any { it.imageFileName != null }
-            else -> true
-        }
-    }
+    // Sign/Stamp always show, even with nothing saved yet -- tapping one with nothing saved
+    // goes to create one (see createSignature/createStamp below) instead of the tool
+    // disappearing until the customer happens to save one from elsewhere in the app.
+    val availableTools = MarkType.entries
 
     // Canvas display size (tracked so pointer handlers can use it)
     var canvasDisplaySize by remember { mutableStateOf(IntSize.Zero) }
@@ -541,6 +551,8 @@ private fun FillMarkEditorScreen(
             if (result != null) {
                 shareDocument(context, result.file, result.mimeType)
                 vm.recordFillMarkExport()
+                vm.recordSuccessfulShareForRating()
+                logFeatureEvent(context, "fill_mark_exported")
                 status = "Export ready to share."
             } else {
                 status = "Export failed."
@@ -572,99 +584,120 @@ private fun FillMarkEditorScreen(
         bottomBar = {
             // Text/Date/Check/Sign/Stamp stay pinned to the very bottom of the screen at all
             // times, regardless of how much the document or the config panel above take up.
-            Column(Modifier.fillMaxWidth()) {
-                HorizontalDivider()
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-                ) {
-                    // Text acts immediately -- unlike the other tools, there's no "armed" state
-                    // to tap the canvas into. Each tap places a fresh mark at the center of the
-                    // document and opens its text field right there.
-                    TextButton(onClick = {
-                        activeTool = null
-                        configText = ""
-                        placeTextMarkAtCenter()
-                    }) { MarkToolContent("Text", Icons.Filled.TextFields) }
-                    availableTools.filter { it != MarkType.Text }.forEach { tool ->
-                        val compactLabel = when (tool) {
-                            MarkType.Date -> "Date"
-                            MarkType.Check -> "Check"
-                            MarkType.Signature -> "Sign"
-                            MarkType.Stamp -> "Stamp"
-                            MarkType.Text -> error("Text is handled above")
-                        }
-                        val icon = when (tool) {
-                            MarkType.Date -> Icons.Filled.CalendarToday
-                            MarkType.Check -> Icons.Filled.Check
-                            MarkType.Signature -> Icons.Filled.Draw
-                            MarkType.Stamp -> Icons.Filled.Approval
-                            MarkType.Text -> error("Text is handled above")
-                        }
-                        when (tool) {
-                            MarkType.Date -> {
-                                // Same direct-entry spirit as Text: no armed state, no canvas
-                                // tap -- it just appears at the center of the document.
-                                TextButton(onClick = {
-                                    selectedMarkId = null
-                                    editingTextMarkId = null
-                                    placeMarkAtCenter(MarkType.Date)
-                                }) { MarkToolContent(compactLabel, icon) }
+            // navigationBarsPadding() matters here specifically: unlike Material3's own
+            // NavigationBar/BottomAppBar (which pad themselves automatically), a plain Column
+            // passed as Scaffold's bottomBar gets no inset padding for free, so on a
+            // targetSdk 35+ edge-to-edge window it renders underneath the system navigation bar
+            // -- on a 3-button-nav phone with a small screen (e.g. a Galaxy S24), the nav bar's
+            // own back/home/recent buttons then visibly overlap this row's leftmost/rightmost
+            // tool buttons instead of sitting below them.
+            // The row itself only shows up when nothing's already selected -- once an existing
+            // mark is selected, its MarkConfigPanel (color/font/size/delete) is what the customer
+            // actually needs at the bottom of the screen, and stacking both on a tall document
+            // (e.g. a full-page portrait scan) pushed the config panel below the fold, forcing a
+            // scroll to reach it every time. The Column (and its navigationBarsPadding) stays
+            // rendered either way so the system nav bar is still avoided even with the row gone.
+            Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+                if (selectedMark == null) {
+                    HorizontalDivider()
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                    ) {
+                        // Text acts immediately -- unlike the other tools, there's no "armed"
+                        // state to tap the canvas into. Each tap places a fresh mark at the
+                        // center of the document and opens its text field right there.
+                        TextButton(onClick = {
+                            activeTool = null
+                            configText = ""
+                            placeTextMarkAtCenter()
+                        }) { MarkToolContent("Text", Icons.Filled.TextFields) }
+                        availableTools.filter { it != MarkType.Text }.forEach { tool ->
+                            val compactLabel = when (tool) {
+                                MarkType.Date -> "Date"
+                                MarkType.Check -> "Check"
+                                MarkType.Signature -> "Sign"
+                                MarkType.Stamp -> "Stamp"
+                                MarkType.Text -> error("Text is handled above")
                             }
-                            MarkType.Signature, MarkType.Stamp -> {
-                                val isSignature = tool == MarkType.Signature
-                                val assetNames = vm.signatures
-                                    .filter { (it.imageFileName == null) == isSignature }
-                                    .map { it.name }
-                                Box {
+                            val icon = when (tool) {
+                                MarkType.Date -> Icons.Filled.CalendarToday
+                                MarkType.Check -> Icons.Filled.Check
+                                MarkType.Signature -> Icons.Filled.Draw
+                                MarkType.Stamp -> Icons.Filled.Approval
+                                MarkType.Text -> error("Text is handled above")
+                            }
+                            when (tool) {
+                                MarkType.Date -> {
+                                    // Same direct-entry spirit as Text: no armed state, no
+                                    // canvas tap -- it just appears at the center of the document.
                                     TextButton(onClick = {
                                         selectedMarkId = null
                                         editingTextMarkId = null
-                                        if (assetNames.size <= 1) {
-                                            // Only one saved signature/stamp -- nothing to
-                                            // choose, so place it immediately, same as Date.
-                                            placeMarkAtCenter(tool, assetNames.firstOrNull())
-                                        } else if (isSignature) {
-                                            signaturePickerExpanded = true
-                                        } else {
-                                            stampPickerExpanded = true
-                                        }
+                                        placeMarkAtCenter(MarkType.Date)
                                     }) { MarkToolContent(compactLabel, icon) }
-                                    val expanded = if (isSignature) signaturePickerExpanded else stampPickerExpanded
-                                    DropdownMenu(
-                                        expanded = expanded,
-                                        onDismissRequest = {
-                                            if (isSignature) signaturePickerExpanded = false else stampPickerExpanded = false
-                                        },
-                                    ) {
-                                        assetNames.forEach { name ->
-                                            DropdownMenuItem(
-                                                text = { Text(name) },
-                                                onClick = {
-                                                    if (isSignature) signaturePickerExpanded = false else stampPickerExpanded = false
-                                                    placeMarkAtCenter(tool, name)
-                                                },
-                                            )
+                                }
+                                MarkType.Signature, MarkType.Stamp -> {
+                                    val isSignature = tool == MarkType.Signature
+                                    val assetNames = vm.signatures
+                                        .filter { (it.imageFileName == null) == isSignature }
+                                        .map { it.name }
+                                    Box {
+                                        TextButton(onClick = {
+                                            selectedMarkId = null
+                                            editingTextMarkId = null
+                                            if (assetNames.isEmpty()) {
+                                                // Nothing saved yet -- go create one instead of
+                                                // placing an empty placeholder mark. The newly
+                                                // created one comes straight back here already
+                                                // placed (see initialMarkName), no picker needed.
+                                                if (isSignature) createSignature() else createStamp()
+                                            } else if (assetNames.size == 1) {
+                                                // Only one saved signature/stamp -- nothing to
+                                                // choose, so place it immediately, same as Date.
+                                                placeMarkAtCenter(tool, assetNames.first())
+                                            } else if (isSignature) {
+                                                signaturePickerExpanded = true
+                                            } else {
+                                                stampPickerExpanded = true
+                                            }
+                                        }) { MarkToolContent(compactLabel, icon) }
+                                        val expanded = if (isSignature) signaturePickerExpanded else stampPickerExpanded
+                                        DropdownMenu(
+                                            expanded = expanded,
+                                            onDismissRequest = {
+                                                if (isSignature) signaturePickerExpanded = false else stampPickerExpanded = false
+                                            },
+                                        ) {
+                                            assetNames.forEach { name ->
+                                                DropdownMenuItem(
+                                                    text = { Text(name) },
+                                                    onClick = {
+                                                        if (isSignature) signaturePickerExpanded = false else stampPickerExpanded = false
+                                                        placeMarkAtCenter(tool, name)
+                                                    },
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            MarkType.Check -> {
-                                val isActive = activeTool == MarkType.Check
-                                if (isActive) {
-                                    OutlinedButton(onClick = { activeTool = null; selectedMarkId = null; editingTextMarkId = null }) { MarkToolContent(compactLabel, icon) }
-                                } else {
-                                    TextButton(onClick = {
-                                        activeTool = MarkType.Check
-                                        selectedMarkId = null
-                                        editingTextMarkId = null
-                                    }) { MarkToolContent(compactLabel, icon) }
+                                MarkType.Check -> {
+                                    val isActive = activeTool == MarkType.Check
+                                    if (isActive) {
+                                        OutlinedButton(onClick = { activeTool = null; selectedMarkId = null; editingTextMarkId = null }) { MarkToolContent(compactLabel, icon) }
+                                    } else {
+                                        TextButton(onClick = {
+                                            activeTool = MarkType.Check
+                                            selectedMarkId = null
+                                            editingTextMarkId = null
+                                        }) { MarkToolContent(compactLabel, icon) }
+                                    }
                                 }
+                                MarkType.Text -> error("Text is handled above")
                             }
-                            MarkType.Text -> error("Text is handled above")
                         }
                     }
                 }

@@ -1,11 +1,15 @@
 package com.jaafar.remoteconfig
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -17,11 +21,21 @@ import com.jaafar.remoteconfig.fontcreator.FontCreatorViewModel
 class MainActivity : ComponentActivity() {
     private var sharedUri by mutableStateOf<Uri?>(null)
     private var shareRequestId by mutableIntStateOf(0)
+    private val appUpdateHelper by lazy { AppUpdateHelper(this) }
+    private lateinit var updateLauncher: ActivityResultLauncher<IntentSenderRequest>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val viewModel = ViewModelProvider(this)[FontCreatorViewModel::class.java]
         sharedUri = extractSharedDocumentUri(intent)
+        // A forced (IMMEDIATE) update flow shouldn't be walkable away from -- if it didn't finish
+        // with RESULT_OK (cancelled, backed out, interrupted), re-show it instead of letting the
+        // customer keep using an outdated build.
+        updateLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+            if (result.resultCode != Activity.RESULT_OK) {
+                appUpdateHelper.checkForUpdate(updateLauncher)
+            }
+        }
         setContent { FontCreatorApp(viewModel, sharedUri, shareRequestId) }
     }
 
@@ -29,6 +43,9 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Picks up a refund, or a purchase made elsewhere, while the app was in the background.
         ViewModelProvider(this)[FontCreatorViewModel::class.java].billing.refreshPurchases()
+        // Checked on every resume, not just cold start, so a customer who leaves the app running
+        // in the background still gets forced onto a newer build the moment Play reports one.
+        appUpdateHelper.checkForUpdate(updateLauncher)
     }
 
     override fun onNewIntent(intent: Intent) {

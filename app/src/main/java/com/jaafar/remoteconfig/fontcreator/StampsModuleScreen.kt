@@ -14,8 +14,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun StampsModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useInDocument: (String) -> Unit) {
-    var importing by remember { mutableStateOf(false) }
+internal fun StampsModuleScreen(
+    vm: FontCreatorViewModel,
+    back: () -> Unit,
+    useInDocument: (String) -> Unit,
+    // True when Fill & Mark sent the customer here because they had no saved stamp yet -- jumps
+    // straight into the import screen (skipping the list they'd otherwise see first, which would
+    // always be empty anyway) and, once saved, returns straight to Fill & Mark with it already
+    // placed instead of just closing back to a list.
+    autoCreate: Boolean = false,
+) {
+    var importing by remember { mutableStateOf(autoCreate) }
     var editing by remember { mutableStateOf<SavedSignature?>(null) }
     var showProDialog by remember { mutableStateOf(false) }
     // Already at the free plan's 1-stamp cap -- go straight to the Pro pitch instead of opening
@@ -25,7 +34,11 @@ internal fun StampsModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useI
         ProFeaturesDialog(vm = vm) { showProDialog = false }
     }
     if (importing) {
-        ImportStampFromImageScreen(vm = vm, onSaved = { importing = false }, back = { importing = false })
+        ImportStampFromImageScreen(
+            vm = vm,
+            onSaved = { name -> if (autoCreate) useInDocument(name) else importing = false },
+            back = { if (autoCreate) back() else importing = false },
+        )
         return
     }
     // Opened by tapping a row below -- rename, replace the image, and "Use in Fill & Mark" all

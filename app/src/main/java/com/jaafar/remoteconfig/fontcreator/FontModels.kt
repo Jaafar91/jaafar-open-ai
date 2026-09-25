@@ -32,12 +32,34 @@ enum class LanguageScript(
     val codePoints: List<Int> by lazy { ranges.flatMap { it.toList() } }
 }
 
+/** What a font project is being made for -- asked at creation of every font (see
+ *  CreateFontDialog), since different fonts can serve different purposes. Every project still
+ *  walks through its *full* character set (see [FontCreatorViewModel.requiredCodePoints]) --
+ *  [USE_ON_IMAGE] doesn't shrink that list. Instead, once every letter/digit is drawn, Font
+ *  workspace offers a single "skip the rest and use it now" action that bulk-skips every
+ *  remaining non-alphanumeric character in one shot (see
+ *  [FontCreatorViewModel.skipRemainingSymbols]/[FontProject.skippedCodePoints]), since that
+ *  covers what typically shows up captioning a photo; [EXPORT] offers no such shortcut, since it
+ *  needs every character actually drawn for a real, installable font file. */
+enum class FontGoal { USE_ON_IMAGE, EXPORT }
+
 data class FontProject(
     val name: String,
     val drawings: List<GlyphDrawing> = emptyList(),
     val letterSpacingMm: Float = 0f,
     val wordSpacingMm: Float = 3f,
     val selectedLanguages: Set<LanguageScript> = setOf(LanguageScript.BASIC_LATIN),
+    val goal: FontGoal = FontGoal.EXPORT,
+    /** Non-alphanumeric characters explicitly skipped rather than drawn (see
+     *  [FontCreatorViewModel.skipRemainingSymbols]) -- counts as satisfied for
+     *  [FontCreatorViewModel.isProjectComplete] without ever needing a drawing, but never for
+     *  [FontCreatorViewModel.isReadyToExport]: a skipped character still isn't a real glyph, so
+     *  exporting the font still waits for it. */
+    val skippedCodePoints: Set<Int> = emptySet(),
+    /** The Fine-tune preview/phrase text this project was last shown or drawn with -- kept per
+     *  font (not one shared value used by every font) so switching fonts doesn't carry over
+     *  another font's preview text or leak its phrase-mode drawing queue into this one. */
+    val previewPhrase: String = DEFAULT_PREVIEW_TEXT,
     /** When this project was created or last edited -- matches the iOS app's
      *  `SavedAsset.lastModifiedAt`, used to find "the most recently created or modified
      *  font" for defaults like the dashboard's "Continue" card and "Use font on image",

@@ -10,7 +10,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 private data class DashboardAction(
@@ -19,6 +21,25 @@ private data class DashboardAction(
     val icon: ImageVector,
     val click: () -> Unit,
 )
+
+/** A square, icon-over-title-over-detail card -- the "asset" tile style from Home's "Your
+ *  assets" row. Shared (not Home-only) so any screen wanting that same at-a-glance-tappable look
+ *  gets it pixel-identical instead of a close approximation. */
+@Composable
+internal fun AssetStyleCard(title: String, detail: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    OutlinedCard(modifier.aspectRatio(.82f).clickable(onClick = onClick)) {
+        Column(
+            Modifier.fillMaxSize().padding(10.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(30.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            Text(detail, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
+        }
+    }
+}
 
 @Composable
 internal fun DashboardScreen(
@@ -33,20 +54,34 @@ internal fun DashboardScreen(
     openStamps: () -> Unit,
 ) {
     var showProDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     Page(
         "Studio",
         actions = {
+            IconButton(onClick = { shareApp(context) }) { Icon(Icons.Filled.Share, contentDescription = "Share Font Maker") }
             IconButton(onClick = openSettings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
         },
         // Scrollable so the extra Pro tile below the assets can't be clipped on a short screen.
         scrollable = true,
     ) {
+    // A Home banner, not a dialog popping up the moment a share completes -- that collided with
+    // the native share sheet still closing. Shown right at the top so it's seen without
+    // scrolling; dismissing only hides it for this session (see dismissRatingPromptForNow), so
+    // it's still there next time the app is opened, not just the one time it first appeared.
+    if (vm.showRatingPrompt) {
+        RatingPromptBanner(
+            onRate = { openPlayStoreListing(context); vm.markRatingPromptAnswered() },
+            onDismiss = vm::dismissRatingPromptForNow,
+        )
+    }
     // Picked by lastModifiedAt, matching the iOS app's equivalent defaults -- createProject
     // appends new projects at the end of the list, so indexOfFirst/lastOrNull only ever
     // reflected creation order and went stale the moment an *older* project was edited
     // instead of a brand new one being added.
+    // Only cares about missing letters/digits -- once those are done, remaining punctuation/
+    // symbols are a Font workspace/Fine-tune concern, not something Home keeps nagging about.
     val unfinishedIndex = vm.projects.withIndex()
-        .filter { (_, project) -> !vm.isProjectComplete(project) }
+        .filter { (_, project) -> vm.hasMissingAlphanumeric(project) }
         .maxByOrNull { (_, project) -> project.lastModifiedAt }
         ?.index
     val preferredFont = vm.activeProject?.name
@@ -64,8 +99,7 @@ internal fun DashboardScreen(
         )
         unfinishedIndex != null -> {
             val project = vm.projects[unfinishedIndex]
-            val total = vm.characterCount(project).coerceAtLeast(1)
-            val percentage = (project.drawings.size * 100 / total).coerceIn(0, 100)
+            val percentage = vm.alphanumericPercentage(project)
             DashboardHero(
                 title = "Continue ${project.name}",
                 detail = "$percentage% complete · Nice progress—keep going!",
@@ -101,18 +135,7 @@ internal fun DashboardScreen(
     // leaving a large gap above the pinned Pro tile below.
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         assets.forEach { action ->
-            OutlinedCard(Modifier.weight(1f).aspectRatio(.82f).clickable(onClick = action.click)) {
-                Column(
-                    Modifier.fillMaxSize().padding(10.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Icon(action.icon, contentDescription = null, modifier = Modifier.size(30.dp))
-                    Spacer(Modifier.height(8.dp))
-                    Text(action.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text(action.detail, style = MaterialTheme.typography.labelSmall)
-                }
-            }
+            AssetStyleCard(action.title, action.detail, action.icon, Modifier.weight(1f), action.click)
         }
     }
     // Sits directly under the assets (not pinned to the screen bottom): a pinned tile leaves a
@@ -123,6 +146,33 @@ internal fun DashboardScreen(
     }
     if (showProDialog) {
         ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
+}
+
+/** Shown on Home once the customer has had a few successful shares (see
+ *  [FontCreatorViewModel.showRatingPrompt]) -- reuses the same Play Store listing Settings' own
+ *  "Rate this app" button opens, just surfaced at a moment they just had a good experience
+ *  instead of only when they went looking for it. */
+@Composable
+private fun RatingPromptBanner(onRate: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Enjoying Font Maker?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text("A quick rating on Google Play helps a lot.", style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onRate, contentPadding = PaddingValues(vertical = 4.dp)) { Text("Rate now") }
+            }
+            IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
+        }
     }
 }
 
@@ -147,8 +197,9 @@ private fun ProUpgradeBanner(onClick: () -> Unit, modifier: Modifier = Modifier)
     }
 }
 
+/** An icon-and-two-lines-of-text row card -- Home's style for a full-width tappable action. */
 @Composable
-private fun DashboardRowAction(title: String, detail: String, icon: ImageVector, click: () -> Unit) {
+internal fun DashboardRowAction(title: String, detail: String, icon: ImageVector, click: () -> Unit) {
     OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = click)) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, contentDescription = null)
@@ -161,8 +212,10 @@ private fun DashboardRowAction(title: String, detail: String, icon: ImageVector,
     }
 }
 
+/** The big primary-colored "main call to action" card -- Home's style for the one most
+ *  prominent action on a screen. */
 @Composable
-private fun DashboardHero(title: String, detail: String, icon: ImageVector, click: () -> Unit) {
+internal fun DashboardHero(title: String, detail: String, icon: ImageVector, click: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = click),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),

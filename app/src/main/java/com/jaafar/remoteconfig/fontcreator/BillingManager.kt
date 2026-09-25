@@ -19,6 +19,7 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import com.jaafar.remoteconfig.logFeatureEvent
 
 /** One-time, non-consumable "Pro" unlock: removes the free tier's 1-font/1-signature/1-stamp
  *  caps and unlocks "Use font on image" and "Fill & Mark". Must match the in-app product ID
@@ -34,7 +35,7 @@ internal const val PRO_PRODUCT_ID = "pro_unlock"
  * without Play services -- only a *successful* Play response ever changes it (a failed/absent one
  * never revokes Pro).
  */
-internal class BillingManager(application: Application) {
+internal class BillingManager(private val application: Application) {
     private val prefs = application.getSharedPreferences("billing", Context.MODE_PRIVATE)
 
     var isPro by mutableStateOf(prefs.getBoolean(KEY_IS_PRO, false))
@@ -152,7 +153,12 @@ internal class BillingManager(application: Application) {
     private fun handlePurchase(purchase: Purchase) {
         if (purchase.purchaseState != Purchase.PurchaseState.PURCHASED) return
         if (!purchase.products.contains(PRO_PRODUCT_ID)) return
+        // handlePurchase also re-fires on every refreshPurchases() re-sync (e.g. every onResume)
+        // for a customer who's already Pro, not just on a fresh purchase -- only log the event
+        // the first time entitlement actually flips, not on every resume of an existing Pro user.
+        val wasPro = isPro
         updateEntitlement(true)
+        if (!wasPro) logFeatureEvent(application, "pro_purchase_completed")
         // Play auto-refunds an unacknowledged purchase after 3 days, so every purchase this
         // listener/query sees must be acknowledged -- there's nothing else to deliver (the
         // unlock is just this flag), so acknowledge immediately rather than deferring it.

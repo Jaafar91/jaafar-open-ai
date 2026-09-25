@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -82,6 +83,20 @@ dependencies {
     // than this project's 2.0.21 can read, which plain "billing" (a Java-only artifact,
     // carrying no Kotlin metadata to be incompatible) sidesteps entirely.
     implementation("com.android.billingclient:billing:9.1.0")
+    // Plain "app-update", not "app-update-ktx", for the same reason as billing above: this app's
+    // Kotlin compiler (2.0.21) can't reliably read newer -ktx artifacts' Kotlin metadata. The
+    // ActivityResultLauncher-accepting startUpdateFlowForResult() overload AppUpdateHelper uses
+    // is part of this plain Java artifact already, so no KTX extension is needed for it.
+    implementation("com.google.android.play:app-update:2.1.0")
+    // AnalyticsHelper deliberately calls only the plain Java surface
+    // (FirebaseAnalytics.getInstance(context).logEvent(String, Bundle)) rather than the Kotlin
+    // "Firebase.analytics" extension property or the logEvent(name) { param(...) } DSL builder --
+    // those are Kotlin-specific sugar with their own compiled metadata, and this project's Kotlin
+    // compiler (2.0.21) isn't guaranteed to read metadata from a newer Kotlin version, same
+    // constraint as billing/app-update above. A moderately-recent (not bleeding-edge) BOM further
+    // reduces the odds of that mismatch, since it was built against an older Kotlin toolchain.
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation("com.google.firebase:firebase-analytics")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }

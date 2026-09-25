@@ -17,6 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.jaafar.remoteconfig.logFeatureEvent
 
 private val PRO_BENEFITS = listOf(
     "Unlimited saved fonts",
@@ -45,8 +46,10 @@ internal fun ProFeaturesDialog(
     onUnlocked: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
-    val activity = LocalContext.current as? Activity
+    val context = LocalContext.current
+    val activity = context as? Activity
     val priceLabel = vm.billing.proPriceLabel
+    LaunchedEffect(Unit) { logFeatureEvent(context, "pro_paywall_shown", mapOf("locked_feature" to (lockedFeature ?: "none"))) }
     LaunchedEffect(vm.isPro) { if (vm.isPro) (onUnlocked ?: onDismiss)() }
     AlertDialog(
         onDismissRequest = onDismiss,

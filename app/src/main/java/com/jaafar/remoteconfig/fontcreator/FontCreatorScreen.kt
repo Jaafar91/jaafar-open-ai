@@ -107,7 +107,6 @@ fun FontCreatorApp(
     val preferences = remember { context.getSharedPreferences("appearance", 0) }
     var darkTheme by remember { mutableStateOf(preferences.getBoolean("dark_theme", false)) }
     var showTutorial by remember { mutableStateOf(sharedUri == null && !preferences.getBoolean("feature_tutorial_seen", false)) }
-    var previewText by remember { mutableStateOf(preferences.getString("preview_text", DEFAULT_PREVIEW_TEXT) ?: DEFAULT_PREVIEW_TEXT) }
     var screen by remember { mutableStateOf(if (sharedUri != null) Screen.FillMark else Screen.Home) }
     var fillMarkUri by remember { mutableStateOf<Uri?>(sharedUri) }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
@@ -115,6 +114,10 @@ fun FontCreatorApp(
     var initialImageText by remember { mutableStateOf("") }
     var fontWorkspaceBack by remember { mutableStateOf(Screen.Home) }
     var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
+    // Set when Fill & Mark sends the customer to Signatures/Stamps because they had none saved
+    // yet -- both a successful create and backing out of it return straight to the same open
+    // document, instead of Signatures/Stamps' normal "back to Home" / "use in a fresh document".
+    var returnToFillMarkAfterCreate by remember { mutableStateOf(false) }
     var showFillMarkProDialog by remember { mutableStateOf(false) }
     // The monthly export counts live in SharedPreferences, which Compose can't observe -- and even
     // if it could, re-evaluating them live would yank the user out of the editor the moment their
@@ -190,6 +193,7 @@ fun FontCreatorApp(
                 initial = viewModel.drawings[viewModel.selectedCodePoint],
                 defaultStrokeWidth = viewModel.lastStrokeWidth,
                 drawings = viewModel.drawings,
+                skippedCodePoints = viewModel.activeProject?.skippedCodePoints ?: emptySet(),
                 characterOrder = viewModel.editorCharacterOrder,
                 pagingMode = viewModel.isPagingMode,
                 pagingProgress = viewModel.pagingProgress,
@@ -197,45 +201,42 @@ fun FontCreatorApp(
                 referenceTypeface = referenceTypeface,
                 phraseModeEnabled = viewModel.phraseModeEnabled,
                 phraseText = viewModel.lastPhrase,
-                onCreatePhrase = { phrase ->
-                    if (viewModel.startPhrase(phrase)) {
-                        previewText = phrase.trim()
-                        preferences.edit().putString("preview_text", previewText).apply()
-                        true
-                    } else {
-                        false
-                    }
-                },
+                onCreatePhrase = viewModel::startPhrase,
                 onDisablePhrase = viewModel::disablePhraseMode,
                 onCancel = viewModel::closeEditor,
                 onPrevious = viewModel::previousLetter,
                 onSelectCharacter = viewModel::edit,
-                onSkip = viewModel::skipLetter,
                 onSave = { drawing ->
+                    val wasComplete = viewModel.wasCompleteBeforeCurrentEdit
                     viewModel.saveDrawing(drawing)
                     if (viewModel.selectedCodePoint == null) {
                         viewModel.disablePhraseMode()
                         viewModel.generate()
-                        screen = if (viewModel.activeProject?.let(viewModel::isProjectComplete) == true) {
-                            Screen.FontCelebration
-                        } else {
-                            Screen.FontReady
-                        }
+                        val isComplete = viewModel.activeProject?.let(viewModel::isProjectComplete) == true
+                        // Only a genuine first-time completion earns the celebration screen -- a
+                        // touch-up edit of a font that was already complete (e.g. from Fine-tune's
+                        // "Don't like a letter? Edit it") returns to Fine-tune instead.
+                        screen = if (isComplete && !wasComplete) Screen.FontCelebration else Screen.FontReady
                     }
                 },
                 onSaveAndContinue = { drawing ->
+                    val wasComplete = viewModel.wasCompleteBeforeCurrentEdit
                     viewModel.saveDrawingAndContinue(drawing)
                     if (viewModel.selectedCodePoint == null) {
                         viewModel.disablePhraseMode()
                         viewModel.generate()
-                        screen = if (viewModel.activeProject?.let(viewModel::isProjectComplete) == true) {
-                            Screen.FontCelebration
-                        } else {
-                            Screen.FontReady
-                        }
+                        val isComplete = viewModel.activeProject?.let(viewModel::isProjectComplete) == true
+                        screen = if (isComplete && !wasComplete) Screen.FontCelebration else Screen.FontReady
                     }
                 },
                 onSaveAndStay = viewModel::saveDrawingAndStay,
+                canSkipRemainingSymbols = viewModel.canSkipRemainingSymbols,
+                onSkipRemainingSymbols = {
+                    viewModel.skipRemainingSymbols()
+                    viewModel.generate()
+                    viewModel.closeEditor()
+                    screen = Screen.FontReady
+                },
             )
             else -> {
                 when (screen) {
@@ -275,21 +276,42 @@ fun FontCreatorApp(
                 )
                 Screen.Signatures -> SignaturesModuleScreen(
                     vm = viewModel,
-                    back = { screen = Screen.Home },
+                    back = {
+                        if (returnToFillMarkAfterCreate) {
+                            returnToFillMarkAfterCreate = false
+                            screen = Screen.FillMark
+                        } else {
+                            screen = Screen.Home
+                        }
+                    },
                     useInDocument = { markName ->
                         pendingSignatureMark = markName
-                        fillMarkUri = null
+                        // Keep the document already open in Fill & Mark instead of resetting to
+                        // a fresh picker -- only when arriving from browsing Signatures on its
+                        // own (not this create-for-Fill&Mark flow) should it reset to one.
+                        if (!returnToFillMarkAfterCreate) fillMarkUri = null
+                        returnToFillMarkAfterCreate = false
                         screen = Screen.FillMark
                     },
+                    autoCreate = returnToFillMarkAfterCreate,
                 )
                 Screen.Stamps -> StampsModuleScreen(
                     vm = viewModel,
-                    back = { screen = Screen.Home },
+                    back = {
+                        if (returnToFillMarkAfterCreate) {
+                            returnToFillMarkAfterCreate = false
+                            screen = Screen.FillMark
+                        } else {
+                            screen = Screen.Home
+                        }
+                    },
                     useInDocument = { markName ->
                         pendingSignatureMark = markName
-                        fillMarkUri = null
+                        if (!returnToFillMarkAfterCreate) fillMarkUri = null
+                        returnToFillMarkAfterCreate = false
                         screen = Screen.FillMark
                     },
+                    autoCreate = returnToFillMarkAfterCreate,
                 )
                 Screen.FontCelebration -> {
                     val project = viewModel.activeProject
@@ -308,8 +330,8 @@ fun FontCreatorApp(
                 }
                 Screen.FontReady -> FontReadyScreen(
                     vm = viewModel,
-                    previewText = previewText,
-                    changePreviewText = { value -> previewText = value; preferences.edit().putString("preview_text", value).apply() },
+                    previewText = viewModel.lastPhrase,
+                    changePreviewText = viewModel::setPreviewPhrase,
                     back = { screen = Screen.Letters },
                     useOnImage = { fontName, text ->
                         preferredImageFontName = fontName
@@ -326,7 +348,7 @@ fun FontCreatorApp(
                     },
                     useOnImage = { fontName ->
                         preferredImageFontName = fontName
-                        initialImageText = previewText
+                        initialImageText = viewModel.lastPhrase
                         imagePicker.launch("image/*")
                     },
                 )
@@ -335,6 +357,16 @@ fun FontCreatorApp(
                         vm = viewModel,
                         initialUri = fillMarkUri,
                         initialMarkName = pendingSignatureMark,
+                        createSignature = { uri ->
+                            fillMarkUri = uri
+                            returnToFillMarkAfterCreate = true
+                            screen = Screen.Signatures
+                        },
+                        createStamp = { uri ->
+                            fillMarkUri = uri
+                            returnToFillMarkAfterCreate = true
+                            screen = Screen.Stamps
+                        },
                         back = {
                             fillMarkUri = null
                             pendingSignatureMark = null
@@ -539,7 +571,9 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     }
 }
 
-private fun openPlayStoreListing(context: android.content.Context) {
+/** Opens the app's own Play Store listing -- used by Settings' "Rate this app" button and by
+ *  the Home rating-prompt banner ([FontCreatorViewModel.showRatingPrompt]) alike. */
+internal fun openPlayStoreListing(context: android.content.Context) {
     val packageName = context.packageName
     val playStoreIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")).apply {
         setPackage("com.android.vending")
@@ -548,5 +582,19 @@ private fun openPlayStoreListing(context: android.content.Context) {
         .onFailure {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")))
         }
+}
+
+/** Shares the app itself (a Play Store link, via a plain text ACTION_SEND) with someone else --
+ *  always the https:// link, not the market:// scheme [openPlayStoreListing] prefers, since a
+ *  recipient without the Play Store app installed still needs a link that opens in a browser. */
+internal fun shareApp(context: android.content.Context) {
+    val packageName = context.packageName
+    val message = "Check out Font Maker -- turn your own handwriting into a real, installable font! " +
+        "https://play.google.com/store/apps/details?id=$packageName"
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, message)
+    }
+    context.startActivity(Intent.createChooser(intent, "Share Font Maker"))
 }
 

@@ -3,6 +3,7 @@ package com.jaafar.remoteconfig.fontcreator
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,8 +12,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -29,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /** Matches iOS's "Complete" green -- Material has no built-in success color. */
-private val CompleteGreen = Color(0xFF2E7D32)
+internal val CompleteGreen = Color(0xFF2E7D32)
 
 @Composable
 internal fun FontsModuleScreen(
@@ -109,14 +114,23 @@ internal fun FontsModuleScreen(
                 if (vm.projects.isNotEmpty()) {
                     item { Text("CREATED FONTS", style = MaterialTheme.typography.titleSmall) }
                     items(vm.projects, key = { it.name }) { project ->
-                        val complete = vm.isProjectComplete(project)
+                        // "Complete" here means truly done -- every character actually drawn,
+                        // ready to export -- not just goal-satisfied via a skipped symbol (see
+                        // isReadyToExport vs the goal-aware isProjectComplete). The percentage
+                        // shown alongside matches: real drawings only, skips don't inflate it.
+                        val readyToExport = vm.isReadyToExport(project)
                         val total = vm.characterCount(project).coerceAtLeast(1)
                         val drawn = project.drawings.size.coerceAtMost(total)
+                        val percentage = (drawn * 100 / total).coerceIn(0, 100)
+                        // Usable (goal-satisfied, possibly via skip) is enough to render the name
+                        // in the customer's own handwriting -- doesn't need to wait for every
+                        // symbol to be drawn too.
+                        val usable = vm.isProjectComplete(project)
                         // The *real* generated font, loaded off the main thread -- the same one
                         // Fine-tune shows -- so the name and thumbnail here match that screen
                         // exactly instead of approximating it from raw pen strokes.
-                        val previewTypeface by produceState<android.graphics.Typeface?>(null, project.name, project.drawings, complete) {
-                            value = if (complete) vm.typefaceForPreview(project) else null
+                        val previewTypeface by produceState<android.graphics.Typeface?>(null, project.name, project.drawings, usable) {
+                            value = if (usable) vm.typefaceForPreview(project) else null
                         }
                         OutlinedCard(Modifier.fillMaxWidth().clickable { openProject(vm.projects.indexOf(project)) }) {
                             Row(
@@ -137,7 +151,7 @@ internal fun FontsModuleScreen(
                                             fontFamily = previewTypeface?.let { androidx.compose.ui.text.font.FontFamily(it) },
                                             modifier = Modifier.weight(1f, fill = false),
                                         )
-                                        FontStatusBadge(if (complete) "Complete" else "$drawn of $total", showCheck = complete)
+                                        FontStatusBadge(if (readyToExport) "Complete" else "$percentage%", showCheck = readyToExport)
                                     }
                                     Text(
                                         "Created font",
@@ -147,7 +161,7 @@ internal fun FontsModuleScreen(
                                     LinearProgressIndicator(
                                         progress = drawn.toFloat() / total,
                                         modifier = Modifier.fillMaxWidth(),
-                                        color = if (complete) CompleteGreen else MaterialTheme.colorScheme.primary,
+                                        color = if (readyToExport) CompleteGreen else MaterialTheme.colorScheme.primary,
                                     )
                                 }
                                 IconButton(onClick = { projectToDelete = project }) {
@@ -299,9 +313,9 @@ private fun AaThumbnail(typeface: android.graphics.Typeface?) {
     }
 }
 
-/** Small colored capsule, e.g. "Complete" or "12 of 94". */
+/** Small colored capsule, e.g. "Complete" or "42%". */
 @Composable
-private fun FontStatusBadge(text: String, showCheck: Boolean) {
+internal fun FontStatusBadge(text: String, showCheck: Boolean) {
     val color = if (showCheck) CompleteGreen else MaterialTheme.colorScheme.primary
     Row(
         Modifier
@@ -328,6 +342,45 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
     // glyph-drawing canvas, which has none -- so without an explicit hide() here the keyboard
     // is left floating over whatever's shown next.
     val dismiss = { keyboard?.hide(); onDismiss() }
+
+    // Asked every time a font is created, not just for a brand-new user -- each font can be
+    // drawn for a different purpose, so the goal shouldn't only be decided once.
+    var askingGoal by remember { mutableStateOf(true) }
+    var goal by remember { mutableStateOf(FontGoal.EXPORT) }
+
+    if (askingGoal) {
+        AlertDialog(
+            onDismissRequest = dismiss,
+            title = { Text("What's this font for?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "This just decides how many characters you'll need to draw to finish -- you can always keep drawing more later.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    GoalOption(
+                        icon = Icons.Filled.Image,
+                        title = "Use it on images",
+                        detail = "Skip punctuation and symbols in one tap -- the fastest way to start writing on photos.",
+                        selected = goal == FontGoal.USE_ON_IMAGE,
+                        onClick = { goal = FontGoal.USE_ON_IMAGE },
+                    )
+                    GoalOption(
+                        icon = Icons.Filled.Description,
+                        title = "Export a full font",
+                        detail = "Every character, including punctuation -- for installing or sharing the font file.",
+                        selected = goal == FontGoal.EXPORT,
+                        onClick = { goal = FontGoal.EXPORT },
+                    )
+                }
+            },
+            confirmButton = { Button(onClick = { askingGoal = false }) { Text("Next") } },
+            dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+        )
+        return
+    }
+
     AlertDialog(
         onDismissRequest = dismiss,
         title = { Text("Name your font") },
@@ -358,7 +411,7 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
                 Button(onClick = { showProDialog = true }) { Text("See Pro benefits") }
             } else {
                 Button(
-                    onClick = { if (vm.createProject(name)) { keyboard?.hide(); onCreated() } },
+                    onClick = { if (vm.createProject(name, goal)) { keyboard?.hide(); onCreated() } },
                     enabled = name.isNotBlank() && !duplicate,
                 ) { Text("Create font") }
             }
@@ -367,5 +420,36 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
     )
     if (showProDialog) {
         ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
+}
+
+@Composable
+private fun GoalOption(icon: ImageVector, title: String, detail: String, selected: Boolean, onClick: () -> Unit) {
+    OutlinedCard(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (selected) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            }
+        }
     }
 }
