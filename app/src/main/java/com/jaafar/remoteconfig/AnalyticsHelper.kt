@@ -1,21 +1,26 @@
 package com.jaafar.remoteconfig
 
 import android.content.Context
+import android.os.Bundle
 import android.util.Log
+import com.google.firebase.analytics.FirebaseAnalytics
 
 /**
  * Centralizes "which feature did the customer use" event logging behind one seam, so every call
- * site just reports what happened rather than knowing how it's recorded. Currently logs locally
- * only (Logcat) -- this app has no analytics backend wired in yet (see CLAUDE.md: fully offline
- * except Play Billing). Swapping the body of [logFeatureEvent] for real Firebase Analytics calls
- * once a google-services.json exists for this app is meant to be the *only* change needed; every
- * call site below should never need touching again.
+ * site just reports what happened rather than knowing how it's recorded. Reports to Firebase
+ * Analytics (this app's one exception, alongside Play Billing, to being otherwise fully offline
+ * -- see CLAUDE.md) and mirrors every event to Logcat for local debugging.
+ *
+ * Deliberately calls only the plain Java surface -- FirebaseAnalytics.getInstance(context) and
+ * .logEvent(String, Bundle) -- rather than the Kotlin "Firebase.analytics" extension property or
+ * the logEvent(name) { param(...) } DSL builder. Those are Kotlin-specific sugar with their own
+ * compiled metadata, and this project's Kotlin compiler (2.0.21) isn't guaranteed to read
+ * metadata from a newer Kotlin version, the same constraint that keeps BillingManager and
+ * AppUpdateHelper on the plain (non-KTX) artifacts of their own libraries.
  */
 internal fun logFeatureEvent(context: Context, feature: String, params: Map<String, String> = emptyMap()) {
     Log.d("AnalyticsHelper", "feature=$feature" + if (params.isEmpty()) "" else " params=$params")
-    // TODO(firebase): once google-services.json is added and the Firebase Analytics dependency
-    // is wired in, replace the line above with something like:
-    //   FirebaseAnalytics.getInstance(context).logEvent(feature) {
-    //       params.forEach { (key, value) -> param(key, value) }
-    //   }
+    val bundle = Bundle()
+    params.forEach { (key, value) -> bundle.putString(key, value) }
+    FirebaseAnalytics.getInstance(context).logEvent(feature, bundle)
 }

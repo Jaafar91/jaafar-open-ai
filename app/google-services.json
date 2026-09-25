@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "399994398750",
+    "project_id": "font-maker-cf91e",
+    "storage_bucket": "font-maker-cf91e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:399994398750:android:edc2291e1451bc8f3d260f",
+        "android_client_info": {
+          "package_name": "com.mjaafar.fontcreator"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBoWW6RskIWOZvdtNjUmt1YKHOQ4URbZ9s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
