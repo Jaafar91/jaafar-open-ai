@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
@@ -45,6 +46,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -390,6 +392,10 @@ internal fun SpacingControl(
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phraseDraft by remember(phraseText) { mutableStateOf(phraseText) }
     var showReference by remember { mutableStateOf(true) }
+    // Dismissing just hides the banner for this screen visit -- it comes back if the customer
+    // reopens the drawing screen later with symbols still remaining, same as it would if they'd
+    // never dismissed it, rather than being suppressed forever after one accidental tap.
+    var skipBannerDismissed by remember { mutableStateOf(false) }
     var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var savedStrokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var savedStrokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: defaultStrokeWidth) }
@@ -488,21 +494,22 @@ internal fun SpacingControl(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (canSkipRemainingSymbols) {
+            if (canSkipRemainingSymbols && !skipBannerDismissed) {
                 Card(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp).clickable(onClick = onSkipRemainingSymbols),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                     shape = RoundedCornerShape(16.dp),
                 ) {
                     Row(
-                        Modifier.fillMaxWidth().padding(16.dp),
+                        Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text("Letters done!", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Text("Skip symbols and fine-tune your font", style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = onSkipRemainingSymbols, contentPadding = PaddingValues(vertical = 4.dp)) { Text("Skip & fine-tune") }
                         }
-                        Icon(Icons.Filled.ChevronRight, contentDescription = null)
+                        IconButton(onClick = { skipBannerDismissed = true }) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
                     }
                 }
             }
@@ -568,6 +575,26 @@ internal fun SpacingControl(
                     .padding(vertical = 12.dp)
                     .background(Color.White)
                     .border(1.dp, Color.Gray)
+                    // Strokes are stored as raw pixel coordinates of whatever canvas box they were
+                    // drawn on. That box can resize after strokes already exist -- a saved drawing
+                    // reopened on a different-size canvas, or this same screen resizing live (e.g.
+                    // the skip-symbols banner above appearing/disappearing changes how much height
+                    // this weight(1f) box gets). Without this, the old points get redrawn unscaled
+                    // at their stale pixel positions, visibly misplacing/distorting the symbol.
+                    // Rescale every existing point proportionally whenever the measured size changes.
+                    .onSizeChanged { newSize ->
+                        val (oldWidth, oldHeight) = canvasSize
+                        if (oldWidth > 0f && oldHeight > 0f &&
+                            (newSize.width.toFloat() != oldWidth || newSize.height.toFloat() != oldHeight)
+                        ) {
+                            val scaleX = newSize.width / oldWidth
+                            val scaleY = newSize.height / oldHeight
+                            fun GlyphPoint.rescaled() = GlyphPoint(x * scaleX, y * scaleY, onCurve)
+                            strokes = strokes.map { it.copy(points = it.points.map { point -> point.rescaled() }) }
+                            active = active.map { it.rescaled() }
+                        }
+                        canvasSize = newSize.width.toFloat() to newSize.height.toFloat()
+                    }
                     .pointerInput(codePoint, strokes) {
                         detectDragGestures(
                             onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) },
