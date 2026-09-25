@@ -374,8 +374,8 @@ internal fun SpacingControl(
     onSaveAndContinue: (GlyphDrawing) -> Unit,
     onSaveAndStay: (GlyphDrawing) -> Unit,
     // True once every letter/digit is drawn and only punctuation/symbols are left on a "Use it
-    // on images" font -- shows a banner offering to skip the rest in one tap, right where the
-    // customer lands the moment that becomes true, instead of only on Font workspace.
+    // on images" font -- shows a banner offering to skip the rest and go straight to Fine-tune,
+    // right where the customer lands the moment that becomes true.
     canSkipRemainingSymbols: Boolean = false,
     onSkipRemainingSymbols: () -> Unit = {},
 ) {
@@ -505,7 +505,7 @@ internal fun SpacingControl(
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text("Letters done!", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            Text("Skip symbols and use your font now", style = MaterialTheme.typography.bodySmall)
+                            Text("Skip symbols and fine-tune your font", style = MaterialTheme.typography.bodySmall)
                         }
                         Icon(Icons.Filled.ChevronRight, contentDescription = null)
                     }

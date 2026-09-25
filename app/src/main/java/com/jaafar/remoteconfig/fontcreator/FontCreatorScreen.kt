@@ -234,13 +234,8 @@ fun FontCreatorApp(
                 onSkipRemainingSymbols = {
                     viewModel.skipRemainingSymbols()
                     viewModel.generate()
-                    val name = viewModel.activeProject?.name
                     viewModel.closeEditor()
-                    if (name != null) {
-                        preferredImageFontName = name
-                        initialImageText = viewModel.lastPhrase
-                        imagePicker.launch("image/*")
-                    }
+                    screen = Screen.FontReady
                 },
             )
             else -> {
