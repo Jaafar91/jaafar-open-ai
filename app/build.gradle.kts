@@ -73,6 +73,15 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.activity:activity-compose:1.10.0")
+    // This app never uses Fragments directly, but MainActivity's registerForActivityResult()
+    // (added for AppUpdateHelper's forced-update flow) trips AGP's lintVitalRelease check
+    // (InvalidFragmentVersionForActivityResult) unless androidx.fragment resolves to >= 1.3.0 --
+    // with no explicit dependency on it, lint can't confirm a safe version is on the classpath
+    // and fails release builds (gradle :app:bundleRelease/:app:assembleRelease) with a fatal
+    // error, even though :app:testDebugUnitTest -- the PR CI gate -- never runs that check and
+    // stayed green the whole time this went unnoticed. Plain "fragment", not "fragment-ktx", for
+    // the same Kotlin-metadata-version reason as billing/app-update/firebase-analytics above.
+    implementation("androidx.fragment:fragment:1.8.5")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
