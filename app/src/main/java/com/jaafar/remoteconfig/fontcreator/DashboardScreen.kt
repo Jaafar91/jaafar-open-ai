@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -53,6 +54,7 @@ internal fun DashboardScreen(
     openStamps: () -> Unit,
 ) {
     var showProDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     Page(
         "Studio",
         actions = {
@@ -61,6 +63,16 @@ internal fun DashboardScreen(
         // Scrollable so the extra Pro tile below the assets can't be clipped on a short screen.
         scrollable = true,
     ) {
+    // A Home banner, not a dialog popping up the moment a share completes -- that collided with
+    // the native share sheet still closing. Shown right at the top so it's seen without
+    // scrolling; dismissing only hides it for this session (see dismissRatingPromptForNow), so
+    // it's still there next time the app is opened, not just the one time it first appeared.
+    if (vm.showRatingPrompt) {
+        RatingPromptBanner(
+            onRate = { openPlayStoreListing(context); vm.markRatingPromptAnswered() },
+            onDismiss = vm::dismissRatingPromptForNow,
+        )
+    }
     // Picked by lastModifiedAt, matching the iOS app's equivalent defaults -- createProject
     // appends new projects at the end of the list, so indexOfFirst/lastOrNull only ever
     // reflected creation order and went stale the moment an *older* project was edited
@@ -132,6 +144,33 @@ internal fun DashboardScreen(
     }
     if (showProDialog) {
         ProFeaturesDialog(vm = vm) { showProDialog = false }
+    }
+}
+
+/** Shown on Home once the customer has had a few successful shares (see
+ *  [FontCreatorViewModel.showRatingPrompt]) -- reuses the same Play Store listing Settings' own
+ *  "Rate this app" button opens, just surfaced at a moment they just had a good experience
+ *  instead of only when they went looking for it. */
+@Composable
+private fun RatingPromptBanner(onRate: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Enjoying Font Maker?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text("A quick rating on Google Play helps a lot.", style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onRate, contentPadding = PaddingValues(vertical = 4.dp)) { Text("Rate now") }
+            }
+            IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
+        }
     }
 }
 

@@ -115,13 +115,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
      *  counts" rule as [recordUseOnImageExport]. */
     fun recordFillMarkExport() = recordMonthlyExport(PREFS_FILLMARK_EXPORT_MONTH, PREFS_FILLMARK_EXPORT_COUNT)
 
-    var showRatingPrompt by mutableStateOf(false)
-        private set
-
     /** Call alongside [recordUseOnImageExport]/[recordFillMarkExport] on every successful share
      *  from either feature -- unlike those, this counts Pro customers too (free-tier quota
      *  tracking skips them, but they're just as worth asking for a rating). Surfaces
-     *  [showRatingPrompt] exactly once, after [SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT] of these. */
+     *  [showRatingPrompt] once [SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT] of these is reached. */
     fun recordSuccessfulShareForRating() {
         if (prefs.getBoolean(PREFS_RATING_PROMPT_SHOWN, false)) return
         val count = prefs.getInt(PREFS_SUCCESSFUL_SHARE_COUNT, 0) + 1
@@ -129,9 +126,15 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         if (count >= SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT) showRatingPrompt = true
     }
 
-    /** Dismisses the prompt and marks it shown for good, whether the customer rated or declined --
-     *  it never asks again. */
-    fun dismissRatingPrompt() {
+    /** Hides the Home banner for this app session only -- not marked as answered, so it comes
+     *  back next time the app is opened, instead of a "not now" silencing it for good. */
+    fun dismissRatingPromptForNow() {
+        showRatingPrompt = false
+    }
+
+    /** Called once the customer actually opens the Play Store listing from the banner -- its job
+     *  is done, so unlike [dismissRatingPromptForNow] this marks it answered for good. */
+    fun markRatingPromptAnswered() {
         showRatingPrompt = false
         prefs.edit().putBoolean(PREFS_RATING_PROMPT_SHOWN, true).apply()
     }
@@ -175,6 +178,13 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     var importStatus by mutableStateOf(""); private set
     var defaultSignatureName by mutableStateOf(prefs.getString(PREFS_DEFAULT_SIGNATURE, null)); private set
     var defaultStampName by mutableStateOf(prefs.getString(PREFS_DEFAULT_STAMP, null)); private set
+    // Starts reflecting whatever was already earned in a previous session -- unlike a one-shot
+    // dialog, this is a Home banner meant to keep showing up (even across an app restart) until
+    // the customer actually rates, not just until they first see it once.
+    var showRatingPrompt by mutableStateOf(
+        !prefs.getBoolean(PREFS_RATING_PROMPT_SHOWN, false) &&
+            prefs.getInt(PREFS_SUCCESSFUL_SHARE_COUNT, 0) >= SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT
+    ); private set
     var lastEditedCodePoint by mutableStateOf<Int?>(null); private set
     var lastStrokeWidth by mutableFloatStateOf(8f); private set
     var phraseModeEnabled by mutableStateOf(false); private set

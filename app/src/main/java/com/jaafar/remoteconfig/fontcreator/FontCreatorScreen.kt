@@ -378,12 +378,6 @@ fun FontCreatorApp(
                 }
             }
         }
-        // Outside the screen `when` above (not inside its `else` branch) so it can pop up
-        // immediately after a share completes even while still on ImageTextEditorScreen -- that
-        // screen is a sibling branch of `else`, not inside it.
-        if (viewModel.showRatingPrompt) {
-            RatingPromptDialog(vm = viewModel)
-        }
     }
 }
 
@@ -535,27 +529,9 @@ private fun appTypography(fontFamily: FontFamily?): Typography {
     }
 }
 
-/** Shown once, after a few successful shares from Use font on image or Fill & Mark (see
- *  [FontCreatorViewModel.recordSuccessfulShareForRating]) -- reuses the same Play Store listing
- *  Settings' own "Rate this app" button opens, just prompted at a moment the customer just had a
- *  good experience instead of only when they went looking for it. */
-@Composable
-private fun RatingPromptDialog(vm: FontCreatorViewModel) {
-    val context = LocalContext.current
-    AlertDialog(
-        onDismissRequest = vm::dismissRatingPrompt,
-        title = { Text("Enjoying Font Maker?") },
-        text = { Text("If it's been useful, a quick rating on Google Play helps a lot -- it only takes a few seconds.") },
-        confirmButton = {
-            Button(onClick = { openPlayStoreListing(context); vm.dismissRatingPrompt() }) { Text("Rate now") }
-        },
-        dismissButton = {
-            TextButton(onClick = vm::dismissRatingPrompt) { Text("Not now") }
-        },
-    )
-}
-
-private fun openPlayStoreListing(context: android.content.Context) {
+/** Opens the app's own Play Store listing -- used by Settings' "Rate this app" button and by
+ *  the Home rating-prompt banner ([FontCreatorViewModel.showRatingPrompt]) alike. */
+internal fun openPlayStoreListing(context: android.content.Context) {
     val packageName = context.packageName
     val playStoreIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")).apply {
         setPackage("com.android.vending")
