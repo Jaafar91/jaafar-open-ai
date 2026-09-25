@@ -115,7 +115,20 @@ import kotlinx.coroutines.withContext
     // a big live-rendered card with the text field woven directly into it, a single
     // slider-based spacing card, and one primary action -- instead of a status banner,
     // a completion badge, +/- spacing steppers, and two competing buttons.
-    Page("Fine-tune your font", back, scrollable = true) {
+    Page(
+        "Fine-tune your font",
+        back,
+        scrollable = true,
+        // Same export actions, same completion gate as Font workspace's top bar -- exporting an
+        // incomplete font would ship missing glyphs, so it's only offered once nothing's left.
+        actions = {
+            val file = vm.generatedFont
+            if (file != null && vm.isProjectComplete(project)) {
+                DownloadButton(file, project.name)
+                ShareButton(file, project.name)
+            }
+        },
+    ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f),
