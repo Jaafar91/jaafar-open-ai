@@ -193,6 +193,8 @@ fun FontCreatorApp(
                 initial = viewModel.drawings[viewModel.selectedCodePoint],
                 defaultStrokeWidth = viewModel.lastStrokeWidth,
                 drawings = viewModel.drawings,
+                skippedCodePoints = viewModel.activeProject?.skippedCodePoints ?: emptySet(),
+                canSkipSymbols = viewModel.activeProject?.goal == FontGoal.USE_ON_IMAGE,
                 characterOrder = viewModel.editorCharacterOrder,
                 pagingMode = viewModel.isPagingMode,
                 pagingProgress = viewModel.pagingProgress,

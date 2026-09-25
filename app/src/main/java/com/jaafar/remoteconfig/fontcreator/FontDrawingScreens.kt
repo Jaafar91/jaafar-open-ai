@@ -80,8 +80,9 @@ import com.jaafar.remoteconfig.R
 ) {
     val project = vm.activeProject
     val total = vm.activeCharacterOrder.size
-    val drawn = vm.drawings.size
-    val nextCode = vm.activeCharacterOrder.firstOrNull { it !in vm.drawings }
+    val drawn = project?.let(vm::progressCount) ?: vm.drawings.size
+    val skipped = project?.skippedCodePoints ?: emptySet()
+    val nextCode = vm.activeCharacterOrder.firstOrNull { it !in vm.drawings && it !in skipped }
     val useCurrentFont: () -> Unit = {
         project?.let {
             vm.generate()
@@ -351,6 +352,8 @@ internal fun SpacingControl(
     initial: GlyphDrawing?,
     defaultStrokeWidth: Float,
     drawings: Map<Int, GlyphDrawing>,
+    skippedCodePoints: Set<Int>,
+    canSkipSymbols: Boolean,
     characterOrder: List<Int>,
     pagingMode: Boolean,
     pagingProgress: Pair<Int, Int>?,
@@ -401,7 +404,7 @@ internal fun SpacingControl(
     val char = codePoint.toChar().toString()
     val title = "Draw $char"
     val characterIndex = characterOrder.indexOf(codePoint)
-    val completedCharacterCount = characterOrder.count { it in drawings }
+    val completedCharacterCount = characterOrder.count { it in drawings || it in skippedCodePoints }
     val letterBarState = rememberLazyListState()
     LaunchedEffect(codePoint, characterOrder) {
         if (characterIndex >= 0) {
@@ -603,7 +606,12 @@ internal fun SpacingControl(
                 IconButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
                     Icon(Icons.Default.Clear, contentDescription = "Clear")
                 }
-                if (pagingMode && !phraseModeEnabled) TextButton(onSkip) { Text("Skip") }
+                // Only ever offered for a non-alphanumeric character on a "Use it on images"
+                // font -- letters/digits are always required, and an "Export a full font"
+                // project needs everything actually drawn, no skipping.
+                if (pagingMode && !phraseModeEnabled && canSkipSymbols && !codePoint.toChar().isLetterOrDigit()) {
+                    TextButton(onSkip) { Text("Skip") }
+                }
                 Button(savePrimary, Modifier.weight(1f), enabled = strokes.isNotEmpty() && (isDirty || initial == null || pagingMode)) {
                     Text(saveLabel, maxLines = 1)
                 }

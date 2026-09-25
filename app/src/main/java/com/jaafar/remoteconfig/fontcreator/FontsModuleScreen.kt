@@ -116,7 +116,7 @@ internal fun FontsModuleScreen(
                     items(vm.projects, key = { it.name }) { project ->
                         val complete = vm.isProjectComplete(project)
                         val total = vm.characterCount(project).coerceAtLeast(1)
-                        val drawn = project.drawings.size.coerceAtMost(total)
+                        val drawn = vm.progressCount(project).coerceAtMost(total)
                         val percentage = (drawn * 100 / total).coerceIn(0, 100)
                         // The *real* generated font, loaded off the main thread -- the same one
                         // Fine-tune shows -- so the name and thumbnail here match that screen
@@ -354,7 +354,7 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
                     GoalOption(
                         icon = Icons.Filled.Image,
                         title = "Use it on images",
-                        detail = "Letters and numbers only -- the fastest way to start writing on photos.",
+                        detail = "Skip punctuation and symbols as you go -- the fastest way to start writing on photos.",
                         selected = goal == FontGoal.USE_ON_IMAGE,
                         onClick = { goal = FontGoal.USE_ON_IMAGE },
                     )

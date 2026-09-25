@@ -50,12 +50,11 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         private const val PREFS_SUCCESSFUL_SHARE_COUNT = "successful_share_count_for_rating"
     }
 
-    /** The code points [project] actually needs drawn to be "complete" -- every character in its
-     *  selected languages, except a [FontGoal.USE_ON_IMAGE] project, which only needs letters and
-     *  digits (no punctuation/symbols): that's what typically shows up captioning a photo, so
-     *  such a project can unlock Fine-tune/the celebration screen sooner. Does *not* gate
-     *  exporting the font as a real file -- see [isReadyToExport] for that. Ordered
-     *  letters-then-digits(-then-symbols), the order [activeCharacterOrder] draws them in. */
+    /** The code points [project] actually needs to be "complete" -- every character in its
+     *  selected languages, letters-then-digits-then-symbols, the order [activeCharacterOrder]
+     *  draws them in. Always the *full* set regardless of [FontProject.goal] -- a
+     *  [FontGoal.USE_ON_IMAGE] project doesn't shrink this list, it just lets the customer skip
+     *  a non-alphanumeric character instead of drawing it (see [skipLetter]/[isProjectComplete]). */
     private fun requiredCodePoints(project: FontProject): List<Int> {
         val codePoints = project.selectedLanguages
             .flatMap { it.codePoints }
@@ -63,7 +62,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             .filter { it != 0x20 } // exclude plain space (handled separately in spacing)
         val letters = codePoints.filter { it.toChar().isLetter() }.sorted()
         val digits = codePoints.filter { it.toChar().isDigit() }.sorted()
-        if (project.goal == FontGoal.USE_ON_IMAGE) return letters + digits
         val symbols = codePoints.filter { !it.toChar().isLetter() && !it.toChar().isDigit() }.sorted()
         return letters + digits + symbols
     }
@@ -79,18 +77,29 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     fun characterCount(project: FontProject): Int = requiredCodePoints(project).size
 
+    /** [project]'s drawn-or-skipped character count -- skipping still counts as progress toward
+     *  "done" (see [isProjectComplete]), so a percentage shown against [characterCount] doesn't
+     *  stall once a character's been explicitly skipped rather than drawn. */
+    fun progressCount(project: FontProject): Int =
+        (project.drawings.map { it.codePoint }.toSet() + project.skippedCodePoints).size
+
+    /** A character counts as satisfied once it's either drawn or explicitly skipped (see
+     *  [skipLetter]) -- skipping is only ever offered for a non-alphanumeric character on a
+     *  [FontGoal.USE_ON_IMAGE] project, so letters/digits and any [FontGoal.EXPORT] project
+     *  still need everything actually drawn to reach this. */
     fun isProjectComplete(project: FontProject): Boolean {
         val required = requiredCodePoints(project)
-        return required.isNotEmpty() && project.drawings.map { it.codePoint }.toSet().containsAll(required)
+        val satisfied = project.drawings.map { it.codePoint }.toSet() + project.skippedCodePoints
+        return required.isNotEmpty() && satisfied.containsAll(required)
     }
 
-    /** Whether [project] has every character drawn, regardless of its own goal -- unlike
-     *  [isProjectComplete], a [FontGoal.USE_ON_IMAGE] project being "complete" for its own
-     *  purpose (letters+digits only) doesn't make this true. Gates exporting the font as a real
-     *  file (Download/Share): offering to export/share a font that's still missing punctuation
-     *  and symbols would ship a file that looks done but silently has glyphs missing. */
+    /** Whether [project] has every character actually drawn -- unlike [isProjectComplete], a
+     *  skipped character doesn't count here. Gates exporting the font as a real file (Download/
+     *  Share): offering to export/share a font that's still missing punctuation and symbols
+     *  (skipped or simply not yet drawn) would ship a file that looks done but silently has
+     *  glyphs missing. */
     fun isReadyToExport(project: FontProject): Boolean {
-        val required = requiredCodePoints(project.copy(goal = FontGoal.EXPORT))
+        val required = requiredCodePoints(project)
         return required.isNotEmpty() && project.drawings.map { it.codePoint }.toSet().containsAll(required)
     }
 
@@ -375,7 +384,13 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         return true
     }
 
-    fun startPaging() = startQueue(activeCharacterOrder.filter { it !in drawings }, "All supported characters have already been drawn.")
+    fun startPaging() {
+        val skipped = activeProject?.skippedCodePoints ?: emptySet()
+        // Already-skipped characters don't requeue here -- otherwise "Continue drawing" would
+        // force the customer back through every symbol they already chose to skip, every time,
+        // just to reach whatever's genuinely still undrawn. They stay reachable via Edit letters.
+        startQueue(activeCharacterOrder.filter { it !in drawings && it !in skipped }, "All supported characters have already been drawn.")
+    }
 
     fun startPhrase(phrase: String): Boolean {
         val cleanPhrase = phrase.trim()
@@ -448,10 +463,21 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         pagingQueue = emptyList()
         pagingHistory = emptyList()
     }
+    /** Skips the current letter in the paging queue. For a non-alphanumeric character, this
+     *  also persists it as skipped on the active project (see [FontProject.skippedCodePoints]) --
+     *  unlike just moving past it in this one queue, a skipped character counts as satisfied for
+     *  [isProjectComplete] without ever needing to be drawn. Letters/digits can't be skipped this
+     *  way -- they're always required, so this only records the move-past-it queue effect for
+     *  them (the Skip control itself is only ever shown for a non-alphanumeric character; see
+     *  GlyphEditorScreen). */
     fun skipLetter() {
         if (!isPagingMode) return
-        selectedCodePoint?.let { pagingHistory = pagingHistory + it }
-        pagingQueue = pagingQueue.filterNot { it == selectedCodePoint }
+        val current = selectedCodePoint
+        if (current != null && !current.toChar().isLetterOrDigit()) {
+            updateActive { it.copy(skippedCodePoints = it.skippedCodePoints + current) }
+        }
+        current?.let { pagingHistory = pagingHistory + it }
+        pagingQueue = pagingQueue.filterNot { it == current }
         selectedCodePoint = if (pagingQueue.isNotEmpty()) pagingQueue.first() else null
         if (selectedCodePoint == null) isPagingMode = false
     }

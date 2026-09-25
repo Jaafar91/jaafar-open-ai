@@ -33,11 +33,12 @@ enum class LanguageScript(
 }
 
 /** What a font project is being made for -- asked at creation of every font (see
- *  CreateFontDialog), since different fonts can serve different purposes.
- *  Only changes what [FontCreatorViewModel] requires for "complete": [USE_ON_IMAGE] only needs
- *  letters and digits drawn (no punctuation/symbols) to unlock Fine-tune/Share/Download/the
- *  celebration screen, since that covers what typically shows up captioning a photo; [EXPORT]
- *  needs every character in the project's selected languages, as before this existed. */
+ *  CreateFontDialog), since different fonts can serve different purposes. Every project still
+ *  walks through its *full* character set (see [FontCreatorViewModel.requiredCodePoints]) --
+ *  [USE_ON_IMAGE] doesn't shrink that list, it just lets the customer skip a non-alphanumeric
+ *  character when they reach it instead of drawing it (see [FontProject.skippedCodePoints]),
+ *  since that covers what typically shows up captioning a photo; [EXPORT] offers no skip, since
+ *  it needs every character actually drawn for a real, installable font file. */
 enum class FontGoal { USE_ON_IMAGE, EXPORT }
 
 data class FontProject(
@@ -47,6 +48,11 @@ data class FontProject(
     val wordSpacingMm: Float = 3f,
     val selectedLanguages: Set<LanguageScript> = setOf(LanguageScript.BASIC_LATIN),
     val goal: FontGoal = FontGoal.EXPORT,
+    /** Non-alphanumeric characters explicitly skipped rather than drawn (see
+     *  [FontCreatorViewModel.skipLetter]) -- counts as satisfied for [FontCreatorViewModel.isProjectComplete]
+     *  without ever needing a drawing, but never for [FontCreatorViewModel.isReadyToExport]: a
+     *  skipped character still isn't a real glyph, so exporting the font still waits for it. */
+    val skippedCodePoints: Set<Int> = emptySet(),
     /** The Fine-tune preview/phrase text this project was last shown or drawn with -- kept per
      *  font (not one shared value used by every font) so switching fonts doesn't carry over
      *  another font's preview text or leak its phrase-mode drawing queue into this one. */

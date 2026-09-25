@@ -98,7 +98,7 @@ internal fun DashboardScreen(
         unfinishedIndex != null -> {
             val project = vm.projects[unfinishedIndex]
             val total = vm.characterCount(project).coerceAtLeast(1)
-            val percentage = (project.drawings.size * 100 / total).coerceIn(0, 100)
+            val percentage = (vm.progressCount(project) * 100 / total).coerceIn(0, 100)
             DashboardHero(
                 title = "Continue ${project.name}",
                 detail = "$percentage% complete · Nice progress—keep going!",
