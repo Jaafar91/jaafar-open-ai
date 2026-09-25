@@ -114,15 +114,23 @@ internal fun FontsModuleScreen(
                 if (vm.projects.isNotEmpty()) {
                     item { Text("CREATED FONTS", style = MaterialTheme.typography.titleSmall) }
                     items(vm.projects, key = { it.name }) { project ->
-                        val complete = vm.isProjectComplete(project)
+                        // "Complete" here means truly done -- every character actually drawn,
+                        // ready to export -- not just goal-satisfied via a skipped symbol (see
+                        // isReadyToExport vs the goal-aware isProjectComplete). The percentage
+                        // shown alongside matches: real drawings only, skips don't inflate it.
+                        val readyToExport = vm.isReadyToExport(project)
                         val total = vm.characterCount(project).coerceAtLeast(1)
-                        val drawn = vm.progressCount(project).coerceAtMost(total)
+                        val drawn = project.drawings.size.coerceAtMost(total)
                         val percentage = (drawn * 100 / total).coerceIn(0, 100)
+                        // Usable (goal-satisfied, possibly via skip) is enough to render the name
+                        // in the customer's own handwriting -- doesn't need to wait for every
+                        // symbol to be drawn too.
+                        val usable = vm.isProjectComplete(project)
                         // The *real* generated font, loaded off the main thread -- the same one
                         // Fine-tune shows -- so the name and thumbnail here match that screen
                         // exactly instead of approximating it from raw pen strokes.
-                        val previewTypeface by produceState<android.graphics.Typeface?>(null, project.name, project.drawings, complete) {
-                            value = if (complete) vm.typefaceForPreview(project) else null
+                        val previewTypeface by produceState<android.graphics.Typeface?>(null, project.name, project.drawings, usable) {
+                            value = if (usable) vm.typefaceForPreview(project) else null
                         }
                         OutlinedCard(Modifier.fillMaxWidth().clickable { openProject(vm.projects.indexOf(project)) }) {
                             Row(
@@ -143,7 +151,7 @@ internal fun FontsModuleScreen(
                                             fontFamily = previewTypeface?.let { androidx.compose.ui.text.font.FontFamily(it) },
                                             modifier = Modifier.weight(1f, fill = false),
                                         )
-                                        FontStatusBadge(if (complete) "Complete" else "$percentage%", showCheck = complete)
+                                        FontStatusBadge(if (readyToExport) "Complete" else "$percentage%", showCheck = readyToExport)
                                     }
                                     Text(
                                         "Created font",
@@ -153,7 +161,7 @@ internal fun FontsModuleScreen(
                                     LinearProgressIndicator(
                                         progress = drawn.toFloat() / total,
                                         modifier = Modifier.fillMaxWidth(),
-                                        color = if (complete) CompleteGreen else MaterialTheme.colorScheme.primary,
+                                        color = if (readyToExport) CompleteGreen else MaterialTheme.colorScheme.primary,
                                     )
                                 }
                                 IconButton(onClick = { projectToDelete = project }) {
