@@ -371,6 +371,13 @@ internal fun SpacingControl(
     var strokeWidth by remember(codePoint) { mutableFloatStateOf(initial?.strokeWidth ?: defaultStrokeWidth) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
+    // A small badge on the "more options" icon hints that Reference letter/Phrase mode live in
+    // there -- both are otherwise easy to never discover, tucked behind a plain overflow icon.
+    // Cleared the first time the customer actually opens the menu (not just once it's been shown
+    // a while), same "seen" pattern as the app's other one-time hints.
+    val context = LocalContext.current
+    val moreMenuPrefs = remember { context.getSharedPreferences("appearance", 0) }
+    var hasOpenedMoreMenu by remember { mutableStateOf(moreMenuPrefs.getBoolean("more_menu_opened", false)) }
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phraseDraft by remember(phraseText) { mutableStateOf(phraseText) }
     var showReference by remember { mutableStateOf(true) }
@@ -436,8 +443,16 @@ internal fun SpacingControl(
                     ) { Text("Previous") }
                 }
                 Box {
-                    IconButton(onClick = { showMoreMenu = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                    IconButton(onClick = {
+                        showMoreMenu = true
+                        if (!hasOpenedMoreMenu) {
+                            hasOpenedMoreMenu = true
+                            moreMenuPrefs.edit().putBoolean("more_menu_opened", true).apply()
+                        }
+                    }) {
+                        BadgedBox(badge = { if (!hasOpenedMoreMenu) Badge() }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                        }
                     }
                     DropdownMenu(expanded = showMoreMenu, onDismissRequest = { showMoreMenu = false }) {
                         DropdownMenuItem(
