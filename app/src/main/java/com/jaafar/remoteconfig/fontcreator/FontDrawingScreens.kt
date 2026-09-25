@@ -83,12 +83,7 @@ import com.jaafar.remoteconfig.R
     val total = vm.activeCharacterOrder.size
     val drawn = project?.let(vm::progressCount) ?: vm.drawings.size
     val skipped = project?.skippedCodePoints ?: emptySet()
-    val remainingCodes = vm.remainingCodePoints
-    val nextCode = remainingCodes.firstOrNull()
-    // Offered once every letter/digit is drawn and only punctuation/symbols are left -- a
-    // shortcut past them in one tap instead of drawing (or dismissing) each one individually.
-    // "Export a full font" never offers this -- it needs everything actually drawn.
-    val canSkipRemainingSymbols = vm.canSkipRemainingSymbols
+    val nextCode = vm.remainingCodePoints.firstOrNull()
     val useCurrentFont: () -> Unit = {
         project?.let {
             vm.generate()
@@ -97,7 +92,6 @@ import com.jaafar.remoteconfig.R
     }
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameName by remember(project?.name) { mutableStateOf(project?.name.orEmpty()) }
-    var showSkipSymbolsDialog by remember { mutableStateOf(false) }
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(project?.name.orEmpty(), modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -127,14 +121,6 @@ import com.jaafar.remoteconfig.R
             progress = percentage / 100f,
             onClick = { vm.edit(nextCode) },
         )
-        if (canSkipRemainingSymbols) {
-            ActionListCard(
-                icon = Icons.Filled.Image,
-                title = "Skip symbols & use now",
-                detail = "You've drawn every letter and number -- skip the rest and start writing on photos",
-                onClick = { showSkipSymbolsDialog = true },
-            )
-        }
     } else {
         // No badge/progress here -- this card is the action to take next, not a status; a
         // "Complete" badge plus a full progress bar plus "ready to use" said the same thing
@@ -199,28 +185,6 @@ import com.jaafar.remoteconfig.R
                 ) { Text("Rename") }
             },
             dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") } },
-        )
-    }
-
-    if (showSkipSymbolsDialog) {
-        AlertDialog(
-            onDismissRequest = { showSkipSymbolsDialog = false },
-            title = { Text("Skip the remaining symbols?") },
-            text = {
-                Text(
-                    "You've drawn every letter and number. Skip the ${remainingCodes.size} " +
-                        "remaining punctuation and symbol characters and start using this font " +
-                        "on images now -- you can always come back and draw them later.",
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    showSkipSymbolsDialog = false
-                    vm.skipRemainingSymbols()
-                    useCurrentFont()
-                }) { Text("Skip & use now") }
-            },
-            dismissButton = { TextButton(onClick = { showSkipSymbolsDialog = false }) { Text("Cancel") } },
         )
     }
 }
