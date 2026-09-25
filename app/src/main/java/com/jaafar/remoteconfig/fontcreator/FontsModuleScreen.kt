@@ -335,10 +335,9 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
     // is left floating over whatever's shown next.
     val dismiss = { keyboard?.hide(); onDismiss() }
 
-    // Only a brand-new user (no fonts at all yet) is asked this -- an existing user creating
-    // another font keeps today's flow unchanged and always gets the full EXPORT requirement.
-    val isNewUser = vm.projects.isEmpty() && vm.importedFonts.isEmpty()
-    var askingGoal by remember { mutableStateOf(isNewUser) }
+    // Asked every time a font is created, not just for a brand-new user -- each font can be
+    // drawn for a different purpose, so the goal shouldn't only be decided once.
+    var askingGoal by remember { mutableStateOf(true) }
     var goal by remember { mutableStateOf(FontGoal.EXPORT) }
 
     if (askingGoal) {

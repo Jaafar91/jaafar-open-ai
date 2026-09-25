@@ -32,8 +32,8 @@ enum class LanguageScript(
     val codePoints: List<Int> by lazy { ranges.flatMap { it.toList() } }
 }
 
-/** What a font project is being made for -- asked once, at creation, only of a brand-new user
- *  with no fonts yet (see CreateFontDialog); every other project keeps the default [EXPORT].
+/** What a font project is being made for -- asked at creation of every font (see
+ *  CreateFontDialog), since different fonts can serve different purposes.
  *  Only changes what [FontCreatorViewModel] requires for "complete": [USE_ON_IMAGE] only needs
  *  letters and digits drawn (no punctuation/symbols) to unlock Fine-tune/Share/Download/the
  *  celebration screen, since that covers what typically shows up captioning a photo; [EXPORT]
