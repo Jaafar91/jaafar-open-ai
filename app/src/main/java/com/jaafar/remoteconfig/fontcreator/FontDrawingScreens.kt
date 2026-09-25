@@ -493,12 +493,175 @@ internal fun SpacingControl(
             }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        // Boxed rather than having the banner sit inline at the top of the Column: an inline
+        // banner pushes every sibling below it, including the Canvas -- which sizes off
+        // whatever's left via weight(1f), so the canvas box itself would resize the moment the
+        // banner appears/disappears (e.g. on dismiss) and misalign strokes already drawn against
+        // its old size. Overlaid on top instead, so appearing/disappearing never changes the
+        // Column's own layout or the Canvas's measured size at all.
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            Column(Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                if (!pagingMode || phraseModeEnabled) {
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val centerPadding = ((maxWidth - 48.dp) / 2).coerceAtLeast(0.dp)
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            state = letterBarState,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            contentPadding = PaddingValues(horizontal = centerPadding),
+                        ) {
+                            items(characterOrder) { candidate ->
+                                val selected = candidate == codePoint
+                                val savedDrawing = drawings[candidate]
+                                val tileColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                                val tileContentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                Surface(
+                                    onClick = { if (!selected) navigateSafely { onSelectCharacter(candidate) } },
+                                    shape = MaterialTheme.shapes.small,
+                                    color = tileColor,
+                                    contentColor = tileContentColor,
+                                    modifier = Modifier.size(48.dp),
+                                ) {
+                                    if (savedDrawing != null) {
+                                        GlyphBarPreview(savedDrawing, tileContentColor, Modifier.fillMaxSize().padding(6.dp))
+                                    } else {
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            Text(candidate.toChar().toString(), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                                            Text(
+                                                "*",
+                                                modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 5.dp),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    val percentage = if (characterOrder.isEmpty()) 0 else (completedCharacterCount * 100 / characterOrder.size).coerceIn(0, 100)
+                    Text(
+                        "$percentage% completed",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = if (characterOrder.isEmpty()) 0f else (completedCharacterCount.toFloat() / characterOrder.size).coerceIn(0f, 1f),
+                    modifier = Modifier.fillMaxWidth().height(3.dp),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text("Use the guides to keep every letter aligned and evenly sized.", style = MaterialTheme.typography.bodySmall)
+                Canvas(
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(vertical = 12.dp)
+                        .background(Color.White)
+                        .border(1.dp, Color.Gray)
+                        // Strokes are stored as raw pixel coordinates of whatever canvas box they were
+                        // drawn on. That box can resize after strokes already exist -- a saved drawing
+                        // reopened on a different-size canvas, or (in principle) a live resize. The
+                        // skip-symbols banner itself is overlaid rather than inline (see below) so it
+                        // can no longer be the cause, but this stays as a safety net for any other
+                        // live resize (rotation, multi-window) so old points always rescale instead of
+                        // staying at their stale pixel positions.
+                        .onSizeChanged { newSize ->
+                            val (oldWidth, oldHeight) = canvasSize
+                            if (oldWidth > 0f && oldHeight > 0f &&
+                                (newSize.width.toFloat() != oldWidth || newSize.height.toFloat() != oldHeight)
+                            ) {
+                                val scaleX = newSize.width / oldWidth
+                                val scaleY = newSize.height / oldHeight
+                                fun GlyphPoint.rescaled() = GlyphPoint(x * scaleX, y * scaleY, onCurve)
+                                strokes = strokes.map { it.copy(points = it.points.map { point -> point.rescaled() }) }
+                                active = active.map { it.rescaled() }
+                            }
+                            canvasSize = newSize.width.toFloat() to newSize.height.toFloat()
+                        }
+                        .pointerInput(codePoint, strokes) {
+                            detectDragGestures(
+                                onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    val next = GlyphPoint(change.position.x, change.position.y)
+                                    if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) active = active + next
+                                },
+                                onDragEnd = {
+                                    if (active.size > 1) strokes = strokes + GlyphStroke(active)
+                                    active = emptyList()
+                                },
+                                onDragCancel = { active = emptyList() },
+                            )
+                        },
+                ) {
+                    canvasSize = size.width to size.height
+                    if (showReference) {
+                        drawIntoCanvas { canvas ->
+                            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                typeface = referenceTypeface
+                                textSize = size.height * .68f
+                                color = android.graphics.Color.argb(35, 25, 35, 55)
+                                textAlign = android.graphics.Paint.Align.CENTER
+                            }
+                            canvas.nativeCanvas.drawText(char, size.width / 2f, size.height * .78f, paint)
+                        }
+                    }
+                    drawFontGuides()
+                    (strokes.map { it.points } + listOf(active)).forEach { points ->
+                        if (points.size > 1) {
+                            drawPath(
+                                Path().apply {
+                                    moveTo(points[0].x, points[0].y)
+                                    points.drop(1).forEach { lineTo(it.x, it.y) }
+                                },
+                                Color.Black,
+                                style = Stroke(strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                            )
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Thickness", style = MaterialTheme.typography.bodySmall)
+                    Slider(
+                        value = strokeWidth,
+                        onValueChange = { strokeWidth = it },
+                        valueRange = 2f..24f,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text("${strokeWidth.toInt()}", style = MaterialTheme.typography.bodySmall)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) {
+                        Icon(Icons.Default.Undo, contentDescription = "Undo")
+                    }
+                    IconButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
+                        Icon(Icons.Default.Clear, contentDescription = "Clear")
+                    }
+                    Button(savePrimary, Modifier.weight(1f), enabled = strokes.isNotEmpty() && (isDirty || initial == null || pagingMode)) {
+                        Text(saveLabel, maxLines = 1)
+                    }
+                }
+            }
+            // Overlaid on top of the Column instead of sitting inline at its top: an inline banner
+            // pushes every sibling below it, including the Canvas above -- which sizes off whatever
+            // space is left via weight(1f), so the canvas box itself would resize the moment this
+            // banner appears/disappears (e.g. on dismiss) and misalign strokes already drawn against
+            // its old size. Overlaid, appearing/disappearing never changes the Column's layout or the
+            // Canvas's measured size at all.
             if (canSkipRemainingSymbols && !skipBannerDismissed) {
                 Card(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                     shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
                 ) {
                     Row(
                         Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
@@ -511,151 +674,6 @@ internal fun SpacingControl(
                         }
                         IconButton(onClick = { skipBannerDismissed = true }) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
                     }
-                }
-            }
-            if (!pagingMode || phraseModeEnabled) {
-                BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val centerPadding = ((maxWidth - 48.dp) / 2).coerceAtLeast(0.dp)
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        state = letterBarState,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        contentPadding = PaddingValues(horizontal = centerPadding),
-                    ) {
-                        items(characterOrder) { candidate ->
-                            val selected = candidate == codePoint
-                            val savedDrawing = drawings[candidate]
-                            val tileColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-                            val tileContentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                            Surface(
-                                onClick = { if (!selected) navigateSafely { onSelectCharacter(candidate) } },
-                                shape = MaterialTheme.shapes.small,
-                                color = tileColor,
-                                contentColor = tileContentColor,
-                                modifier = Modifier.size(48.dp),
-                            ) {
-                                if (savedDrawing != null) {
-                                    GlyphBarPreview(savedDrawing, tileContentColor, Modifier.fillMaxSize().padding(6.dp))
-                                } else {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Text(candidate.toChar().toString(), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
-                                        Text(
-                                            "*",
-                                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 5.dp),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                val percentage = if (characterOrder.isEmpty()) 0 else (completedCharacterCount * 100 / characterOrder.size).coerceIn(0, 100)
-                Text(
-                    "$percentage% completed",
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            LinearProgressIndicator(
-                progress = if (characterOrder.isEmpty()) 0f else (completedCharacterCount.toFloat() / characterOrder.size).coerceIn(0f, 1f),
-                modifier = Modifier.fillMaxWidth().height(3.dp),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text("Use the guides to keep every letter aligned and evenly sized.", style = MaterialTheme.typography.bodySmall)
-            Canvas(
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(vertical = 12.dp)
-                    .background(Color.White)
-                    .border(1.dp, Color.Gray)
-                    // Strokes are stored as raw pixel coordinates of whatever canvas box they were
-                    // drawn on. That box can resize after strokes already exist -- a saved drawing
-                    // reopened on a different-size canvas, or this same screen resizing live (e.g.
-                    // the skip-symbols banner above appearing/disappearing changes how much height
-                    // this weight(1f) box gets). Without this, the old points get redrawn unscaled
-                    // at their stale pixel positions, visibly misplacing/distorting the symbol.
-                    // Rescale every existing point proportionally whenever the measured size changes.
-                    .onSizeChanged { newSize ->
-                        val (oldWidth, oldHeight) = canvasSize
-                        if (oldWidth > 0f && oldHeight > 0f &&
-                            (newSize.width.toFloat() != oldWidth || newSize.height.toFloat() != oldHeight)
-                        ) {
-                            val scaleX = newSize.width / oldWidth
-                            val scaleY = newSize.height / oldHeight
-                            fun GlyphPoint.rescaled() = GlyphPoint(x * scaleX, y * scaleY, onCurve)
-                            strokes = strokes.map { it.copy(points = it.points.map { point -> point.rescaled() }) }
-                            active = active.map { it.rescaled() }
-                        }
-                        canvasSize = newSize.width.toFloat() to newSize.height.toFloat()
-                    }
-                    .pointerInput(codePoint, strokes) {
-                        detectDragGestures(
-                            onDragStart = { active = listOf(GlyphPoint(it.x, it.y)) },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                val next = GlyphPoint(change.position.x, change.position.y)
-                                if (active.lastOrNull()?.let { hypotSquared(it, next) > 9f } != false) active = active + next
-                            },
-                            onDragEnd = {
-                                if (active.size > 1) strokes = strokes + GlyphStroke(active)
-                                active = emptyList()
-                            },
-                            onDragCancel = { active = emptyList() },
-                        )
-                    },
-            ) {
-                canvasSize = size.width to size.height
-                if (showReference) {
-                    drawIntoCanvas { canvas ->
-                        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                            typeface = referenceTypeface
-                            textSize = size.height * .68f
-                            color = android.graphics.Color.argb(35, 25, 35, 55)
-                            textAlign = android.graphics.Paint.Align.CENTER
-                        }
-                        canvas.nativeCanvas.drawText(char, size.width / 2f, size.height * .78f, paint)
-                    }
-                }
-                drawFontGuides()
-                (strokes.map { it.points } + listOf(active)).forEach { points ->
-                    if (points.size > 1) {
-                        drawPath(
-                            Path().apply {
-                                moveTo(points[0].x, points[0].y)
-                                points.drop(1).forEach { lineTo(it.x, it.y) }
-                            },
-                            Color.Black,
-                            style = Stroke(strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
-                        )
-                    }
-                }
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Thickness", style = MaterialTheme.typography.bodySmall)
-                Slider(
-                    value = strokeWidth,
-                    onValueChange = { strokeWidth = it },
-                    valueRange = 2f..24f,
-                    modifier = Modifier.weight(1f),
-                )
-                Text("${strokeWidth.toInt()}", style = MaterialTheme.typography.bodySmall)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton({ strokes = strokes.dropLast(1) }, enabled = strokes.isNotEmpty()) {
-                    Icon(Icons.Default.Undo, contentDescription = "Undo")
-                }
-                IconButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
-                    Icon(Icons.Default.Clear, contentDescription = "Clear")
-                }
-                Button(savePrimary, Modifier.weight(1f), enabled = strokes.isNotEmpty() && (isDirty || initial == null || pagingMode)) {
-                    Text(saveLabel, maxLines = 1)
                 }
             }
         }
