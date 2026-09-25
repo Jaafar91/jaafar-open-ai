@@ -58,6 +58,7 @@ internal fun DashboardScreen(
     Page(
         "Studio",
         actions = {
+            IconButton(onClick = { shareApp(context) }) { Icon(Icons.Filled.Share, contentDescription = "Share Font Maker") }
             IconButton(onClick = openSettings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
         },
         // Scrollable so the extra Pro tile below the assets can't be clipped on a short screen.

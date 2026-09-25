@@ -542,3 +542,17 @@ internal fun openPlayStoreListing(context: android.content.Context) {
         }
 }
 
+/** Shares the app itself (a Play Store link, via a plain text ACTION_SEND) with someone else --
+ *  always the https:// link, not the market:// scheme [openPlayStoreListing] prefers, since a
+ *  recipient without the Play Store app installed still needs a link that opens in a browser. */
+internal fun shareApp(context: android.content.Context) {
+    val packageName = context.packageName
+    val message = "Check out Font Maker -- turn your own handwriting into a real, installable font! " +
+        "https://play.google.com/store/apps/details?id=$packageName"
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, message)
+    }
+    context.startActivity(Intent.createChooser(intent, "Share Font Maker"))
+}
+
