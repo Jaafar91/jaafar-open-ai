@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -583,7 +584,14 @@ private fun FillMarkEditorScreen(
         bottomBar = {
             // Text/Date/Check/Sign/Stamp stay pinned to the very bottom of the screen at all
             // times, regardless of how much the document or the config panel above take up.
-            Column(Modifier.fillMaxWidth()) {
+            // navigationBarsPadding() matters here specifically: unlike Material3's own
+            // NavigationBar/BottomAppBar (which pad themselves automatically), a plain Column
+            // passed as Scaffold's bottomBar gets no inset padding for free, so on a
+            // targetSdk 35+ edge-to-edge window it renders underneath the system navigation bar
+            // -- on a 3-button-nav phone with a small screen (e.g. a Galaxy S24), the nav bar's
+            // own back/home/recent buttons then visibly overlap this row's leftmost/rightmost
+            // tool buttons instead of sitting below them.
+            Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
                 HorizontalDivider()
                 Row(
                     Modifier
