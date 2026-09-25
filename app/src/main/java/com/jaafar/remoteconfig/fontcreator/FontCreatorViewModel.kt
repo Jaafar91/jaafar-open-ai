@@ -336,6 +336,11 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         selectedCodePoint = null; generatedFont = generatedFile(project.name).takeIf { it.exists() }
         previewTypeface = generatedFont?.let { runCatching { loadTypeface(it) }.getOrNull() }
         lastStrokeWidth = 8f
+        // lastEditedCodePoint isn't scoped to a project -- without this, editLetters() on a
+        // brand-new (or just different) font could jump straight to whatever character was last
+        // edited in the *previous* font, landing the customer on an unrelated letter the moment
+        // they open an empty project instead of starting at its first character.
+        lastEditedCodePoint = null
         // Phrase/paging mode is a live editing-session state, not something a font should
         // remember -- without this, switching fonts mid-phrase left the next font's editor
         // still in phrase mode, filtering its queue by the *previous* font's phrase.
