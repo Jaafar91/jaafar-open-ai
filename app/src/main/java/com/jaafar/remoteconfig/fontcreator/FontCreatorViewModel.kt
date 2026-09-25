@@ -468,23 +468,26 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         pagingQueue = emptyList()
         pagingHistory = emptyList()
     }
-    /** Skips the current letter in the paging queue. For a non-alphanumeric character, this
-     *  also persists it as skipped on the active project (see [FontProject.skippedCodePoints]) --
-     *  unlike just moving past it in this one queue, a skipped character counts as satisfied for
-     *  [isProjectComplete] without ever needing to be drawn. Letters/digits can't be skipped this
-     *  way -- they're always required, so this only records the move-past-it queue effect for
-     *  them (the Skip control itself is only ever shown for a non-alphanumeric character; see
-     *  GlyphEditorScreen). */
+    /** Skips the current (always non-alphanumeric -- the Skip control in GlyphEditorScreen is
+     *  never shown for a letter/digit) character: persists it as skipped on the active project
+     *  (see [FontProject.skippedCodePoints]) so it counts as satisfied for [isProjectComplete]
+     *  without ever needing to be drawn, then advances the same way saving would. The everyday
+     *  "keep going" flow (Start your font/Continue drawing) never sets [isPagingMode] -- it
+     *  auto-advances via [characterAfterSave], same as [saveDrawingAndContinue] -- so this
+     *  branches on that too, not just the explicit paging queue. */
     fun skipLetter() {
-        if (!isPagingMode) return
-        val current = selectedCodePoint
-        if (current != null && !current.toChar().isLetterOrDigit()) {
-            updateActive { it.copy(skippedCodePoints = it.skippedCodePoints + current) }
+        val current = selectedCodePoint ?: return
+        val skippedNow = (activeProject?.skippedCodePoints ?: emptySet()) + current
+        updateActive { it.copy(skippedCodePoints = skippedNow) }
+        if (isPagingMode) {
+            pagingHistory = pagingHistory + current
+            pagingQueue = pagingQueue.filterNot { it == current }
+            selectedCodePoint = if (pagingQueue.isNotEmpty()) pagingQueue.first() else null
+            if (selectedCodePoint == null) isPagingMode = false
+        } else {
+            val satisfied = drawings.keys + skippedNow
+            selectedCodePoint = characterAfterSave(activeCharacterOrder, current, satisfied, wasExisting = current in drawings)
         }
-        current?.let { pagingHistory = pagingHistory + it }
-        pagingQueue = pagingQueue.filterNot { it == current }
-        selectedCodePoint = if (pagingQueue.isNotEmpty()) pagingQueue.first() else null
-        if (selectedCodePoint == null) isPagingMode = false
     }
 
     fun previousLetter() {

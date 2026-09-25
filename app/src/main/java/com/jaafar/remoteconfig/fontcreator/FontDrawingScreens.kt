@@ -608,8 +608,12 @@ internal fun SpacingControl(
                 }
                 // Only ever offered for a non-alphanumeric character on a "Use it on images"
                 // font -- letters/digits are always required, and an "Export a full font"
-                // project needs everything actually drawn, no skipping.
-                if (pagingMode && !phraseModeEnabled && canSkipSymbols && !codePoint.toChar().isLetterOrDigit()) {
+                // project needs everything actually drawn, no skipping. Not gated on pagingMode:
+                // the everyday Start your font/Continue drawing flow never sets it (see
+                // skipLetter), so requiring it here made Skip unreachable in normal use.
+                // Excluded during phrase mode -- the customer explicitly asked to draw that
+                // phrase's own characters, skip doesn't fit there.
+                if (!phraseModeEnabled && canSkipSymbols && !codePoint.toChar().isLetterOrDigit()) {
                     TextButton(onSkip) { Text("Skip") }
                 }
                 Button(savePrimary, Modifier.weight(1f), enabled = strokes.isNotEmpty() && (isDirty || initial == null || pagingMode)) {
