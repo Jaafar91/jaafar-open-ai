@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.jaafar.remoteconfig.logFeatureEvent
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.roundToInt
@@ -121,6 +122,7 @@ fun ImageTextEditorScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    LaunchedEffect(imageUri) { logFeatureEvent(context, "use_font_on_image_opened") }
     val density = LocalDensity.current
     val keyboard = LocalSoftwareKeyboardController.current
     val textFocusRequester = remember { FocusRequester() }
@@ -223,6 +225,7 @@ fun ImageTextEditorScreen(
                                 shareImage(context, renderImage(source, layers, ::typefaceFor))
                                 vm.recordUseOnImageExport()
                                 vm.recordSuccessfulShareForRating()
+                                logFeatureEvent(context, "image_text_exported")
                             }
                         },
                     ) { ActionIcon(ActionIconType.Share, "Share image") }

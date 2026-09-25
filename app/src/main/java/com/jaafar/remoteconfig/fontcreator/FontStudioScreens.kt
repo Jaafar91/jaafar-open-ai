@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.jaafar.remoteconfig.R
+import com.jaafar.remoteconfig.logFeatureEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -286,6 +287,7 @@ private fun shareExportedFont(context: android.content.Context, exported: java.i
         scope.launch {
             val exported = withContext(Dispatchers.IO) { exportFontFile(context, file, name, format) }
             shareExportedFont(context, exported, format, name)
+            logFeatureEvent(context, "font_shared")
         }
     }) { onClick ->
         IconButton(onClick = onClick) { ActionIcon(ActionIconType.Share, "Share $name") }
@@ -305,8 +307,10 @@ private fun shareExportedFont(context: android.content.Context, exported: java.i
             val saved = withContext(Dispatchers.IO) { downloadToPublicDownloads(context, exported, exported.name, format.mimeType) }
             if (saved) {
                 Toast.makeText(context, "Saved \"${exported.name}\" to Downloads", Toast.LENGTH_SHORT).show()
+                logFeatureEvent(context, "font_downloaded")
             } else {
                 shareExportedFont(context, exported, format, name)
+                logFeatureEvent(context, "font_shared")
             }
         }
     }) { onClick ->

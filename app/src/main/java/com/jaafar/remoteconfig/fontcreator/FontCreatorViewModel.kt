@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import com.jaafar.remoteconfig.logFeatureEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -308,7 +309,9 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             status = "A font with that name already exists."
             return false
         }
-        projects.add(FontProject(clean, goal = goal)); openProject(projects.lastIndex); persist(); return true
+        projects.add(FontProject(clean, goal = goal)); openProject(projects.lastIndex); persist()
+        logFeatureEvent(getApplication(), "font_created")
+        return true
     }
 
     fun hasFontName(name: String, excludingProjectIndex: Int? = null): Boolean {
@@ -518,6 +521,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         val remaining = remainingCodePoints.filter { !it.toChar().isLetterOrDigit() }
         if (remaining.isEmpty()) return
         updateActive { it.copy(skippedCodePoints = it.skippedCodePoints + remaining) }
+        logFeatureEvent(getApplication(), "font_skip_remaining_symbols")
     }
 
     fun previousLetter() {
@@ -531,6 +535,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun saveDrawing(drawing: GlyphDrawing) {
         lastStrokeWidth = drawing.strokeWidth
         drawings[drawing.codePoint] = drawing
+        logFeatureEvent(getApplication(), "font_letter_drawn")
         if (isPagingMode) {
             pagingHistory = pagingHistory + drawing.codePoint
             pagingQueue = pagingQueue.filterNot { it == drawing.codePoint }
@@ -548,6 +553,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         val wasExisting = drawing.codePoint in drawings
         lastStrokeWidth = drawing.strokeWidth
         drawings[drawing.codePoint] = drawing
+        logFeatureEvent(getApplication(), "font_letter_drawn")
         syncActive(); persist(); status = "Letter saved."
         val order = activeCharacterOrder
         selectedCodePoint = characterAfterSave(order, drawing.codePoint, drawings.keys, wasExisting)
@@ -558,6 +564,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun saveDrawingAndStay(drawing: GlyphDrawing) {
         lastStrokeWidth = drawing.strokeWidth
         drawings[drawing.codePoint] = drawing
+        logFeatureEvent(getApplication(), "font_letter_drawn")
         syncActive(); persist(); status = "Letter saved."
         selectedCodePoint = drawing.codePoint
         isPagingMode = false
@@ -571,7 +578,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
             val file = generatedFile(snapshot.name)
             writeFontFileAtomically(file, TrueTypeGenerator().generate(snapshot.drawings, snapshot.wordSpacingMm, snapshot.letterSpacingMm, snapshot.name))
             file to loadTypeface(file)
-        }.onSuccess { (file, typeface) -> main.post { generatedFont = file; previewTypeface = typeface; status = "${snapshot.name} generated and saved." } }
+        }.onSuccess { (file, typeface) -> main.post {
+            generatedFont = file; previewTypeface = typeface; status = "${snapshot.name} generated and saved."
+            logFeatureEvent(getApplication(), "font_generated")
+        } }
             .onFailure { error -> main.post { status = "Could not generate font: ${error.message ?: "unknown error"}" } } }
     }
 

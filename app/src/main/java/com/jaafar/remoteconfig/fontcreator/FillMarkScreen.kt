@@ -98,6 +98,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jaafar.remoteconfig.logFeatureEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -172,6 +173,8 @@ internal fun FillMarkScreen(
     back: () -> Unit,
 ) {
     var documentUri by remember { mutableStateOf(initialUri) }
+    val context = LocalContext.current
+    LaunchedEffect(Unit) { logFeatureEvent(context, "fill_mark_opened") }
 
     // Update the editor when another document is shared while the app is already open.
     LaunchedEffect(initialUri) {
@@ -548,6 +551,7 @@ private fun FillMarkEditorScreen(
                 shareDocument(context, result.file, result.mimeType)
                 vm.recordFillMarkExport()
                 vm.recordSuccessfulShareForRating()
+                logFeatureEvent(context, "fill_mark_exported")
                 status = "Export ready to share."
             } else {
                 status = "Export failed."
