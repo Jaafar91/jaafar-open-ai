@@ -194,7 +194,6 @@ fun FontCreatorApp(
                 defaultStrokeWidth = viewModel.lastStrokeWidth,
                 drawings = viewModel.drawings,
                 skippedCodePoints = viewModel.activeProject?.skippedCodePoints ?: emptySet(),
-                canSkipSymbols = viewModel.activeProject?.goal == FontGoal.USE_ON_IMAGE,
                 characterOrder = viewModel.editorCharacterOrder,
                 pagingMode = viewModel.isPagingMode,
                 pagingProgress = viewModel.pagingProgress,
@@ -207,19 +206,6 @@ fun FontCreatorApp(
                 onCancel = viewModel::closeEditor,
                 onPrevious = viewModel::previousLetter,
                 onSelectCharacter = viewModel::edit,
-                onSkip = {
-                    val wasComplete = viewModel.wasCompleteBeforeCurrentEdit
-                    viewModel.skipLetter()
-                    if (viewModel.selectedCodePoint == null) {
-                        viewModel.disablePhraseMode()
-                        viewModel.generate()
-                        val isComplete = viewModel.activeProject?.let(viewModel::isProjectComplete) == true
-                        // Same "only a genuine first-time completion earns the celebration
-                        // screen" rule as onSave/onSaveAndContinue -- skipping the last
-                        // remaining character finishes the font exactly like drawing it would.
-                        screen = if (isComplete && !wasComplete) Screen.FontCelebration else Screen.FontReady
-                    }
-                },
                 onSave = { drawing ->
                     val wasComplete = viewModel.wasCompleteBeforeCurrentEdit
                     viewModel.saveDrawing(drawing)

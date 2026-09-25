@@ -53,8 +53,9 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     /** The code points [project] actually needs to be "complete" -- every character in its
      *  selected languages, letters-then-digits-then-symbols, the order [activeCharacterOrder]
      *  draws them in. Always the *full* set regardless of [FontProject.goal] -- a
-     *  [FontGoal.USE_ON_IMAGE] project doesn't shrink this list, it just lets the customer skip
-     *  a non-alphanumeric character instead of drawing it (see [skipLetter]/[isProjectComplete]). */
+     *  [FontGoal.USE_ON_IMAGE] project doesn't shrink this list, it just lets the customer bulk-
+     *  skip whatever non-alphanumeric characters remain instead of drawing them (see
+     *  [skipRemainingSymbols]/[isProjectComplete]). */
     private fun requiredCodePoints(project: FontProject): List<Int> {
         val codePoints = project.selectedLanguages
             .flatMap { it.codePoints }
@@ -84,8 +85,8 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         (project.drawings.map { it.codePoint }.toSet() + project.skippedCodePoints).size
 
     /** A character counts as satisfied once it's either drawn or explicitly skipped (see
-     *  [skipLetter]) -- skipping is only ever offered for a non-alphanumeric character on a
-     *  [FontGoal.USE_ON_IMAGE] project, so letters/digits and any [FontGoal.EXPORT] project
+     *  [skipRemainingSymbols]) -- skipping is only ever offered for non-alphanumeric characters
+     *  on a [FontGoal.USE_ON_IMAGE] project, so letters/digits and any [FontGoal.EXPORT] project
      *  still need everything actually drawn to reach this. */
     fun isProjectComplete(project: FontProject): Boolean {
         val required = requiredCodePoints(project)
@@ -468,26 +469,18 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         pagingQueue = emptyList()
         pagingHistory = emptyList()
     }
-    /** Skips the current (always non-alphanumeric -- the Skip control in GlyphEditorScreen is
-     *  never shown for a letter/digit) character: persists it as skipped on the active project
-     *  (see [FontProject.skippedCodePoints]) so it counts as satisfied for [isProjectComplete]
-     *  without ever needing to be drawn, then advances the same way saving would. The everyday
-     *  "keep going" flow (Start your font/Continue drawing) never sets [isPagingMode] -- it
-     *  auto-advances via [characterAfterSave], same as [saveDrawingAndContinue] -- so this
-     *  branches on that too, not just the explicit paging queue. */
-    fun skipLetter() {
-        val current = selectedCodePoint ?: return
-        val skippedNow = (activeProject?.skippedCodePoints ?: emptySet()) + current
-        updateActive { it.copy(skippedCodePoints = skippedNow) }
-        if (isPagingMode) {
-            pagingHistory = pagingHistory + current
-            pagingQueue = pagingQueue.filterNot { it == current }
-            selectedCodePoint = if (pagingQueue.isNotEmpty()) pagingQueue.first() else null
-            if (selectedCodePoint == null) isPagingMode = false
-        } else {
-            val satisfied = drawings.keys + skippedNow
-            selectedCodePoint = characterAfterSave(activeCharacterOrder, current, satisfied, wasExisting = current in drawings)
+    /** Bulk-skips every remaining non-alphanumeric character on the active project in one shot
+     *  (see [FontProject.skippedCodePoints]) -- offered on Font workspace once every letter/digit
+     *  is drawn, as a single "skip the rest and use it now" action instead of clicking past each
+     *  punctuation/symbol character one at a time. Never touches a letter/digit -- those stay
+     *  required regardless of goal. */
+    fun skipRemainingSymbols() {
+        val project = activeProject ?: return
+        val remaining = activeCharacterOrder.filter {
+            it !in drawings && it !in project.skippedCodePoints && !it.toChar().isLetterOrDigit()
         }
+        if (remaining.isEmpty()) return
+        updateActive { it.copy(skippedCodePoints = it.skippedCodePoints + remaining) }
     }
 
     fun previousLetter() {

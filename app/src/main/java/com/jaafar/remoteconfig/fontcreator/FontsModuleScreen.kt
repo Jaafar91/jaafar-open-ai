@@ -354,7 +354,7 @@ internal fun CreateFontDialog(vm: FontCreatorViewModel, onCreated: () -> Unit, o
                     GoalOption(
                         icon = Icons.Filled.Image,
                         title = "Use it on images",
-                        detail = "Skip punctuation and symbols as you go -- the fastest way to start writing on photos.",
+                        detail = "Skip punctuation and symbols in one tap -- the fastest way to start writing on photos.",
                         selected = goal == FontGoal.USE_ON_IMAGE,
                         onClick = { goal = FontGoal.USE_ON_IMAGE },
                     )

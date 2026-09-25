@@ -35,10 +35,12 @@ enum class LanguageScript(
 /** What a font project is being made for -- asked at creation of every font (see
  *  CreateFontDialog), since different fonts can serve different purposes. Every project still
  *  walks through its *full* character set (see [FontCreatorViewModel.requiredCodePoints]) --
- *  [USE_ON_IMAGE] doesn't shrink that list, it just lets the customer skip a non-alphanumeric
- *  character when they reach it instead of drawing it (see [FontProject.skippedCodePoints]),
- *  since that covers what typically shows up captioning a photo; [EXPORT] offers no skip, since
- *  it needs every character actually drawn for a real, installable font file. */
+ *  [USE_ON_IMAGE] doesn't shrink that list. Instead, once every letter/digit is drawn, Font
+ *  workspace offers a single "skip the rest and use it now" action that bulk-skips every
+ *  remaining non-alphanumeric character in one shot (see
+ *  [FontCreatorViewModel.skipRemainingSymbols]/[FontProject.skippedCodePoints]), since that
+ *  covers what typically shows up captioning a photo; [EXPORT] offers no such shortcut, since it
+ *  needs every character actually drawn for a real, installable font file. */
 enum class FontGoal { USE_ON_IMAGE, EXPORT }
 
 data class FontProject(
@@ -49,9 +51,10 @@ data class FontProject(
     val selectedLanguages: Set<LanguageScript> = setOf(LanguageScript.BASIC_LATIN),
     val goal: FontGoal = FontGoal.EXPORT,
     /** Non-alphanumeric characters explicitly skipped rather than drawn (see
-     *  [FontCreatorViewModel.skipLetter]) -- counts as satisfied for [FontCreatorViewModel.isProjectComplete]
-     *  without ever needing a drawing, but never for [FontCreatorViewModel.isReadyToExport]: a
-     *  skipped character still isn't a real glyph, so exporting the font still waits for it. */
+     *  [FontCreatorViewModel.skipRemainingSymbols]) -- counts as satisfied for
+     *  [FontCreatorViewModel.isProjectComplete] without ever needing a drawing, but never for
+     *  [FontCreatorViewModel.isReadyToExport]: a skipped character still isn't a real glyph, so
+     *  exporting the font still waits for it. */
     val skippedCodePoints: Set<Int> = emptySet(),
     /** The Fine-tune preview/phrase text this project was last shown or drawn with -- kept per
      *  font (not one shared value used by every font) so switching fonts doesn't carry over

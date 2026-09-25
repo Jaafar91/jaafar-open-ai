@@ -82,7 +82,13 @@ import com.jaafar.remoteconfig.R
     val total = vm.activeCharacterOrder.size
     val drawn = project?.let(vm::progressCount) ?: vm.drawings.size
     val skipped = project?.skippedCodePoints ?: emptySet()
-    val nextCode = vm.activeCharacterOrder.firstOrNull { it !in vm.drawings && it !in skipped }
+    val remainingCodes = vm.activeCharacterOrder.filter { it !in vm.drawings && it !in skipped }
+    val nextCode = remainingCodes.firstOrNull()
+    // Offered once every letter/digit is drawn and only punctuation/symbols are left -- a
+    // shortcut past them in one tap instead of drawing (or dismissing) each one individually.
+    // "Export a full font" never offers this -- it needs everything actually drawn.
+    val canSkipRemainingSymbols = project?.goal == FontGoal.USE_ON_IMAGE &&
+        remainingCodes.isNotEmpty() && remainingCodes.none { it.toChar().isLetterOrDigit() }
     val useCurrentFont: () -> Unit = {
         project?.let {
             vm.generate()
@@ -91,6 +97,7 @@ import com.jaafar.remoteconfig.R
     }
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameName by remember(project?.name) { mutableStateOf(project?.name.orEmpty()) }
+    var showSkipSymbolsDialog by remember { mutableStateOf(false) }
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(project?.name.orEmpty(), modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -120,16 +127,28 @@ import com.jaafar.remoteconfig.R
             progress = percentage / 100f,
             onClick = { vm.edit(nextCode) },
         )
+        if (canSkipRemainingSymbols) {
+            ActionListCard(
+                icon = Icons.Filled.Image,
+                title = "Skip symbols & use now",
+                detail = "You've drawn every letter and number -- skip the rest and start writing on photos",
+                onClick = { showSkipSymbolsDialog = true },
+            )
+        }
     } else {
         // No badge/progress here -- this card is the action to take next, not a status; a
         // "Complete" badge plus a full progress bar plus "ready to use" said the same thing
-        // three times.
-        ActionListCard(
-            icon = Icons.Filled.Edit,
-            title = "Edit letters",
-            detail = "Touch up any letter, any time",
-            onClick = vm::editLetters,
-        )
+        // three times. Not shown once something's been skipped -- after choosing to skip the
+        // rest, Fine-tune is the one next step offered (plus using the font, always last below),
+        // not also an invitation back into the very punctuation/symbols just skipped.
+        if (skipped.isEmpty()) {
+            ActionListCard(
+                icon = Icons.Filled.Edit,
+                title = "Edit letters",
+                detail = "Touch up any letter, any time",
+                onClick = vm::editLetters,
+            )
+        }
     }
 
     if (drawn > 0) {
@@ -180,6 +199,28 @@ import com.jaafar.remoteconfig.R
                 ) { Text("Rename") }
             },
             dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (showSkipSymbolsDialog) {
+        AlertDialog(
+            onDismissRequest = { showSkipSymbolsDialog = false },
+            title = { Text("Skip the remaining symbols?") },
+            text = {
+                Text(
+                    "You've drawn every letter and number. Skip the ${remainingCodes.size} " +
+                        "remaining punctuation and symbol characters and start using this font " +
+                        "on images now -- you can always come back and draw them later.",
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showSkipSymbolsDialog = false
+                    vm.skipRemainingSymbols()
+                    useCurrentFont()
+                }) { Text("Skip & use now") }
+            },
+            dismissButton = { TextButton(onClick = { showSkipSymbolsDialog = false }) { Text("Cancel") } },
         )
     }
 }
@@ -353,7 +394,6 @@ internal fun SpacingControl(
     defaultStrokeWidth: Float,
     drawings: Map<Int, GlyphDrawing>,
     skippedCodePoints: Set<Int>,
-    canSkipSymbols: Boolean,
     characterOrder: List<Int>,
     pagingMode: Boolean,
     pagingProgress: Pair<Int, Int>?,
@@ -366,7 +406,6 @@ internal fun SpacingControl(
     onCancel: () -> Unit,
     onPrevious: () -> Unit,
     onSelectCharacter: (Int) -> Unit,
-    onSkip: () -> Unit,
     onSave: (GlyphDrawing) -> Unit,
     onSaveAndContinue: (GlyphDrawing) -> Unit,
     onSaveAndStay: (GlyphDrawing) -> Unit,
@@ -605,16 +644,6 @@ internal fun SpacingControl(
                 }
                 IconButton({ strokes = emptyList(); active = emptyList() }, enabled = strokes.isNotEmpty()) {
                     Icon(Icons.Default.Clear, contentDescription = "Clear")
-                }
-                // Only ever offered for a non-alphanumeric character on a "Use it on images"
-                // font -- letters/digits are always required, and an "Export a full font"
-                // project needs everything actually drawn, no skipping. Not gated on pagingMode:
-                // the everyday Start your font/Continue drawing flow never sets it (see
-                // skipLetter), so requiring it here made Skip unreachable in normal use.
-                // Excluded during phrase mode -- the customer explicitly asked to draw that
-                // phrase's own characters, skip doesn't fit there.
-                if (!phraseModeEnabled && canSkipSymbols && !codePoint.toChar().isLetterOrDigit()) {
-                    TextButton(onSkip) { Text("Skip") }
                 }
                 Button(savePrimary, Modifier.weight(1f), enabled = strokes.isNotEmpty() && (isDirty || initial == null || pagingMode)) {
                     Text(saveLabel, maxLines = 1)
