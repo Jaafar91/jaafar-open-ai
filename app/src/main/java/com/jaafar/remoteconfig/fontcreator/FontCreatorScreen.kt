@@ -114,6 +114,10 @@ fun FontCreatorApp(
     var initialImageText by remember { mutableStateOf("") }
     var fontWorkspaceBack by remember { mutableStateOf(Screen.Home) }
     var pendingSignatureMark by remember { mutableStateOf<String?>(null) }
+    // Set when Fill & Mark sends the customer to Signatures/Stamps because they had none saved
+    // yet -- both a successful create and backing out of it return straight to the same open
+    // document, instead of Signatures/Stamps' normal "back to Home" / "use in a fresh document".
+    var returnToFillMarkAfterCreate by remember { mutableStateOf(false) }
     var showFillMarkProDialog by remember { mutableStateOf(false) }
     // The monthly export counts live in SharedPreferences, which Compose can't observe -- and even
     // if it could, re-evaluating them live would yank the user out of the editor the moment their
@@ -265,21 +269,42 @@ fun FontCreatorApp(
                 )
                 Screen.Signatures -> SignaturesModuleScreen(
                     vm = viewModel,
-                    back = { screen = Screen.Home },
+                    back = {
+                        if (returnToFillMarkAfterCreate) {
+                            returnToFillMarkAfterCreate = false
+                            screen = Screen.FillMark
+                        } else {
+                            screen = Screen.Home
+                        }
+                    },
                     useInDocument = { markName ->
                         pendingSignatureMark = markName
-                        fillMarkUri = null
+                        // Keep the document already open in Fill & Mark instead of resetting to
+                        // a fresh picker -- only when arriving from browsing Signatures on its
+                        // own (not this create-for-Fill&Mark flow) should it reset to one.
+                        if (!returnToFillMarkAfterCreate) fillMarkUri = null
+                        returnToFillMarkAfterCreate = false
                         screen = Screen.FillMark
                     },
+                    autoCreate = returnToFillMarkAfterCreate,
                 )
                 Screen.Stamps -> StampsModuleScreen(
                     vm = viewModel,
-                    back = { screen = Screen.Home },
+                    back = {
+                        if (returnToFillMarkAfterCreate) {
+                            returnToFillMarkAfterCreate = false
+                            screen = Screen.FillMark
+                        } else {
+                            screen = Screen.Home
+                        }
+                    },
                     useInDocument = { markName ->
                         pendingSignatureMark = markName
-                        fillMarkUri = null
+                        if (!returnToFillMarkAfterCreate) fillMarkUri = null
+                        returnToFillMarkAfterCreate = false
                         screen = Screen.FillMark
                     },
+                    autoCreate = returnToFillMarkAfterCreate,
                 )
                 Screen.FontCelebration -> {
                     val project = viewModel.activeProject
@@ -325,6 +350,16 @@ fun FontCreatorApp(
                         vm = viewModel,
                         initialUri = fillMarkUri,
                         initialMarkName = pendingSignatureMark,
+                        createSignature = { uri ->
+                            fillMarkUri = uri
+                            returnToFillMarkAfterCreate = true
+                            screen = Screen.Signatures
+                        },
+                        createStamp = { uri ->
+                            fillMarkUri = uri
+                            returnToFillMarkAfterCreate = true
+                            screen = Screen.Stamps
+                        },
                         back = {
                             fillMarkUri = null
                             pendingSignatureMark = null

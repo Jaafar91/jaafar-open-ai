@@ -14,8 +14,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun SignaturesModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, useInDocument: (String) -> Unit) {
-    var creating by remember { mutableStateOf(false) }
+internal fun SignaturesModuleScreen(
+    vm: FontCreatorViewModel,
+    back: () -> Unit,
+    useInDocument: (String) -> Unit,
+    // True when Fill & Mark sent the customer here because they had no saved signature yet --
+    // jumps straight into the drawing canvas (skipping the list they'd otherwise see first,
+    // which would always be empty anyway) and, once saved, returns straight to Fill & Mark with
+    // it already placed instead of just closing back to a list.
+    autoCreate: Boolean = false,
+) {
+    var creating by remember { mutableStateOf(autoCreate) }
     var editing by remember { mutableStateOf<SavedSignature?>(null) }
     var showProDialog by remember { mutableStateOf(false) }
     // Already at the free plan's 1-signature cap -- go straight to the Pro pitch instead of
@@ -25,7 +34,11 @@ internal fun SignaturesModuleScreen(vm: FontCreatorViewModel, back: () -> Unit, 
         ProFeaturesDialog(vm = vm) { showProDialog = false }
     }
     if (creating) {
-        SignatureEditorScreen(vm = vm, onSaved = { creating = false }, back = { creating = false })
+        SignatureEditorScreen(
+            vm = vm,
+            onSaved = { name -> if (autoCreate) useInDocument(name) else creating = false },
+            back = { if (autoCreate) back() else creating = false },
+        )
         return
     }
     // Opened by tapping a row below -- rename, redraw, and "Use in Fill & Mark" all live here

@@ -164,6 +164,11 @@ internal fun FillMarkScreen(
     vm: FontCreatorViewModel,
     initialUri: Uri? = null,
     initialMarkName: String? = null,
+    // Tapping Sign/Stamp with nothing saved yet goes to create one instead of placing an empty
+    // mark -- these hand back the document currently open here so the caller can return to this
+    // same document (not a fresh picker) once a signature/stamp exists.
+    createSignature: (Uri) -> Unit,
+    createStamp: (Uri) -> Unit,
     back: () -> Unit,
 ) {
     var documentUri by remember { mutableStateOf(initialUri) }
@@ -181,6 +186,8 @@ internal fun FillMarkScreen(
             vm = vm,
             documentUri = documentUri!!,
             initialMarkName = initialMarkName,
+            createSignature = { createSignature(documentUri!!) },
+            createStamp = { createStamp(documentUri!!) },
             // Exits Fill & Mark entirely, matching this back button everywhere else in the
             // app -- previously this reset to the document picker instead, which (now that
             // picker auto-launches immediately, with no landing screen to land on) meant back
@@ -236,6 +243,8 @@ private fun FillMarkEditorScreen(
     documentUri: Uri,
     initialText: String? = null,
     initialMarkName: String? = null,
+    createSignature: () -> Unit,
+    createStamp: () -> Unit,
     back: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -323,13 +332,10 @@ private fun FillMarkEditorScreen(
     }
 
     val selectedMark = marks.firstOrNull { it.id == selectedMarkId }
-    val availableTools = MarkType.entries.filter { tool ->
-        when (tool) {
-            MarkType.Signature -> vm.signatures.any { it.imageFileName == null }
-            MarkType.Stamp -> vm.signatures.any { it.imageFileName != null }
-            else -> true
-        }
-    }
+    // Sign/Stamp always show, even with nothing saved yet -- tapping one with nothing saved
+    // goes to create one (see createSignature/createStamp below) instead of the tool
+    // disappearing until the customer happens to save one from elsewhere in the app.
+    val availableTools = MarkType.entries
 
     // Canvas display size (tracked so pointer handlers can use it)
     var canvasDisplaySize by remember { mutableStateOf(IntSize.Zero) }
@@ -624,10 +630,16 @@ private fun FillMarkEditorScreen(
                                     TextButton(onClick = {
                                         selectedMarkId = null
                                         editingTextMarkId = null
-                                        if (assetNames.size <= 1) {
+                                        if (assetNames.isEmpty()) {
+                                            // Nothing saved yet -- go create one instead of
+                                            // placing an empty placeholder mark. The newly
+                                            // created one comes straight back here already
+                                            // placed (see initialMarkName), no picker needed.
+                                            if (isSignature) createSignature() else createStamp()
+                                        } else if (assetNames.size == 1) {
                                             // Only one saved signature/stamp -- nothing to
                                             // choose, so place it immediately, same as Date.
-                                            placeMarkAtCenter(tool, assetNames.firstOrNull())
+                                            placeMarkAtCenter(tool, assetNames.first())
                                         } else if (isSignature) {
                                             signaturePickerExpanded = true
                                         } else {
