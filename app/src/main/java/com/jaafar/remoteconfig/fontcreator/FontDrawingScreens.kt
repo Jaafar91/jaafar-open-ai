@@ -82,7 +82,6 @@ import com.jaafar.remoteconfig.R
     val project = vm.activeProject
     val total = vm.activeCharacterOrder.size
     val drawn = project?.let(vm::progressCount) ?: vm.drawings.size
-    val skipped = project?.skippedCodePoints ?: emptySet()
     val nextCode = vm.remainingCodePoints.firstOrNull()
     val useCurrentFont: () -> Unit = {
         project?.let {
@@ -124,17 +123,13 @@ import com.jaafar.remoteconfig.R
     } else {
         // No badge/progress here -- this card is the action to take next, not a status; a
         // "Complete" badge plus a full progress bar plus "ready to use" said the same thing
-        // three times. Not shown once something's been skipped -- after choosing to skip the
-        // rest, Fine-tune is the one next step offered (plus using the font, always last below),
-        // not also an invitation back into the very punctuation/symbols just skipped.
-        if (skipped.isEmpty()) {
-            ActionListCard(
-                icon = Icons.Filled.Edit,
-                title = "Edit letters",
-                detail = "Touch up any letter, any time",
-                onClick = vm::editLetters,
-            )
-        }
+        // three times.
+        ActionListCard(
+            icon = Icons.Filled.Edit,
+            title = "Edit letters",
+            detail = "Touch up any letter, any time",
+            onClick = vm::editLetters,
+        )
     }
 
     if (drawn > 0) {
