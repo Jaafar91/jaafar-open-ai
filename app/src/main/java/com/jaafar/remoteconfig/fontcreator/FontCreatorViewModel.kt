@@ -84,6 +84,27 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun progressCount(project: FontProject): Int =
         (project.drawings.map { it.codePoint }.toSet() + project.skippedCodePoints).size
 
+    /** Everything the active project still needs, in [activeCharacterOrder]'s order, excluding
+     *  what's already drawn or skipped -- shared by Font workspace and the drawing screen so
+     *  both offer "skip remaining symbols" (see [skipRemainingSymbols]) under the exact same
+     *  condition. */
+    val remainingCodePoints: List<Int>
+        get() {
+            val skipped = activeProject?.skippedCodePoints ?: emptySet()
+            return activeCharacterOrder.filter { it !in drawings && it !in skipped }
+        }
+
+    /** Whether the active project has nothing left but non-alphanumeric characters -- the
+     *  trigger for offering "skip remaining symbols" on both Font workspace and the drawing
+     *  screen itself. Only ever true for a [FontGoal.USE_ON_IMAGE] project: letters/digits are
+     *  always required, and [FontGoal.EXPORT] offers no shortcut past punctuation/symbols. */
+    val canSkipRemainingSymbols: Boolean
+        get() {
+            if (activeProject?.goal != FontGoal.USE_ON_IMAGE) return false
+            val remaining = remainingCodePoints
+            return remaining.isNotEmpty() && remaining.none { it.toChar().isLetterOrDigit() }
+        }
+
     /** A character counts as satisfied once it's either drawn or explicitly skipped (see
      *  [skipRemainingSymbols]) -- skipping is only ever offered for non-alphanumeric characters
      *  on a [FontGoal.USE_ON_IMAGE] project, so letters/digits and any [FontGoal.EXPORT] project
@@ -470,15 +491,12 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         pagingHistory = emptyList()
     }
     /** Bulk-skips every remaining non-alphanumeric character on the active project in one shot
-     *  (see [FontProject.skippedCodePoints]) -- offered on Font workspace once every letter/digit
-     *  is drawn, as a single "skip the rest and use it now" action instead of clicking past each
-     *  punctuation/symbol character one at a time. Never touches a letter/digit -- those stay
-     *  required regardless of goal. */
+     *  (see [FontProject.skippedCodePoints]) -- offered on Font workspace and the drawing screen
+     *  once every letter/digit is drawn, as a single "skip the rest and use it now" action
+     *  instead of clicking past each punctuation/symbol character one at a time. Never touches a
+     *  letter/digit -- those stay required regardless of goal. */
     fun skipRemainingSymbols() {
-        val project = activeProject ?: return
-        val remaining = activeCharacterOrder.filter {
-            it !in drawings && it !in project.skippedCodePoints && !it.toChar().isLetterOrDigit()
-        }
+        val remaining = remainingCodePoints.filter { !it.toChar().isLetterOrDigit() }
         if (remaining.isEmpty()) return
         updateActive { it.copy(skippedCodePoints = it.skippedCodePoints + remaining) }
     }

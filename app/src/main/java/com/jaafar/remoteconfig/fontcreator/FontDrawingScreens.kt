@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
@@ -82,13 +83,12 @@ import com.jaafar.remoteconfig.R
     val total = vm.activeCharacterOrder.size
     val drawn = project?.let(vm::progressCount) ?: vm.drawings.size
     val skipped = project?.skippedCodePoints ?: emptySet()
-    val remainingCodes = vm.activeCharacterOrder.filter { it !in vm.drawings && it !in skipped }
+    val remainingCodes = vm.remainingCodePoints
     val nextCode = remainingCodes.firstOrNull()
     // Offered once every letter/digit is drawn and only punctuation/symbols are left -- a
     // shortcut past them in one tap instead of drawing (or dismissing) each one individually.
     // "Export a full font" never offers this -- it needs everything actually drawn.
-    val canSkipRemainingSymbols = project?.goal == FontGoal.USE_ON_IMAGE &&
-        remainingCodes.isNotEmpty() && remainingCodes.none { it.toChar().isLetterOrDigit() }
+    val canSkipRemainingSymbols = vm.canSkipRemainingSymbols
     val useCurrentFont: () -> Unit = {
         project?.let {
             vm.generate()
@@ -409,6 +409,11 @@ internal fun SpacingControl(
     onSave: (GlyphDrawing) -> Unit,
     onSaveAndContinue: (GlyphDrawing) -> Unit,
     onSaveAndStay: (GlyphDrawing) -> Unit,
+    // True once every letter/digit is drawn and only punctuation/symbols are left on a "Use it
+    // on images" font -- shows a banner offering to skip the rest in one tap, right where the
+    // customer lands the moment that becomes true, instead of only on Font workspace.
+    canSkipRemainingSymbols: Boolean = false,
+    onSkipRemainingSymbols: () -> Unit = {},
 ) {
     var strokes by remember(codePoint) { mutableStateOf(initial?.strokes ?: emptyList()) }
     var active by remember(codePoint) { mutableStateOf<List<GlyphPoint>>(emptyList()) }
@@ -524,6 +529,24 @@ internal fun SpacingControl(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (canSkipRemainingSymbols) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp).clickable(onClick = onSkipRemainingSymbols),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Letters done!", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text("Skip symbols and use your font now", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Icon(Icons.Filled.ChevronRight, contentDescription = null)
+                    }
+                }
+            }
             if (!pagingMode || phraseModeEnabled) {
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val centerPadding = ((maxWidth - 48.dp) / 2).coerceAtLeast(0.dp)
