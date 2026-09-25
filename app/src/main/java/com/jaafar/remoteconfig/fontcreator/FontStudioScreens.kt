@@ -119,11 +119,12 @@ import kotlinx.coroutines.withContext
         "Fine-tune your font",
         back,
         scrollable = true,
-        // Same export actions, same completion gate as Font workspace's top bar -- exporting an
-        // incomplete font would ship missing glyphs, so it's only offered once nothing's left.
+        // Same export actions, same completion gate as Font workspace's top bar -- exporting the
+        // real font file needs every character drawn, not just what this project's own goal
+        // requires, so it's only offered once nothing at all is left (see isReadyToExport).
         actions = {
             val file = vm.generatedFont
-            if (file != null && vm.isProjectComplete(project)) {
+            if (file != null && vm.isReadyToExport(project)) {
                 DownloadButton(file, project.name)
                 ShareButton(file, project.name)
             }

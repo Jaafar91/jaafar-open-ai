@@ -69,7 +69,10 @@ import com.jaafar.remoteconfig.R
     actions = {
         val file = vm.generatedFont
         val project = vm.activeProject
-        if (file != null && project != null && vm.isProjectComplete(project)) {
+        // Exporting the real font file needs every character drawn, not just what this
+        // project's own goal requires -- a "Use it on images" font can be done for its own
+        // purpose while still missing punctuation/symbols a real font file would need.
+        if (file != null && project != null && vm.isReadyToExport(project)) {
             DownloadButton(file, project.name)
             ShareButton(file, project.name)
         }

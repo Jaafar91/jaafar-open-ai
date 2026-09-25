@@ -53,7 +53,8 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     /** The code points [project] actually needs drawn to be "complete" -- every character in its
      *  selected languages, except a [FontGoal.USE_ON_IMAGE] project, which only needs letters and
      *  digits (no punctuation/symbols): that's what typically shows up captioning a photo, so
-     *  such a project can unlock Fine-tune/Share/Download/the celebration screen sooner. Ordered
+     *  such a project can unlock Fine-tune/the celebration screen sooner. Does *not* gate
+     *  exporting the font as a real file -- see [isReadyToExport] for that. Ordered
      *  letters-then-digits(-then-symbols), the order [activeCharacterOrder] draws them in. */
     private fun requiredCodePoints(project: FontProject): List<Int> {
         val codePoints = project.selectedLanguages
@@ -80,6 +81,16 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     fun isProjectComplete(project: FontProject): Boolean {
         val required = requiredCodePoints(project)
+        return required.isNotEmpty() && project.drawings.map { it.codePoint }.toSet().containsAll(required)
+    }
+
+    /** Whether [project] has every character drawn, regardless of its own goal -- unlike
+     *  [isProjectComplete], a [FontGoal.USE_ON_IMAGE] project being "complete" for its own
+     *  purpose (letters+digits only) doesn't make this true. Gates exporting the font as a real
+     *  file (Download/Share): offering to export/share a font that's still missing punctuation
+     *  and symbols would ship a file that looks done but silently has glyphs missing. */
+    fun isReadyToExport(project: FontProject): Boolean {
+        val required = requiredCodePoints(project.copy(goal = FontGoal.EXPORT))
         return required.isNotEmpty() && project.drawings.map { it.codePoint }.toSet().containsAll(required)
     }
 
