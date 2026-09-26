@@ -247,7 +247,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         !prefs.getBoolean(PREFS_RATING_PROMPT_SHOWN, false) &&
             prefs.getInt(PREFS_SUCCESSFUL_SHARE_COUNT, 0) >= SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT
     ); private set
-    var lastEditedCodePoint by mutableStateOf<Int?>(null); private set
     var lastStrokeWidth by mutableFloatStateOf(8f); private set
     var phraseModeEnabled by mutableStateOf(false); private set
     /** The active project's own remembered preview/phrase text -- kept per font via
@@ -380,11 +379,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         selectedCodePoint = null; generatedFont = generatedFile(project.name).takeIf { it.exists() }
         previewTypeface = generatedFont?.let { runCatching { loadTypeface(it) }.getOrNull() }
         lastStrokeWidth = 8f
-        // lastEditedCodePoint isn't scoped to a project -- without this, editLetters() on a
-        // brand-new (or just different) font could jump straight to whatever character was last
-        // edited in the *previous* font, landing the customer on an unrelated letter the moment
-        // they open an empty project instead of starting at its first character.
-        lastEditedCodePoint = null
         // Phrase/paging mode is a live editing-session state, not something a font should
         // remember -- without this, switching fonts mid-phrase left the next font's editor
         // still in phrase mode, filtering its queue by the *previous* font's phrase.
@@ -417,20 +411,17 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         pagingQueue = emptyList()
         pagingHistory = emptyList()
         pagingTotal = 0
-        lastEditedCodePoint = codePoint; selectedCodePoint = codePoint
+        selectedCodePoint = codePoint
     }
     fun editLetters() {
         val order = activeCharacterOrder
         if (order.isEmpty()) { status = "No characters available."; return }
-        // Prioritizes a character that's actually still missing (not drawn -- a skipped symbol
-        // counts as missing here, same as isReadyToExport()) over just resuming wherever the
-        // customer last was. Without this, "Edit letters" on a "Use it on images" font that had
-        // its remaining symbols bulk-skipped would land on lastEditedCodePoint/the first
-        // character instead of the skipped-but-undrawn symbol the customer actually needs to
-        // reach -- only once nothing is missing does it fall back to that old convenience.
-        val start = order.firstOrNull { it !in drawings }
-            ?: lastEditedCodePoint?.takeIf { it in order }
-            ?: order.first()
+        // The first character that's actually still missing (not drawn -- a skipped symbol
+        // counts as missing here, same as isReadyToExport()), or the first character overall
+        // once nothing is missing -- never "wherever the customer last was," so "Edit letters"
+        // on a "Use it on images" font that had its remaining symbols bulk-skipped reliably
+        // lands on the first skipped-but-undrawn symbol instead of skipping past it.
+        val start = order.firstOrNull { it !in drawings } ?: order.first()
         edit(start)
     }
     fun editPrevious() {
