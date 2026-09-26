@@ -400,18 +400,22 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         private set
     fun edit(codePoint: Int) {
         wasCompleteBeforeCurrentEdit = activeProject?.let(::isProjectComplete) == true
-        // A direct single-letter edit -- Edit letters, Previous/Next, or tapping any letter in
-        // the letter bar (including while a phrase session is active: the bar stays tappable
-        // then) -- always exits phrase mode, even if one was active a moment ago. Without this,
-        // phraseModeEnabled stayed stuck true: editorCharacterOrder kept showing only that
-        // phrase's characters instead of the full set, and the "Phrase mode" checkbox stayed
-        // checked for a session that wasn't in phrase mode anymore.
-        phraseModeEnabled = false
         isPagingMode = false
+        selectedCodePoint = codePoint
+    }
+    /** Like [edit], but also exits any active phrase/paging session first -- for entry points
+     *  reached from *outside* the drawing screen (Font workspace's "Edit letters"/"Continue
+     *  drawing" cards), where landing on a letter should never carry over a phrase session left
+     *  over from earlier. [edit] itself must NOT do this unconditionally: it's also the letter
+     *  bar's own tap handler inside an *already open* phrase session, and tapping a different
+     *  letter there is meant to stay within that same phrase -- dropping phraseModeEnabled there
+     *  reverted the bar to the full character set the instant any letter in it was tapped. */
+    fun startEditing(codePoint: Int) {
+        phraseModeEnabled = false
         pagingQueue = emptyList()
         pagingHistory = emptyList()
         pagingTotal = 0
-        selectedCodePoint = codePoint
+        edit(codePoint)
     }
     fun editLetters() {
         val order = activeCharacterOrder
@@ -422,7 +426,7 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         // on a "Use it on images" font that had its remaining symbols bulk-skipped reliably
         // lands on the first skipped-but-undrawn symbol instead of skipping past it.
         val start = order.firstOrNull { it !in drawings } ?: order.first()
-        edit(start)
+        startEditing(start)
     }
     fun editPrevious() {
         val order = activeCharacterOrder
@@ -523,6 +527,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     fun closeEditor() {
         selectedCodePoint = null
+        // Backing out of the drawing screen (the back button's onCancel) always fully exits any
+        // phrase session too -- there's no "resume this phrase" affordance elsewhere, so without
+        // this, phraseModeEnabled stayed stuck true for whatever the customer opened next.
+        phraseModeEnabled = false
         isPagingMode = false
         pagingQueue = emptyList()
         pagingHistory = emptyList()

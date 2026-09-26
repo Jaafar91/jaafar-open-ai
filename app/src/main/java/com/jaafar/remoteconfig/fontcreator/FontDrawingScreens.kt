@@ -120,7 +120,7 @@ import com.jaafar.remoteconfig.R
             detail = if (drawn == 0) "Draw your first letter to begin" else "Keep going -- draw your next letter",
             badge = "$percentage%",
             progress = percentage / 100f,
-            onClick = { vm.edit(nextCode) },
+            onClick = { vm.startEditing(nextCode) },
         )
     } else {
         // No badge/progress here -- this card is the action to take next, not a status; a
