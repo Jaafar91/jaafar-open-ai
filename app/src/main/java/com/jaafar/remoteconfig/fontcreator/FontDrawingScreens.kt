@@ -578,8 +578,18 @@ internal fun SpacingControl(
                                 val scaleX = newSize.width / oldWidth
                                 val scaleY = newSize.height / oldHeight
                                 fun GlyphPoint.rescaled() = GlyphPoint(x * scaleX, y * scaleY, onCurve)
-                                strokes = strokes.map { it.copy(points = it.points.map { point -> point.rescaled() }) }
+                                fun List<GlyphStroke>.rescaled() = map { it.copy(points = it.points.map { point -> point.rescaled() }) }
+                                strokes = strokes.rescaled()
                                 active = active.map { it.rescaled() }
+                                // savedStrokes (the "is this dirty" baseline) must move by the same
+                                // transform as strokes, not just strokes alone -- otherwise the mere
+                                // act of opening an already-drawn letter/symbol on a canvas whose
+                                // measured size doesn't exactly match what it was last saved at (a
+                                // different device, or this app's own canvas box changing height due
+                                // to the skip banner/bottom toolbar) left strokes rescaled but
+                                // savedStrokes untouched, so strokes != savedStrokes came back true
+                                // and enabled Save immediately, with no actual edit having happened.
+                                savedStrokes = savedStrokes.rescaled()
                             }
                             canvasSize = newSize.width.toFloat() to newSize.height.toFloat()
                         }
