@@ -247,7 +247,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         !prefs.getBoolean(PREFS_RATING_PROMPT_SHOWN, false) &&
             prefs.getInt(PREFS_SUCCESSFUL_SHARE_COUNT, 0) >= SUCCESSFUL_SHARES_BEFORE_RATING_PROMPT
     ); private set
-    var lastEditedCodePoint by mutableStateOf<Int?>(null); private set
     var lastStrokeWidth by mutableFloatStateOf(8f); private set
     var phraseModeEnabled by mutableStateOf(false); private set
     /** The active project's own remembered preview/phrase text -- kept per font via
@@ -380,11 +379,6 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         selectedCodePoint = null; generatedFont = generatedFile(project.name).takeIf { it.exists() }
         previewTypeface = generatedFont?.let { runCatching { loadTypeface(it) }.getOrNull() }
         lastStrokeWidth = 8f
-        // lastEditedCodePoint isn't scoped to a project -- without this, editLetters() on a
-        // brand-new (or just different) font could jump straight to whatever character was last
-        // edited in the *previous* font, landing the customer on an unrelated letter the moment
-        // they open an empty project instead of starting at its first character.
-        lastEditedCodePoint = null
         // Phrase/paging mode is a live editing-session state, not something a font should
         // remember -- without this, switching fonts mid-phrase left the next font's editor
         // still in phrase mode, filtering its queue by the *previous* font's phrase.
@@ -406,13 +400,33 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
         private set
     fun edit(codePoint: Int) {
         wasCompleteBeforeCurrentEdit = activeProject?.let(::isProjectComplete) == true
-        lastEditedCodePoint = codePoint; isPagingMode = false; selectedCodePoint = codePoint
+        isPagingMode = false
+        selectedCodePoint = codePoint
+    }
+    /** Like [edit], but also exits any active phrase/paging session first -- for entry points
+     *  reached from *outside* the drawing screen (Font workspace's "Edit letters"/"Continue
+     *  drawing" cards), where landing on a letter should never carry over a phrase session left
+     *  over from earlier. [edit] itself must NOT do this unconditionally: it's also the letter
+     *  bar's own tap handler inside an *already open* phrase session, and tapping a different
+     *  letter there is meant to stay within that same phrase -- dropping phraseModeEnabled there
+     *  reverted the bar to the full character set the instant any letter in it was tapped. */
+    fun startEditing(codePoint: Int) {
+        phraseModeEnabled = false
+        pagingQueue = emptyList()
+        pagingHistory = emptyList()
+        pagingTotal = 0
+        edit(codePoint)
     }
     fun editLetters() {
         val order = activeCharacterOrder
         if (order.isEmpty()) { status = "No characters available."; return }
-        val start = lastEditedCodePoint?.takeIf { it in order } ?: order.first()
-        edit(start)
+        // The first character that's actually still missing (not drawn -- a skipped symbol
+        // counts as missing here, same as isReadyToExport()), or the first character overall
+        // once nothing is missing -- never "wherever the customer last was," so "Edit letters"
+        // on a "Use it on images" font that had its remaining symbols bulk-skipped reliably
+        // lands on the first skipped-but-undrawn symbol instead of skipping past it.
+        val start = order.firstOrNull { it !in drawings } ?: order.first()
+        startEditing(start)
     }
     fun editPrevious() {
         val order = activeCharacterOrder
@@ -434,6 +448,11 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun startPaging() {
+        // Same reasoning as edit() above: "Continue drawing"/"Start your font" is never a phrase
+        // session, even if one was left active before -- without this, a stuck phraseModeEnabled
+        // would make editorCharacterOrder filter this queue's letter bar down to the old phrase's
+        // characters instead of showing the full set being paged through.
+        phraseModeEnabled = false
         val skipped = activeProject?.skippedCodePoints ?: emptySet()
         // Already-skipped characters don't requeue here -- otherwise "Continue drawing" would
         // force the customer back through every symbol they already chose to skip, every time,
@@ -508,6 +527,10 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
 
     fun closeEditor() {
         selectedCodePoint = null
+        // Backing out of the drawing screen (the back button's onCancel) always fully exits any
+        // phrase session too -- there's no "resume this phrase" affordance elsewhere, so without
+        // this, phraseModeEnabled stayed stuck true for whatever the customer opened next.
+        phraseModeEnabled = false
         isPagingMode = false
         pagingQueue = emptyList()
         pagingHistory = emptyList()

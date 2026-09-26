@@ -120,7 +120,7 @@ import com.jaafar.remoteconfig.R
             detail = if (drawn == 0) "Draw your first letter to begin" else "Keep going -- draw your next letter",
             badge = "$percentage%",
             progress = percentage / 100f,
-            onClick = { vm.edit(nextCode) },
+            onClick = { vm.startEditing(nextCode) },
         )
     } else {
         // No badge/progress here -- this card is the action to take next, not a status; a
@@ -354,7 +354,6 @@ internal fun SpacingControl(
     initial: GlyphDrawing?,
     defaultStrokeWidth: Float,
     drawings: Map<Int, GlyphDrawing>,
-    skippedCodePoints: Set<Int>,
     characterOrder: List<Int>,
     pagingMode: Boolean,
     pagingProgress: Pair<Int, Int>?,
@@ -413,7 +412,13 @@ internal fun SpacingControl(
     val char = codePoint.toChar().toString()
     val title = "Draw $char"
     val characterIndex = characterOrder.indexOf(codePoint)
-    val completedCharacterCount = characterOrder.count { it in drawings || it in skippedCodePoints }
+    // Counts only actually-drawn characters, not skipped ones -- matching isReadyToExport()'s
+    // definition of "missing," not isProjectComplete()'s goal-aware one. Counting a skip as done
+    // here made this screen's own "N% completed" (and its progress bar) hit 100% for a "Use it on
+    // images" font that had bulk-skipped its remaining symbols, even though those symbols still
+    // aren't real drawn glyphs -- misleading by the same standard the Fonts list's "Complete"
+    // badge was fixed to.
+    val completedCharacterCount = characterOrder.count { it in drawings }
     val letterBarState = rememberLazyListState()
     LaunchedEffect(codePoint, characterOrder) {
         if (characterIndex >= 0) {
@@ -441,7 +446,17 @@ internal fun SpacingControl(
         savedStrokes = strokes
         savedStrokeWidth = strokeWidth
         when {
-            pagingMode -> onSave(saved)
+            // phraseModeEnabled alone (pagingMode already false) happens after tapping a letter
+            // directly in the phrase's own letter bar -- edit() clears isPagingMode there so a
+            // repeat tap doesn't resume auto-advancing through the queue, but that also made this
+            // fall to onSaveAndContinue(), which knows nothing about phrases and advances through
+            // the *full* alphabet via activeCharacterOrder instead. That silently walked the
+            // editor outside the phrase while the visible letter bar stayed phrase-restricted
+            // (editorCharacterOrder still filters by phraseModeEnabled), a broken mismatched state.
+            // Routing through onSave() here instead -- same as the queue path -- correctly ends
+            // the ad-hoc edit and returns to Fine-tune, since saveDrawing() already treats
+            // isPagingMode == false as "nothing left to advance to" and exits accordingly.
+            pagingMode || phraseModeEnabled -> onSave(saved)
             else -> onSaveAndContinue(saved)
         }
     }
@@ -578,8 +593,18 @@ internal fun SpacingControl(
                                 val scaleX = newSize.width / oldWidth
                                 val scaleY = newSize.height / oldHeight
                                 fun GlyphPoint.rescaled() = GlyphPoint(x * scaleX, y * scaleY, onCurve)
-                                strokes = strokes.map { it.copy(points = it.points.map { point -> point.rescaled() }) }
+                                fun List<GlyphStroke>.rescaled() = map { it.copy(points = it.points.map { point -> point.rescaled() }) }
+                                strokes = strokes.rescaled()
                                 active = active.map { it.rescaled() }
+                                // savedStrokes (the "is this dirty" baseline) must move by the same
+                                // transform as strokes, not just strokes alone -- otherwise the mere
+                                // act of opening an already-drawn letter/symbol on a canvas whose
+                                // measured size doesn't exactly match what it was last saved at (a
+                                // different device, or this app's own canvas box changing height due
+                                // to the skip banner/bottom toolbar) left strokes rescaled but
+                                // savedStrokes untouched, so strokes != savedStrokes came back true
+                                // and enabled Save immediately, with no actual edit having happened.
+                                savedStrokes = savedStrokes.rescaled()
                             }
                             canvasSize = newSize.width.toFloat() to newSize.height.toFloat()
                         }
