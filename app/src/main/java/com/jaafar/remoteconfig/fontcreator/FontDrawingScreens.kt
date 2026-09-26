@@ -446,7 +446,17 @@ internal fun SpacingControl(
         savedStrokes = strokes
         savedStrokeWidth = strokeWidth
         when {
-            pagingMode -> onSave(saved)
+            // phraseModeEnabled alone (pagingMode already false) happens after tapping a letter
+            // directly in the phrase's own letter bar -- edit() clears isPagingMode there so a
+            // repeat tap doesn't resume auto-advancing through the queue, but that also made this
+            // fall to onSaveAndContinue(), which knows nothing about phrases and advances through
+            // the *full* alphabet via activeCharacterOrder instead. That silently walked the
+            // editor outside the phrase while the visible letter bar stayed phrase-restricted
+            // (editorCharacterOrder still filters by phraseModeEnabled), a broken mismatched state.
+            // Routing through onSave() here instead -- same as the queue path -- correctly ends
+            // the ad-hoc edit and returns to Fine-tune, since saveDrawing() already treats
+            // isPagingMode == false as "nothing left to advance to" and exits accordingly.
+            pagingMode || phraseModeEnabled -> onSave(saved)
             else -> onSaveAndContinue(saved)
         }
     }
