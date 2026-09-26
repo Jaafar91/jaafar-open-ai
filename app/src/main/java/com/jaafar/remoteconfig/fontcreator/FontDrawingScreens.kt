@@ -354,7 +354,6 @@ internal fun SpacingControl(
     initial: GlyphDrawing?,
     defaultStrokeWidth: Float,
     drawings: Map<Int, GlyphDrawing>,
-    skippedCodePoints: Set<Int>,
     characterOrder: List<Int>,
     pagingMode: Boolean,
     pagingProgress: Pair<Int, Int>?,
@@ -413,7 +412,13 @@ internal fun SpacingControl(
     val char = codePoint.toChar().toString()
     val title = "Draw $char"
     val characterIndex = characterOrder.indexOf(codePoint)
-    val completedCharacterCount = characterOrder.count { it in drawings || it in skippedCodePoints }
+    // Counts only actually-drawn characters, not skipped ones -- matching isReadyToExport()'s
+    // definition of "missing," not isProjectComplete()'s goal-aware one. Counting a skip as done
+    // here made this screen's own "N% completed" (and its progress bar) hit 100% for a "Use it on
+    // images" font that had bulk-skipped its remaining symbols, even though those symbols still
+    // aren't real drawn glyphs -- misleading by the same standard the Fonts list's "Complete"
+    // badge was fixed to.
+    val completedCharacterCount = characterOrder.count { it in drawings }
     val letterBarState = rememberLazyListState()
     LaunchedEffect(codePoint, characterOrder) {
         if (characterIndex >= 0) {

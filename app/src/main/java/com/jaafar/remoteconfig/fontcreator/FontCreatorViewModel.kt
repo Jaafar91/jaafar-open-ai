@@ -411,7 +411,15 @@ class FontCreatorViewModel(application: Application) : AndroidViewModel(applicat
     fun editLetters() {
         val order = activeCharacterOrder
         if (order.isEmpty()) { status = "No characters available."; return }
-        val start = lastEditedCodePoint?.takeIf { it in order } ?: order.first()
+        // Prioritizes a character that's actually still missing (not drawn -- a skipped symbol
+        // counts as missing here, same as isReadyToExport()) over just resuming wherever the
+        // customer last was. Without this, "Edit letters" on a "Use it on images" font that had
+        // its remaining symbols bulk-skipped would land on lastEditedCodePoint/the first
+        // character instead of the skipped-but-undrawn symbol the customer actually needs to
+        // reach -- only once nothing is missing does it fall back to that old convenience.
+        val start = order.firstOrNull { it !in drawings }
+            ?: lastEditedCodePoint?.takeIf { it in order }
+            ?: order.first()
         edit(start)
     }
     fun editPrevious() {
